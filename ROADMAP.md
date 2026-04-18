@@ -136,16 +136,16 @@ Two tracks run in parallel from Phase 1.5 onward: **Model** (what we build and t
 
 ## Pace
 
-Aggressive ballpark, AI-paired:
+Aggressive ballpark, AI-paired, if you're pushing daily:
 
-- Phase 1: one long weekend
-- Phase 1.5: half a weekend
-- Phase 2: two weekends
-- Phase 3: one weekend
-- Phase 4: one to two weekends (bottleneck: compute)
-- Phase 5: one to two weekends
-- Phase 6: one weekend
+- Phase 1: 1–3 focused days *(actual: 2 days, Apr 16–18, 2026)*
+- Phase 1.5: 1–2 days
+- Phase 2: 4–8 days (Phase 2's pedagogical-UX requirements in `docs/viz_vision.md` expand scope)
+- Phase 3: 2–4 days
+- Phase 4: 2–4 days (bottleneck: compute + dataset prep)
+- Phase 5: 3–5 days (GRPO is genuinely tricky)
+- Phase 6: 1–2 days
 
-Total: ~6–8 weekends end-to-end if focused.
+Total: ~2–4 weeks end-to-end if focused daily. Can compress further if polish scope on Phase 2 is cut, but that cut propagates all the way to Phase 6 since the viz IS the demo artifact.
 
 `PROJECT_STATE.md` is the source of truth for current state — update it every session.

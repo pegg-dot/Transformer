@@ -11,6 +11,9 @@ env/
 .pytest_cache/
 .ipynb_checkpoints/
 
+# Raw data cache (re-downloadable)
+data/
+
 # Training artifacts
 *.pt
 *.pth

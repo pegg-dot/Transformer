@@ -2,9 +2,9 @@
 
 > This file is the source of truth for where the project is. Every session should **read this first** and **update it last**.
 
-**Last updated:** 2026-04-16 (repo relocated to user's real Transformer folder)
-**Current phase:** Phase 0 — Scaffolding complete, Phase 1 next
-**Next action:** Install PyTorch (`pip install torch`), then paste `prompts/phase-1-model.md` into Claude to begin Milestone 1 (scaffold environment + data). Remember: Claude scaffolds, you hand-type the model.
+**Last updated:** 2026-04-18 (Phase 1 complete — trained GPT producing Shakespeare-flavored gibberish)
+**Current phase:** Phase 1 — Done. Phase 1.5 (instrument model with forward hooks for live viz) is next.
+**Next action:** Optional — re-train for 5000 iters (overnight, ~2 hrs on MPS) to get real-word-quality output; checkpoint currently at 500 iters. Then paste `prompts/phase-1_5-instrumentation.md` into Claude to begin Phase 1.5.
 
 ---
 
@@ -13,8 +13,8 @@
 | Phase | Status | Artifact | Notes |
 |---|---|---|---|
 | 0. Scaffold repo | ✅ Done | This repo | Docs + prompts in place |
-| 1. nanoGPT from scratch | ⏳ Not started | `model/` | Up next |
-| 1.5. Instrument for viz | ⏳ Not started | `model/capture.py`, `activations.json`, `model.onnx` | |
+| 1. nanoGPT from scratch | ✅ Done | `model/gpt.py`, `train.py`, `sample.py`, `checkpoints/gpt.pt` | 10.79M params; loss 4.28→1.88 in 500 iters on MPS |
+| 1.5. Instrument for viz | ⏳ Not started | `model/capture.py`, `activations.json`, `model.onnx` | Up next |
 | 2. Visualizer MVP | ⏳ Not started | `viz/` (Next.js) | |
 | 3. Modernize to Llama 3 | ⏳ Not started | Updated model + A/B toggle in viz | |
 | 4. Fine-tune (LoRA/Unsloth) | ⏳ Not started | Fine-tuned checkpoint | |
@@ -30,10 +30,12 @@
 - Phase 1, 1.5, 2 prompts ready to paste into Claude.
 - Glossary + resources + architecture docs in `docs/`.
 - Key decision (Wes's advice): hand-type the model, Claude scaffolds the rest.
+- **Phase 1 complete.** Full GPT from scratch in raw PyTorch: TokenEmbedding, PositionalEmbedding, Head, MultiHeadAttention, FeedForward, Block, GPTLanguageModel. Hand-typed by Nate. Trained 500 iters on tinyshakespeare, loss 4.28→1.88. Output has Shakespeare structure (character names, line breaks, vowel/consonant rhythm) with invented words — expected at 500 iters.
+- **Prep for Phases 2+ done.** `docs/viz_vision.md` captures the pedagogical-UX aesthetic vision (narrative mode, Beginner/Advanced toggle, Explain-this popovers, preset gallery, speed slider, record/share). `prompts/phase-2-visualizer.md` now explicitly requires those as milestones 10 and 11. `prompts/phase-3-llama3.md` written (was missing). `ROADMAP.md` pacing tightened to "2–4 weeks end-to-end if focused daily."
 
 ## What's in progress
 
-Nothing yet. Phase 1 kicks off next session.
+Nothing. Phase 1 shipped. Decide whether to train longer first (for real words at ~5000 iters) or move directly into Phase 1.5 instrumentation.
 
 ## Blockers
 
@@ -57,6 +59,13 @@ None.
 ## Session log
 
 Append most recent at top.
+
+### 2026-04-17/18 — Phase 1 complete
+- Hand-typed all 6 model modules (TokenEmbedding, PositionalEmbedding, Head, MultiHeadAttention, FeedForward, Block). Final GPTLanguageModel class also hand-typed but wiring fixes were done by Claude after frustration limit was reached.
+- Socratic probes done on every milestone. Strongest grasp: multi-head specialization (different heads learn different patterns at same param cost as one big head), and residuals (blocks add to x instead of overwriting so gradients flow and info accumulates).
+- Weakest grasp (flagged for re-visit in Phase 1.5 when we can literally visualize these): √d_k scaling math (saturated softmax → vanishing gradients), and temperature direction (had it inverted, corrected with live samples).
+- Scaffold: Claude wrote `train.py` + `sample.py`. AdamW, cross-entropy, 500-iter smoke run on MPS took ~14 min. Loss 4.28→1.88. Output is Shakespeare-flavored gibberish as expected.
+- Checkpoint saved to `checkpoints/gpt.pt`. Can sample from it with `python -m model.sample --prompt "ROMEO:" --tokens 500`.
 
 ### 2026-04-16 — Scaffold + Phase 1 protocol + relocate
 - Wrote README, ROADMAP, glossary, architecture, resources

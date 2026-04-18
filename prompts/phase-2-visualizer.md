@@ -62,9 +62,13 @@ Same as earlier phases: frame → build → explain → probe → judge → move
 
 8. **Controls.** Temperature, top-k, top-p, step mode, head highlighter, layer selector. *Probe: which affect generation vs are purely visual?*
 
-9. **Polish.** Dark default. Micro-interactions. Responsive (full viz desktop-only OK). Loading states. Error boundaries. Meta + OG tags.
+9. **Polish.** Dark default. Micro-interactions. Responsive (full viz desktop-only OK). Loading states. Error boundaries. Meta + OG tags. Animation choreography per `docs/viz_vision.md` (Framer Motion springs, stagger children, global speed slider).
 
-10. **Deploy.** GitHub → Vercel → public URL. Update `PROJECT_STATE.md`.
+10. **Pedagogical UX layer.** Implement the requirements from the PEDAGOGICAL UX LAYER section above: Beginner/Advanced toggle (persists in localStorage), "Explain this" popover component used on every panel, preset prompt gallery, speed multiplier, per-panel record/share button. *Probe: for one panel of your choice, write the three-section popover copy (what you're seeing / why it matters / what to look for). Does it pass the "a friend who's never seen a transformer understands this" bar?*
+
+11. **Narrative story mode.** New route at `/tour`. Sticky viz on the left, scrolling annotated narrative on the right. Scroll advances the model through one curated prompt. Uses the same panel components as `/play` but choreographed by scroll position. This is the first-visitor entry point — link it from the homepage hero. *Probe: at scroll-step N, which panels are highlighted and which are dimmed? How do you decide?*
+
+12. **Deploy.** GitHub → Vercel → public URL. Update `PROJECT_STATE.md`.
 
 # DESIGN PRINCIPLES
 
@@ -73,6 +77,19 @@ Same as earlier phases: frame → build → explain → probe → judge → move
 - **Show shapes.** Annotate tensor shapes in small gray text next to each viz. `[B=1, T=12, H=6, D=64]`.
 - **Color has meaning.** Map colors to values (attention weight → single-hue scale; pos/neg activations → diverging). No rainbow for ordinal.
 - **Progressive disclosure.** First impression simple. Power users expand panels for raw Q/K/V, logits, etc.
+
+# PEDAGOGICAL UX LAYER (NON-NEGOTIABLE — read `docs/viz_vision.md` before starting)
+
+This project is a teaching instrument, not a dashboard. Milestones 10 and 11 below are not "polish" — they are product requirements on the same tier as the inference pipeline.
+
+- **Narrative / story mode** at `/tour`. Scrollable, Distill-style. Sticky viz on the left, narrative copy on the right. Scrolling advances the model through one curated prompt. This is the FIRST thing a new visitor sees.
+- **Beginner / Advanced toggle** in the top bar. Beginner mode hides jargon, plain-English tooltips, math hidden behind "show math" buttons. Advanced mode: full vocab, tensor shapes always shown, raw matrices viewable.
+- **"Explain this" popover on every panel.** 16×16 "?" icon in each panel's top-right. Click opens: *what you're seeing / why it matters / what to look for*.
+- **Speed control.** 0.25× / 0.5× / 1× / 2× / 4× multiplier affecting all animations.
+- **Preset prompt gallery.** Row of clickable presets ("ROMEO:", "HAMLET:", "Hark!") that pre-load an `activations.json` for instant-feeling first impression.
+- **Record / share.** Per-panel "Record 10s" button that emits MP4/GIF for social sharing.
+
+All of the above are codified in `docs/viz_vision.md`. Deviate only with explicit user approval.
 
 # HARD CONSTRAINTS
 
@@ -87,10 +104,14 @@ Same as earlier phases: frame → build → explain → probe → judge → move
 
 - [ ] `viz/` — Next.js app scaffolded
 - [ ] Working in-browser ONNX inference
-- [ ] All 10 milestone visualizations
+- [ ] Milestones 1–8 (all core viz panels)
+- [ ] Milestone 9 polish pass (animations, dark mode, responsive)
+- [ ] Milestone 10 pedagogical UX (Beginner/Advanced, Explain-this, preset gallery, speed slider, record/share)
+- [ ] Milestone 11 narrative story mode at `/tour`
 - [ ] Deployed to Vercel, public URL
 - [ ] `PROJECT_STATE.md` updated with URL
 - [ ] Screenshot + 15-second screen capture in `docs/`
+- [ ] `docs/viz_vision.md` bar met (user acceptance: "a senior researcher spends 5+ minutes without asking 'what am I looking at?'")
 
 # KICKOFF
 

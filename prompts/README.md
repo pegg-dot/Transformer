@@ -11,6 +11,7 @@ Each prompt is structured as a **role + protocol + Socratic loop** designed to f
 | `phase-1-model.md` | Phase 1 | Build nanoGPT from scratch — Claude scaffolds, you hand-type the model |
 | `phase-1.5-instrumentation.md` | Phase 1.5 | Wire forward hooks to capture activations + export ONNX |
 | `phase-2-visualizer.md` | Phase 2 | Build the Next.js visualizer with transformers.js + D3 + R3F |
+| `phase-3-llama3.md` | Phase 3 | Modernize to Llama 3 architecture (RoPE, RMSNorm, SwiGLU, GQA, KV cache) + A/B toggle in viz |
 
 ## How to use
 
@@ -48,7 +49,6 @@ Don't remove the Socratic loop. That's the load-bearing part.
 
 ## Future prompts (not yet written)
 
-- Phase 3: Modernize to Llama 3 architecture
 - Phase 4: Fine-tune with LoRA + Unsloth
 - Phase 5: RLVR with GRPO
 - Phase 6: Public launch + writeup
