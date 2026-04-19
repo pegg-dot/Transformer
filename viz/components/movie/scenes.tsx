@@ -1038,8 +1038,9 @@ export function SceneMultiHead() {
 export function SceneFFN() {
   const [phase, setPhase] = useState(0)
   useEffect(() => {
-    // 5 phases × 2.8s = 14s (matches scene duration)
-    const id = setInterval(() => setPhase((p) => (p + 1) % 5), 3200)
+    // Single forward pass — previously looped, implying iterative computation.
+    // FFN runs once per token per layer. Walk the 5 phases once and hold.
+    const id = setInterval(() => setPhase((p) => (p + 1 < 5 ? p + 1 : p)), 3200)
     return () => clearInterval(id)
   }, [])
 
@@ -1358,15 +1359,21 @@ export function SceneSample() {
   const CHARS = ['N', 'a', 'y', ',', ' ', 'O', 'e', 'i', 'o', 'r', 's', 't']
   const LOGITS = [4.1, 3.6, 2.8, 2.2, 1.9, 1.2, 1.0, 0.6, 0.5, 0.1, -0.2, -0.4]
 
-  // Auto-sweep temperature if untouched
+  // Auto-sweep temperature for ~2 cycles, then settle at T=1.0.
+  // Previously oscillated forever, which looked like temperature was
+  // constantly changing in inference — it's a fixed knob.
   useEffect(() => {
     if (touched) return
     const start = performance.now()
+    const SWEEP_DURATION = 15.7  // ~2 full sine cycles at ω=0.8
     let frame = 0
     const loop = () => {
       const t = (performance.now() - start) / 1000
-      // oscillate between 0.3 and 1.8
-      const phase = (Math.sin(t * 0.8) + 1) / 2  // 0..1
+      if (t >= SWEEP_DURATION) {
+        setTemp(1.0)
+        return
+      }
+      const phase = (Math.sin(t * 0.8) + 1) / 2
       setTemp(+(0.3 + phase * 1.5).toFixed(2))
       frame = requestAnimationFrame(loop)
     }
@@ -3146,9 +3153,12 @@ export function SceneModern() {
 
 /** ========= SUB · FFN · GELU curve ========= */
 export function SceneFFNGelu() {
+  // Single sweep of the probe dot from x=-3 to x=+5, then hold at +5.
+  // Previously the dot bounced forever, which looked like the function
+  // was being "explored" — it's just a fixed curve.
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 90)
+    const id = setInterval(() => setTick((t) => (t < 80 ? t + 1 : t)), 90)
     return () => clearInterval(id)
   }, [])
 
@@ -3174,7 +3184,7 @@ export function SceneFFNGelu() {
     }).join(' ')
   }
 
-  const pulseX = -3 + ((tick * 0.1) % 8)
+  const pulseX = Math.min(5, -3 + tick * 0.1)
   const pulseY = (fn: (x: number) => number) => cy - fn(pulseX) * yScale
   const pulsePx = cx + pulseX * xScale
 

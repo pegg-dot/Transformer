@@ -15,10 +15,14 @@ const CELL = 0.18
 
 export default function SceneAttn({ t, duration }: SceneProps) {
   const p = clamp01(t / Math.max(0.01, duration))
-  const phaseEstablish = smoothstep(0, 0.25, p)
-  const phaseScores = smoothstep(0.2, 0.55, p)
-  const phaseSoftmax = smoothstep(0.55, 0.75, p)
-  const phaseAggregate = smoothstep(0.75, 1.0, p)
+  // 4 discrete sub-phases matching the 2D attention scene's sub-phase cycling
+  // (SUB-PHASE A/B/C/D at 0-25%, 25-50%, 50-75%, 75-100% of duration). Each
+  // phase uses a fast smoothstep ramp at its boundary so transitions are crisp
+  // rather than gradually drifting the way a smooth ease would.
+  const phaseEstablish = smoothstep(0, 0.08, p)                              // Q, K rows appear (phase A opening)
+  const phaseScores = smoothstep(0.22, 0.32, p)                              // matrix fills (phase B)
+  const phaseSoftmax = smoothstep(0.48, 0.58, p)                             // softmax row-normalize (phase C)
+  const phaseAggregate = smoothstep(0.72, 0.82, p)                           // V aggregation (phase D)
 
   const cx = blockStart(0) + BLOCK_LEN * 0.35
 
