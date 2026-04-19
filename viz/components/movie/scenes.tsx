@@ -1184,7 +1184,7 @@ export function SceneFFN() {
 
         {/* Phase label */}
         <text x={W / 2} y={H - 12} textAnchor="middle" fontSize="14" fontFamily="var(--font-display)" fontStyle="italic" fill={COLORS.fg}>
-          {['input arrives', 'expand 4× · compute hidden', 'ReLU kills negatives', 'compress back to 6', 'added into residual'][phase]}
+          {['input arrives', 'expand 4× · compute hidden', 'GELU squashes negatives (softly)', 'compress back to 6', 'added into residual'][phase]}
         </text>
       </svg>
 
