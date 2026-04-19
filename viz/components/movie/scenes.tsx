@@ -947,6 +947,9 @@ export function SceneMultiHead() {
         <text x={700} y={50} textAnchor="middle" fontSize="11" fontFamily="var(--font-mono)" fill={COLORS.dim} letterSpacing="0.18em">
           MULTI-HEAD ATTENTION · SIX HEADS IN PARALLEL
         </text>
+        <text x={700} y={72} textAnchor="middle" fontSize="10" fontFamily="var(--font-mono)" fontStyle="italic" fill={COLORS.dim}>
+          patterns below are illustrative — real heads learn unnamed behaviors during training
+        </text>
 
         {HEADS.map((head, h) => {
           const col = h % 3
@@ -1332,8 +1335,14 @@ export function SceneStack() {
           )
         })}
 
-        <text x={700} y={460} textAnchor="middle" fontSize="16" fontFamily="var(--font-display)" fontStyle="italic" fill={COLORS.fg}>
+        <text x={700} y={440} textAnchor="middle" fontSize="16" fontFamily="var(--font-display)" fontStyle="italic" fill={COLORS.fg}>
           every block <tspan fill={COLORS.mint}>adds</tspan> to the stream — never overwrites
+        </text>
+        <text x={700} y={470} textAnchor="middle" fontSize="15" fontFamily="var(--font-mono)" fill={COLORS.cyan}>
+          x ← x + block(x)
+        </text>
+        <text x={700} y={492} textAnchor="middle" fontSize="11" fontFamily="var(--font-mono)" fill={COLORS.dim}>
+          each block reads x, computes a delta (attn + ffn), adds it back — skip connections let early features survive to the top
         </text>
       </svg>
 
@@ -2598,13 +2607,16 @@ export function SceneCrossEntropy() {
           </motion.text>
         </motion.g>
 
-        <text x={700} y={510} textAnchor="middle" fontSize="15" fontFamily="var(--font-display)" fontStyle="italic" fill={COLORS.fg}>
+        <text x={700} y={500} textAnchor="middle" fontSize="15" fontFamily="var(--font-display)" fontStyle="italic" fill={COLORS.fg}>
           cross-entropy  =  <tspan fill={COLORS.amber}>−log p(target)</tspan>
         </text>
-        <text x={700} y={538} textAnchor="middle" fontSize="12" fontFamily="var(--font-mono)" fill={COLORS.dim}>
+        <text x={700} y={524} textAnchor="middle" fontSize="12" fontFamily="var(--font-mono)" fill={COLORS.dim}>
           {phase === 0 && 'near-zero loss when the model is confident and right'}
           {phase === 1 && 'medium loss when it is uncertain'}
           {phase === 2 && 'huge loss when it is confident and wrong — gradient will push HARD'}
+        </text>
+        <text x={700} y={548} textAnchor="middle" fontSize="10" fontFamily="var(--font-mono)" fill={COLORS.dim} fontStyle="italic">
+          why −log? p→0 sends loss → ∞, producing a strong gradient to fix confident mistakes. squared error wouldn&apos;t.
         </text>
       </svg>
 
@@ -3272,6 +3284,9 @@ export function SceneFFNFeature() {
         <text x={700} y={76} textAnchor="middle" fontSize="13" fontFamily="var(--font-display)" fontStyle="italic" fill={COLORS.fg}>
           different dims fire on different patterns
         </text>
+        <text x={700} y={96} textAnchor="middle" fontSize="10" fontFamily="var(--font-mono)" fontStyle="italic" fill={COLORS.dim}>
+          labels below are illustrative · real 1.5k-dim FFNs learn entangled, mostly uninterpretable features
+        </text>
 
         {/* Token column */}
         {TOKENS.map((tok, i) => (
@@ -3421,12 +3436,18 @@ export function SceneBackpropJacobian() {
           }))}
         </g>
 
-        <text x={700} y={510} textAnchor="middle" fontSize="13" fontFamily="var(--font-display)" fontStyle="italic" fill={COLORS.fg}>
+        <text x={700} y={500} textAnchor="middle" fontSize="13" fontFamily="var(--font-display)" fontStyle="italic" fill={COLORS.fg}>
           J[r,c] tells you how much output y[r] changes when input x[c] wiggles
         </text>
-        <text x={700} y={540} textAnchor="middle" fontSize="11" fontFamily="var(--font-mono)" fill={COLORS.dim}>
-          chain rule: ∂L/∂x = Jᵀ · ∂L/∂y · this is what gets multiplied and passed back at every layer
-        </text>
+        <g transform="translate(700, 530)">
+          <rect x={-280} y={-8} width={560} height={38} rx={3} fill="rgba(248,113,113,0.08)" stroke={COLORS.red} strokeOpacity={0.5} />
+          <text x={0} y={14} textAnchor="middle" fontSize="14" fontFamily="var(--font-mono)" fill={COLORS.red}>
+            chain rule: ∂L/∂x = Jᵀ · ∂L/∂y
+          </text>
+          <text x={0} y={28} textAnchor="middle" fontSize="10" fontFamily="var(--font-mono)" fill={COLORS.dim}>
+            the gradient flowing in gets multiplied by J and passed back to the previous layer
+          </text>
+        </g>
       </svg>
     </div>
   )
@@ -3540,8 +3561,11 @@ export function SceneBackpropAccumulation() {
           </text>
         </g>
 
-        <text x={700} y={510} textAnchor="middle" fontSize="13" fontFamily="var(--font-display)" fontStyle="italic" fill={COLORS.fg}>
+        <text x={700} y={500} textAnchor="middle" fontSize="13" fontFamily="var(--font-display)" fontStyle="italic" fill={COLORS.fg}>
           every example in the batch contributes one gradient · they get averaged · one W update per batch
+        </text>
+        <text x={700} y={530} textAnchor="middle" fontSize="10" fontFamily="var(--font-mono)" fill={COLORS.dim} fontStyle="italic">
+          why average? one noisy example shouldn&apos;t jerk the model. averaging across B lowers gradient variance by √B.
         </text>
       </svg>
     </div>
