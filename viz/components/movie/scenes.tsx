@@ -1323,6 +1323,7 @@ export function SceneStack() {
                 cy={265}
                 r={6}
                 fill={color}
+                initial={{ scale: 0.6, opacity: 0.4 }}
                 animate={{ scale: [0.6, 1.4, 0.6], opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 1.8, delay: li * 0.2, repeat: Infinity }}
               />
@@ -2692,6 +2693,7 @@ export function SceneBackprop() {
                   height={14}
                   rx={1}
                   fill={isBackActive ? COLORS.red : COLORS.blue}
+                  initial={{ opacity: 0.1 }}
                   animate={{ opacity: isBackActive ? [0.2, 0.9, 0.3] : isForwardActive ? [0.2, 0.8, 0.5] : 0.1 }}
                   transition={{ duration: 0.6, delay: k * 0.04 }}
                 />
@@ -2877,6 +2879,7 @@ export function SceneRoPE() {
                   stroke={isCurrent ? COLORS.pink : `rgba(236,72,153,${0.15 + i * 0.1})`}
                   strokeWidth={isCurrent ? 3 : 1.5}
                   filter={isCurrent ? 'url(#rope-glow)' : undefined}
+                  initial={{ opacity: 0.4 }}
                   animate={{ opacity: isCurrent ? 1 : 0.4 }}
                 />
                 {isCurrent && (
@@ -3300,7 +3303,7 @@ export function SceneFFNFeature() {
         {FEATURES.map((f, fi) => {
           const isActive = fi === tick
           return (
-            <motion.g key={f.name} animate={{ opacity: isActive ? 1 : 0.3 }}>
+            <motion.g key={f.name} initial={{ opacity: 0.3 }} animate={{ opacity: isActive ? 1 : 0.3 }}>
               {/* Neuron circle */}
               <motion.circle cx={400 + fi * 150} cy={100} r={22}
                 fill={isActive ? COLORS.amber : 'rgba(245,158,11,0.1)'}
@@ -3333,6 +3336,7 @@ export function SceneFFNFeature() {
                   cx={240} cy={140 + ti * 60 + 21}
                   r={4}
                   fill={COLORS.amber}
+                  initial={{ scale: 0.5, opacity: 0.3 }}
                   animate={{ scale: [0.5, 1.4, 0.5], opacity: [0.3, 1, 0.3] }}
                   transition={{ duration: 1.2, repeat: Infinity }}
                 />
@@ -3493,7 +3497,7 @@ export function SceneBackpropAccumulation() {
         {grads.map((g, bi) => {
           const isActive = bi <= batch && bi < BATCH
           return (
-            <motion.g key={bi} transform={`translate(100, ${160 + bi * 90})`} animate={{ opacity: isActive ? 1 : 0.2 }}>
+            <motion.g key={bi} transform={`translate(100, ${160 + bi * 90})`} initial={{ opacity: 0.2 }} animate={{ opacity: isActive ? 1 : 0.2 }}>
               <text x={-16} y={CELL * 2 + 6} textAnchor="end" fontSize="11" fontFamily="var(--font-mono)" fill={isActive ? COLORS.blue : COLORS.dim}>
                 ∇W{bi + 1}
               </text>
