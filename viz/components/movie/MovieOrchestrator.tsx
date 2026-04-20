@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { PromptProvider, usePrompt, MAX_LEN } from './promptContext'
 import { ModelMap3D, type ModelPart } from './modelmap'
 import { STAGE_VARIANTS, KIND_TIMING, incomingKindFor } from './transitions'
+import { SpeedContext } from './speedContext'
 
 export interface MovieScene {
   id: string
@@ -158,6 +159,7 @@ function Inner({ scenes }: Props) {
   }
 
   return (
+    <SpeedContext.Provider value={speed}>
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg)]">
       {/* Header — single row, compact */}
       <header className="relative z-20 flex h-12 shrink-0 items-center gap-4 border-b border-[var(--rule)] px-4">
@@ -673,6 +675,7 @@ function Inner({ scenes }: Props) {
         </div>
       </div>
     </div>
+    </SpeedContext.Provider>
   )
 }
 

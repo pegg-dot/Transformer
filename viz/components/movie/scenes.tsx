@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { COLORS, glyph, makeRng } from '../scenes/primitives'
 import { NumberPanelDiv } from './numberpanel'
+import { useSpeed } from './speedContext'
 import { usePrompt } from './promptContext'
 
 /** ========= 01 · Tokenization ========= */
@@ -148,6 +149,7 @@ export function SceneTokenization() {
 /** ========= 02 · Embeddings ========= */
 const VOCAB_LETTERS = 'abcdefghijklmnop'.split('')
 export function SceneEmbedding() {
+  const speed = useSpeed()
   // Walk through the matrix rows ONCE (single forward pass), then hold on the
   // last vector. Previous version looped perpetually which implied the model
   // was iterating — it's not; embedding is a one-shot lookup per token.
@@ -155,7 +157,7 @@ export function SceneEmbedding() {
   useEffect(() => {
     const id = setInterval(() => {
       setCursor((c) => (c + 1 < VOCAB_LETTERS.length ? c + 1 : c))
-    }, 1100)
+    }, 1100 / speed)
     return () => clearInterval(id)
   }, [])
 
@@ -271,6 +273,7 @@ export function SceneEmbedding() {
 
 /** ========= 03 · Q/K/V Projection ========= */
 export function SceneQKV() {
+  const speed = useSpeed()
   const rng = makeRng(42)
   const x_vals = Array.from({ length: 20 }).map(() => rng() * 2 - 1)
   const q_vals = Array.from({ length: 20 }).map(() => rng() * 2 - 1)
@@ -461,10 +464,11 @@ function useAttentionData() {
 }
 
 function AttnOneToken() {
+  const speed = useSpeed()
   const { tokens, T, weights } = useAttentionData()
   const [query, setQuery] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setQuery((q) => (q + 1 < T ? q + 1 : q)), 1400)
+    const id = setInterval(() => setQuery((q) => (q + 1 < T ? q + 1 : q)), 1400 / speed)
     return () => clearInterval(id)
   }, [T])
   // Clamp query if prompt shrank
@@ -549,6 +553,7 @@ function AttnOneToken() {
 }
 
 function AttnFullMatrix() {
+  const speed = useSpeed()
   // Show the T×T score matrix filling in cell-by-cell
   const { tokens, T, rawScores } = useAttentionData()
   const [fillIdx, setFillIdx] = useState(0)
@@ -558,7 +563,7 @@ function AttnFullMatrix() {
       i++
       if (i > T * T) i = 0
       setFillIdx(i)
-    }, 80)
+    }, 80 / speed)
     return () => clearInterval(id)
   }, [T])
 
@@ -648,10 +653,11 @@ function AttnFullMatrix() {
 }
 
 function AttnSoftmaxRows() {
+  const speed = useSpeed()
   const { tokens, T, rawScores, weights } = useAttentionData()
   const [row, setRow] = useState(1)
   useEffect(() => {
-    const id = setInterval(() => setRow((r) => ((r + 1 < T ? r + 1 : r) || 1)), 1800)
+    const id = setInterval(() => setRow((r) => ((r + 1 < T ? r + 1 : r) || 1)), 1800 / speed)
     return () => clearInterval(id)
   }, [T])
   const rowIdx = Math.min(row, T - 1) || Math.min(1, T - 1)
@@ -901,12 +907,13 @@ export function SceneAttention() {
 
 /** ========= 05 · Multi-head Parallel ========= */
 export function SceneMultiHead() {
+  const speed = useSpeed()
   const { prompt } = usePrompt()
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1200)
+    const id = setInterval(() => setTick((t) => t + 1), 1200 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   // Take first 6-8 chars of the prompt
   const tokens = prompt.split('').slice(0, 8)
@@ -1039,13 +1046,14 @@ export function SceneMultiHead() {
 
 /** ========= 06 · Feed-forward ========= */
 export function SceneFFN() {
+  const speed = useSpeed()
   const [phase, setPhase] = useState(0)
   useEffect(() => {
     // Single forward pass — previously looped, implying iterative computation.
     // FFN runs once per token per layer. Walk the 5 phases once and hold.
-    const id = setInterval(() => setPhase((p) => (p + 1 < 5 ? p + 1 : p)), 3200)
+    const id = setInterval(() => setPhase((p) => (p + 1 < 5 ? p + 1 : p)), 3200 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const rng = makeRng(71)
   const INPUT = Array.from({ length: 6 }).map(() => rng() * 2 - 1)
@@ -1360,6 +1368,7 @@ export function SceneStack() {
 
 /** ========= 08 · Softmax + sampling (interactive temperature) ========= */
 export function SceneSample() {
+  const speed = useSpeed()
   const [temp, setTemp] = useState(1.0)
   const [touched, setTouched] = useState(false)
   const [sampled, setSampled] = useState(0)
@@ -1408,7 +1417,7 @@ export function SceneSample() {
         if (r <= 0) { setSampled(i); return }
       }
       setSampled(probs.length - 1)
-    }, 1300)
+    }, 1300 / speed)
     return () => clearInterval(id)
   }, [temp])
 
@@ -1557,14 +1566,15 @@ export function SceneSample() {
 
 /** ========= 09 · KV cache growing ========= */
 export function SceneKVCache() {
+  const speed = useSpeed()
   const { prompt } = usePrompt()
   const SEQ = prompt.split('').slice(0, 10)  // limit to 10 tokens for visual
   const [step, setStep] = useState(0)
 
   useEffect(() => {
-    const id = setInterval(() => setStep((s) => (s + 1 < SEQ.length ? s + 1 : s)), 1500)
+    const id = setInterval(() => setStep((s) => (s + 1 < SEQ.length ? s + 1 : s)), 1500 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const CELL = 22
   const D_K = 20
@@ -1905,6 +1915,7 @@ export function ScenePositional() {
 
 /** ========= 11 · Layer Normalization ========= */
 export function SceneLayerNorm() {
+  const speed = useSpeed()
   const D = 20
   const rng = makeRng(201)
   const raw = Array.from({ length: D }).map(() => rng() * 4 - 2)
@@ -1917,9 +1928,9 @@ export function SceneLayerNorm() {
   const [phase, setPhase] = useState(0)
   useEffect(() => {
     // 4 phases × 4s = 16s (matches scene duration)
-    const id = setInterval(() => setPhase((p) => (p + 1 < 4 ? p + 1 : p)), 4500)
+    const id = setInterval(() => setPhase((p) => (p + 1 < 4 ? p + 1 : p)), 4500 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const CELL_W = 44
   const CELL_H = 38
@@ -2079,12 +2090,13 @@ export function SceneLayerNorm() {
 
 /** ========= 12 · Training / Gradient Descent ========= */
 export function SceneTraining() {
+  const speed = useSpeed()
   const [tick, setTick] = useState(0)
 
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 250)
+    const id = setInterval(() => setTick((t) => t + 1), 250 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   // 2D loss surface — we show a bowl-shape via contour lines and a ball descending
   const W = 1400
@@ -2281,11 +2293,12 @@ function BPEByteVocab() {
 }
 
 function BPESingleMerge() {
+  const speed = useSpeed()
   const [step, setStep] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setStep((s) => (s + 1 < 4 ? s + 1 : s)), 1500)
+    const id = setInterval(() => setStep((s) => (s + 1 < 4 ? s + 1 : s)), 1500 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const pairs = [
     { a: 'e', b: 'r', count: 843, merged: 'er' },
@@ -2417,12 +2430,13 @@ function BPEMergeTree() {
 }
 
 export function SceneBPE() {
+  const speed = useSpeed()
   const [phase, setPhase] = useState(0)
   useEffect(() => {
     // 3 sub-phases × 10s = 30s (matches scene duration — no sub-phase gets repeated)
-    const id = setInterval(() => setPhase((p) => (p + 1 < 3 ? p + 1 : p)), 10670)
+    const id = setInterval(() => setPhase((p) => (p + 1 < 3 ? p + 1 : p)), 10670 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   return (
     <div className="relative h-full w-full">
@@ -2452,12 +2466,13 @@ export function SceneBPE() {
 
 /** ========= 14 · Cross-entropy loss ========= */
 export function SceneCrossEntropy() {
+  const speed = useSpeed()
   const [phase, setPhase] = useState(0)
   useEffect(() => {
     // 3 scenarios × 4.67s = 14s (matches scene duration)
-    const id = setInterval(() => setPhase((p) => (p + 1 < 3 ? p + 1 : p)), 5330)
+    const id = setInterval(() => setPhase((p) => (p + 1 < 3 ? p + 1 : p)), 5330 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   // Three scenarios: good prediction, ok prediction, bad prediction
   // In each: target = 'c' (id 2), predicted probabilities vary
@@ -2635,11 +2650,12 @@ export function SceneCrossEntropy() {
 
 /** ========= 15 · Backpropagation ========= */
 export function SceneBackprop() {
+  const speed = useSpeed()
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1 < 8 ? t + 1 : t)), 900)
+    const id = setInterval(() => setTick((t) => (t + 1 < 8 ? t + 1 : t)), 900 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const LAYERS = ['input', 'block 0', 'block 1', 'block 2', 'block 3', 'block 4', 'block 5', 'output']
   const N = LAYERS.length
@@ -2800,11 +2816,12 @@ export function SceneBackprop() {
 
 /** ========= 16 · RoPE (Rotary Position Embeddings) ========= */
 export function SceneRoPE() {
+  const speed = useSpeed()
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1500)
+    const id = setInterval(() => setTick((t) => t + 1), 1500 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const N_POS = 6
   const currentPos = tick % N_POS
@@ -2944,13 +2961,14 @@ export function SceneRoPE() {
 
 /** ========= 17 · Modern architecture (RMSNorm + SwiGLU + GQA) ========= */
 export function SceneModern() {
+  const speed = useSpeed()
   const [panel, setPanel] = useState(0)
 
   useEffect(() => {
     // 3 panels × 7.33s = 22s (matches scene duration)
-    const id = setInterval(() => setPanel((p) => (p + 1 < 3 ? p + 1 : p)), 8000)
+    const id = setInterval(() => setPanel((p) => (p + 1 < 3 ? p + 1 : p)), 8000 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const PANELS = [
     { kicker: 'normalization', classic: 'LayerNorm', modern: 'RMSNorm' },
@@ -3168,14 +3186,15 @@ export function SceneModern() {
 
 /** ========= SUB · FFN · GELU curve ========= */
 export function SceneFFNGelu() {
+  const speed = useSpeed()
   // Single sweep of the probe dot from x=-3 to x=+5, then hold at +5.
   // Previously the dot bounced forever, which looked like the function
   // was being "explored" — it's just a fixed curve.
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t < 80 ? t + 1 : t)), 90)
+    const id = setInterval(() => setTick((t) => (t < 80 ? t + 1 : t)), 90 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const W = 1400
   const H = 600
@@ -3262,11 +3281,12 @@ export function SceneFFNGelu() {
 
 /** ========= SUB · FFN · Neuron-as-feature ========= */
 export function SceneFFNFeature() {
+  const speed = useSpeed()
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1 < 6 ? t + 1 : t)), 1700)
+    const id = setInterval(() => setTick((t) => (t + 1 < 6 ? t + 1 : t)), 1700 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const FEATURES = [
     { name: 'ends-with-vowel',       activates: [true, false, false, true, true, false] },
@@ -3356,11 +3376,12 @@ function H_CAP(v: number) { return v }
 
 /** ========= SUB · Backprop · Local Jacobian ========= */
 export function SceneBackpropJacobian() {
+  const speed = useSpeed()
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1300)
+    const id = setInterval(() => setTick((t) => t + 1), 1300 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   // Show one layer: y = f(W·x + b). Compute Jacobian dy/dx cell-by-cell.
   const In = 4, Out = 3
@@ -3459,11 +3480,12 @@ export function SceneBackpropJacobian() {
 
 /** ========= SUB · Backprop · Gradient accumulation into W ========= */
 export function SceneBackpropAccumulation() {
+  const speed = useSpeed()
   const [batch, setBatch] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setBatch((b) => (b + 1 < 5 ? b + 1 : b)), 1300)
+    const id = setInterval(() => setBatch((b) => (b + 1 < 5 ? b + 1 : b)), 1300 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const BATCH = 4
   const rng = makeRng(909)
@@ -3578,12 +3600,13 @@ export function SceneBackpropAccumulation() {
 
 /** ========= SUB · GD · Narrow ravine (interactive learning rate) ========= */
 export function SceneGDRavine() {
+  const speed = useSpeed()
   const [tick, setTick] = useState(0)
   const [lr, setLr] = useState(0.06)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1 < 42 ? t + 1 : t)), 300)
+    const id = setInterval(() => setTick((t) => (t + 1 < 42 ? t + 1 : t)), 300 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   // Narrow valley: loss is 0.2*w1² + 8*w2² (steep in w2, shallow in w1)
   // Now with interactive learning rate: lr too small = slow, too big = explode
@@ -3684,11 +3707,12 @@ export function SceneGDRavine() {
 
 /** ========= SUB · GD · Adam vs GD ========= */
 export function SceneGDAdam() {
+  const speed = useSpeed()
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1 < 45 ? t + 1 : t)), 260)
+    const id = setInterval(() => setTick((t) => (t + 1 < 45 ? t + 1 : t)), 260 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   // Same loss: 0.2*w1² + 8*w2². Run GD and Adam on the same starting point.
   function genPath(mode: 'gd' | 'adam') {
@@ -3778,11 +3802,12 @@ export function SceneGDAdam() {
 
 /** ========= SUB · Loss · Seq-parallel (loss at every position) ========= */
 export function SceneCELossSeqParallel() {
+  const speed = useSpeed()
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1 < 10 ? t + 1 : t)), 500)
+    const id = setInterval(() => setTick((t) => (t + 1 < 10 ? t + 1 : t)), 500 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const TOKENS = ['T', 'h', 'e', ' ', 'c', 'a', 't', ' ', 's', 'a']
   const TARGETS = TOKENS.slice(1)  // shifted right
@@ -3870,11 +3895,12 @@ export function SceneCELossSeqParallel() {
 
 /** ========= SUB · Loss · Batch mean ========= */
 export function SceneCELossBatch() {
+  const speed = useSpeed()
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1 < 7 ? t + 1 : t)), 900)
+    const id = setInterval(() => setTick((t) => (t + 1 < 7 ? t + 1 : t)), 900 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [speed])
 
   const BATCH = 6
   const rng = makeRng(55)
@@ -3939,6 +3965,7 @@ export function SceneCELossBatch() {
 
 /** ========= FINAL · Output · the whole thing produces this ========= */
 export function SceneOutput() {
+  const speed = useSpeed()
   const { prompt } = usePrompt()
 
   // Canned continuation (Shakespeare-flavored so it looks authentic to the tinyshakespeare model)
