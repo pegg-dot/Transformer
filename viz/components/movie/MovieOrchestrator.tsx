@@ -94,9 +94,18 @@ function Inner({ scenes }: Props) {
     }
   }, [playing, speed, currentDurationMs, finished, current, anyPopoverOpen, actHeld])
 
+  // Boundary watcher with double-fire guard. Without the ref guard, in some
+  // re-render orderings React can fire this effect with elapsed >= duration
+  // for the OLD scene before the elapsed=0 reset settles, advancing twice and
+  // skipping a scene. The ref records the id we last advanced FROM so we
+  // never advance from the same scene twice in a row.
+  const lastAdvancedFromRef = useRef<string | null>(null)
   useEffect(() => {
     if (finished || !current) return
+    if (anyPopoverOpen || actHeld) return
     if (elapsed < currentDurationMs) return
+    if (lastAdvancedFromRef.current === current.id) return
+    lastAdvancedFromRef.current = current.id
     if (safeIdx === scenes.length - 1) {
       setFinished(true)
       setPlaying(false)
@@ -105,7 +114,7 @@ function Inner({ scenes }: Props) {
       setElapsed(0)
       setCycle((c) => c + 1)
     }
-  }, [elapsed, currentDurationMs, safeIdx, scenes.length, finished, current])
+  }, [elapsed, currentDurationMs, safeIdx, scenes.length, finished, current, anyPopoverOpen, actHeld])
 
   // Close popovers on Escape
   useEffect(() => {
@@ -137,6 +146,7 @@ function Inner({ scenes }: Props) {
   const incomingTiming = KIND_TIMING[incomingKind]
 
   function jump(to: number) {
+    lastAdvancedFromRef.current = null
     setIdx(to)
     setElapsed(0)
     setCycle((c) => c + 1)
@@ -146,6 +156,7 @@ function Inner({ scenes }: Props) {
   }
 
   function restart() {
+    lastAdvancedFromRef.current = null
     setIdx(0)
     setElapsed(0)
     setCycle((c) => c + 1)
