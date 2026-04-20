@@ -14,7 +14,7 @@ const T = 7
 const CELL = 0.18
 
 export default function SceneAttn({ t, duration }: SceneProps) {
-  const p = clamp01(t / Math.max(0.01, duration))
+  const p = clamp01(t / Math.max(0.01, duration * 0.75))
   // 4 discrete sub-phases matching the 2D attention scene's sub-phase cycling
   // (SUB-PHASE A/B/C/D at 0-25%, 25-50%, 50-75%, 75-100% of duration). Each
   // phase uses a fast smoothstep ramp at its boundary so transitions are crisp

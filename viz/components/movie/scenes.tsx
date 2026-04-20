@@ -464,7 +464,7 @@ function AttnOneToken() {
   const { tokens, T, weights } = useAttentionData()
   const [query, setQuery] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setQuery((q) => (q + 1) % T), 1400)
+    const id = setInterval(() => setQuery((q) => (q + 1 < T ? q + 1 : q)), 1400)
     return () => clearInterval(id)
   }, [T])
   // Clamp query if prompt shrank
@@ -651,7 +651,7 @@ function AttnSoftmaxRows() {
   const { tokens, T, rawScores, weights } = useAttentionData()
   const [row, setRow] = useState(1)
   useEffect(() => {
-    const id = setInterval(() => setRow((r) => ((r + 1) % T || 1)), 1800)
+    const id = setInterval(() => setRow((r) => ((r + 1 < T ? r + 1 : r) || 1)), 1800)
     return () => clearInterval(id)
   }, [T])
   const rowIdx = Math.min(row, T - 1) || Math.min(1, T - 1)
@@ -743,7 +743,7 @@ function AttnValueMixing() {
   const { seed } = usePrompt()
   const [query, setQuery] = useState(2)
   useEffect(() => {
-    const id = setInterval(() => setQuery((q) => ((q + 1) % T) || Math.min(2, T - 1)), 2600)
+    const id = setInterval(() => setQuery((q) => ((q + 1 < T ? q + 1 : q)) || Math.min(2, T - 1)), 2600)
     return () => clearInterval(id)
   }, [T])
   const q = Math.min(query, T - 1)
@@ -851,7 +851,7 @@ export function SceneAttention() {
     const timings = [10000, 10000, 10000, 10000]
     let cur = 0
     let timer = setTimeout(function next() {
-      cur = (cur + 1) % 4
+      cur = (cur + 1 < 4 ? cur + 1 : cur)
       setPhase(cur)
       timer = setTimeout(next, timings[cur])
     }, timings[0])
@@ -1562,7 +1562,7 @@ export function SceneKVCache() {
   const [step, setStep] = useState(0)
 
   useEffect(() => {
-    const id = setInterval(() => setStep((s) => (s + 1) % SEQ.length), 1500)
+    const id = setInterval(() => setStep((s) => (s + 1 < SEQ.length ? s + 1 : s)), 1500)
     return () => clearInterval(id)
   }, [])
 
@@ -1917,7 +1917,7 @@ export function SceneLayerNorm() {
   const [phase, setPhase] = useState(0)
   useEffect(() => {
     // 4 phases × 4s = 16s (matches scene duration)
-    const id = setInterval(() => setPhase((p) => (p + 1) % 4), 4500)
+    const id = setInterval(() => setPhase((p) => (p + 1 < 4 ? p + 1 : p)), 4500)
     return () => clearInterval(id)
   }, [])
 
@@ -2283,7 +2283,7 @@ function BPEByteVocab() {
 function BPESingleMerge() {
   const [step, setStep] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setStep((s) => (s + 1) % 4), 1500)
+    const id = setInterval(() => setStep((s) => (s + 1 < 4 ? s + 1 : s)), 1500)
     return () => clearInterval(id)
   }, [])
 
@@ -2420,7 +2420,7 @@ export function SceneBPE() {
   const [phase, setPhase] = useState(0)
   useEffect(() => {
     // 3 sub-phases × 10s = 30s (matches scene duration — no sub-phase gets repeated)
-    const id = setInterval(() => setPhase((p) => (p + 1) % 3), 10670)
+    const id = setInterval(() => setPhase((p) => (p + 1 < 3 ? p + 1 : p)), 10670)
     return () => clearInterval(id)
   }, [])
 
@@ -2455,7 +2455,7 @@ export function SceneCrossEntropy() {
   const [phase, setPhase] = useState(0)
   useEffect(() => {
     // 3 scenarios × 4.67s = 14s (matches scene duration)
-    const id = setInterval(() => setPhase((p) => (p + 1) % 3), 5330)
+    const id = setInterval(() => setPhase((p) => (p + 1 < 3 ? p + 1 : p)), 5330)
     return () => clearInterval(id)
   }, [])
 
@@ -2637,7 +2637,7 @@ export function SceneCrossEntropy() {
 export function SceneBackprop() {
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1) % 8), 900)
+    const id = setInterval(() => setTick((t) => (t + 1 < 8 ? t + 1 : t)), 900)
     return () => clearInterval(id)
   }, [])
 
@@ -2948,7 +2948,7 @@ export function SceneModern() {
 
   useEffect(() => {
     // 3 panels × 7.33s = 22s (matches scene duration)
-    const id = setInterval(() => setPanel((p) => (p + 1) % 3), 8000)
+    const id = setInterval(() => setPanel((p) => (p + 1 < 3 ? p + 1 : p)), 8000)
     return () => clearInterval(id)
   }, [])
 
@@ -3264,7 +3264,7 @@ export function SceneFFNGelu() {
 export function SceneFFNFeature() {
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1) % 6), 1700)
+    const id = setInterval(() => setTick((t) => (t + 1 < 6 ? t + 1 : t)), 1700)
     return () => clearInterval(id)
   }, [])
 
@@ -3461,7 +3461,7 @@ export function SceneBackpropJacobian() {
 export function SceneBackpropAccumulation() {
   const [batch, setBatch] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setBatch((b) => (b + 1) % 5), 1300)
+    const id = setInterval(() => setBatch((b) => (b + 1 < 5 ? b + 1 : b)), 1300)
     return () => clearInterval(id)
   }, [])
 
@@ -3581,7 +3581,7 @@ export function SceneGDRavine() {
   const [tick, setTick] = useState(0)
   const [lr, setLr] = useState(0.06)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1) % 42), 300)
+    const id = setInterval(() => setTick((t) => (t + 1 < 42 ? t + 1 : t)), 300)
     return () => clearInterval(id)
   }, [])
 
@@ -3686,7 +3686,7 @@ export function SceneGDRavine() {
 export function SceneGDAdam() {
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1) % 45), 260)
+    const id = setInterval(() => setTick((t) => (t + 1 < 45 ? t + 1 : t)), 260)
     return () => clearInterval(id)
   }, [])
 
@@ -3780,7 +3780,7 @@ export function SceneGDAdam() {
 export function SceneCELossSeqParallel() {
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1) % 10), 500)
+    const id = setInterval(() => setTick((t) => (t + 1 < 10 ? t + 1 : t)), 500)
     return () => clearInterval(id)
   }, [])
 
@@ -3872,7 +3872,7 @@ export function SceneCELossSeqParallel() {
 export function SceneCELossBatch() {
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1) % 7), 900)
+    const id = setInterval(() => setTick((t) => (t + 1 < 7 ? t + 1 : t)), 900)
     return () => clearInterval(id)
   }, [])
 

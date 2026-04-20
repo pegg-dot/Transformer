@@ -55,25 +55,18 @@ function Inner({ scenes }: Props) {
   const incomingKind = currentId ? incomingKindFor(currentId) : 'within-part' as const
   const isActChange = incomingKind === 'act-change'
 
-  // Act-change hold: when a new act begins, freeze the scene clock for ~1.5s
-  // so the banner + camera arc + dim pulse can complete BEFORE scene animations
-  // start. Both the 2D and 3D scenes receive elapsed=0 during the hold, so
-  // neither "gets ahead" of the other. Banner visibility uses a separate
-  // real-time timer that extends past the clock-hold.
-  const [actHeld, setActHeld] = useState(false)
+  // Banner visibility: shown for ~2.5s at the start of every act-change
+  // scene. Banner overlays the scene; the scene plays normally underneath.
+  // No clock-pause — that was stealing playback time and causing scenes to
+  // appear cut short.
+  const actHeld = false
   const [actBannerVisible, setActBannerVisible] = useState(false)
   useEffect(() => {
     if (isActChange) {
-      setActHeld(true)
       setActBannerVisible(true)
-      const holdTimer = setTimeout(() => setActHeld(false), 1500)
       const bannerTimer = setTimeout(() => setActBannerVisible(false), 2500)
-      return () => {
-        clearTimeout(holdTimer)
-        clearTimeout(bannerTimer)
-      }
+      return () => clearTimeout(bannerTimer)
     } else {
-      setActHeld(false)
       setActBannerVisible(false)
     }
   }, [currentId, isActChange])
