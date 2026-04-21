@@ -28,6 +28,10 @@ logs/
 activations.json
 activations.msgpack
 *.onnx
+# …except the specific files needed for the Vercel deploy. These are the
+# canonical viz inputs — they have to ship with the app.
+!viz/public/activations.json
+!viz/public/model.onnx
 
 # Node / Next.js
 node_modules/
