@@ -19,14 +19,31 @@ const jetbrains = JetBrains_Mono({
   subsets: ['latin'],
 })
 
+// Vercel injects VERCEL_URL on preview/production. Fall back to localhost for
+// `next dev` so generated OG/twitter absolute URLs still resolve locally.
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+
+const title = 'Watch a transformer think'
+const description =
+  'A char-level GPT trained on Shakespeare, visualized live in your browser. Attention heatmaps, KV cache, decoding — built from scratch.'
+
 export const metadata: Metadata = {
-  title: 'transformer.live — watch a neural network think',
-  description:
-    'A GPT transformer running live in your browser, with every attention head, FFN activation, and residual stream update visualized as it happens.',
+  metadataBase: new URL(siteUrl),
+  title,
+  description,
   openGraph: {
-    title: 'transformer.live',
-    description: 'Watch a neural network think, in your browser.',
+    title,
+    description,
+    url: siteUrl,
+    siteName: 'transformer.live',
+    locale: 'en_US',
     type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title,
+    description,
   },
 }
 
