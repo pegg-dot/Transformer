@@ -82,6 +82,17 @@ That means M2's aggressive-quantization path is probably unnecessary — the fre
 - **M4**: Next 16 file-convention (`app/opengraph-image.tsx`, `app/twitter-image.tsx`) + metadata in `app/layout.tsx`. Zero runtime cost.
 - **M5**: `vercel.json` with immutable cache for `/model.onnx`, `/activations*.json`, `/ort/*`. `gh repo create` → Vercel connect → URL.
 
+## 6a. M3 follow-up — ONNX INT8 quantization rejected
+
+Ran `scripts/quantize_onnx.py` (dynamic INT8 via `onnxruntime.quantization.quantize_dynamic`). Results on a 32-token test input:
+
+- Size: 43.6 MB → 11.6 MB (26% of source).
+- Max `|Δlogits|`: **0.240** (prompt tolerance is 1e-3; even a 1e-2 tolerance fails).
+- Mean `|Δlogits|`: 0.041.
+- Argmax agreement with baseline: **93.8%** — i.e. ~6% of next-token picks would differ.
+
+That's enough divergence to change generated text visibly after a handful of tokens. Since the viz is supposed to mirror the Phase 1 trained checkpoint exactly, we reject the quantized model (per the prompt's "quality > size" rule). Script stays in the repo for a future-us who wants to retry against a larger/different model. The M5 cache header handles the first-load UX instead.
+
 ## 7. Red flags / nothing-to-see-here
 
 - **Duplicate WASM in `.next/static/media`** — cosmetic; not served. Leave for a later pass.
