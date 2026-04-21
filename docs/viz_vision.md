@@ -80,6 +80,22 @@ Separate route at `/tour`. Layout: sticky viz canvas on the left, scrolling narr
 - **Shadows:** virtually none. Flat + color for depth, not drop shadows.
 - **Spacing:** 8px grid. Generous padding. Nothing cramped.
 
+## 3D / spatial mode
+
+An optional 3D mode renders the model as a physical object you can orbit around. Three.js + React Three Fiber. Toggle in the top bar: **2D (default) ↔ 3D**.
+
+What's 3D-worthy (animation actually helps):
+- **The full stack as a tower.** Embeddings at the bottom, 6 blocks stacked, logits at the top. Camera orbits; click any block to zoom in.
+- **Residual stream as a glowing ribbon** threading up through the tower — you *see* information flowing layer-to-layer.
+- **Attention as arcs in 3D space** between token columns. Arc thickness = weight. Multi-head = translucent layered arcs.
+- **Embeddings in 3D projection.** Run UMAP/t-SNE on the vocab offline, render as a point cloud. Current token lights up; nearest neighbors glow.
+
+What stays 2D (3D would hurt clarity):
+- Q/K/V matrices and attention heatmaps. 2D grids read faster than any 3D gimmick.
+- Tensor shape readouts and logit distributions. Text and bars.
+
+Rule: **3D when spatial structure is the point; 2D when the data is a matrix.** Never 3D for decoration.
+
 ## Preset prompt gallery
 
 Before typing, visitors see a row of clickable preset prompts:

@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+:root {
+  /* Surfaces */
+  --bg: #070709;
+  --bg-elevated: #0b0b0f;
+  --bg-hover: #111116;
+  --fg: #ecece9;
+  --fg-muted: #6d6d78;
+  --fg-dim: #494952;
+
+  /* Accents */
+  --accent: #60a5fa;       /* electric blue */
+  --accent-strong: #3b82f6;
+  --accent-violet: #a78bfa;
+  --accent-mint: #34d399;
+  --accent-red: #f87171;
+  --accent-amber: #f59e0b;
+
+  /* Borders / hairlines */
+  --rule: rgba(255, 255, 255, 0.06);
+  --rule-strong: rgba(255, 255, 255, 0.12);
+
+  /* Fonts */
+  --font-fraunces-fallback: "Times New Roman", Georgia, serif;
+  --font-body-fallback: -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono-fallback: "SF Mono", Menlo, monospace;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-muted: var(--fg-muted);
+  --color-border: var(--rule);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-violet: var(--accent-violet);
+  --color-accent-mint: var(--accent-mint);
+  --font-display: var(--font-display, var(--font-fraunces-fallback));
+  --font-sans: var(--font-body, var(--font-body-fallback));
+  --font-mono: var(--font-mono, var(--font-mono-fallback));
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body), var(--font-body-fallback);
+  font-feature-settings: "ss01", "cv01", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle 20px dot grid in the deep background */
+.bg-grid {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.35) 1px,
+    transparent 0
+  );
+  background-size: 28px 28px;
+}
+
+/* SVG noise — adds analog grain */
+.bg-noise {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.35 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Editorial display copy */
+.display {
+  font-family: var(--font-display), var(--font-fraunces-fallback);
+  font-variation-settings: "opsz" 144, "SOFT" 20;
+  font-weight: 440;
+  letter-spacing: -0.02em;
+  line-height: 0.98;
+}
+
+.display-italic {
+  font-family: var(--font-display), var(--font-fraunces-fallback);
+  font-style: italic;
+  font-variation-settings: "opsz" 144, "SOFT" 40;
+}
+
+.mono {
+  font-family: var(--font-mono), var(--font-mono-fallback);
+  font-feature-settings: "zero", "ss01";
+}
+
+.small-caps {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 10px;
+  font-family: var(--font-mono), var(--font-mono-fallback);
+}
+
+.chapter-num {
+  font-family: var(--font-display), var(--font-fraunces-fallback);
+  font-variation-settings: "opsz" 144;
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* Hairline rule */
+.rule {
+  height: 1px;
+  background: var(--rule);
+}
+
+/* Glows */
+.glow-accent {
+  box-shadow:
+    0 0 0 1px rgba(96, 165, 250, 0.3),
+    0 8px 30px -8px rgba(96, 165, 250, 0.35),
+    inset 0 0 20px rgba(96, 165, 250, 0.04);
+}
+
+.glow-soft {
+  box-shadow: 0 0 0 1px var(--rule-strong), 0 10px 40px -12px rgba(0, 0, 0, 0.6);
+}
+
+/* Scrollbar — minimal dark */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: #1a1a20;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: #2a2a32; }
+
+/* Reduce motion: still respect user pref */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Text selection */
+::selection {
+  background: rgba(96, 165, 250, 0.35);
+  color: white;
+}
+
+/* Tabular numerals for stats */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Live ping dot */
+@keyframes ping-soft {
+  0%   { transform: scale(1); opacity: 0.8; }
+  70%  { transform: scale(2.4); opacity: 0; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.ping-soft {
+  animation: ping-soft 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
