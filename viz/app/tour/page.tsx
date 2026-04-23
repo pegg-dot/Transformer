@@ -85,7 +85,7 @@ const SCENES: MovieScene[] = [
     durationMs: 10000,
     details: `The input stage. Three small steps: split the string into tokens, look up each token's vector in an embedding table, and add a position encoding so the network can tell what came first.`,
     render: () => (
-      <ActFramingPanel actLabel="Act I · Input" headline="First: text becomes numbers." accent={ACCENT.violet} />
+      <ActFramingPanel actLabel={ACT_I} headline="First: text becomes numbers." accent={ACCENT.violet} />
     ),
   },
   {
@@ -168,7 +168,7 @@ Modern models (LLaMA, GPT-NeoX) replaced this with RoPE — rotary position embe
     durationMs: 12000,
     details: `A transformer block is a fixed recipe: normalize, run multi-head attention, add the result back to the residual stream, normalize again, run a feedforward net, add that back too. Every one of the six blocks does exactly this.`,
     render: () => (
-      <ActFramingPanel actLabel="Act II · Inside a Block" headline="Attention, then a small feedforward net." accent={ACCENT.blue} />
+      <ActFramingPanel actLabel={ACT_II} headline="Attention, then a small feedforward net." accent={ACCENT.blue} />
     ),
   },
   {
@@ -309,7 +309,7 @@ Empirically, smooth activations train a bit faster and reach slightly better fin
     durationMs: 10000,
     details: `The residual stream is a 384-dim vector per token that flows through all six blocks. Each block reads it, computes a correction, adds that correction back. By the top, the stream carries everything the model knows about "what comes next."`,
     render: () => (
-      <ActFramingPanel actLabel="Act III · The Full Stack" headline="One signal climbing through six blocks." accent={ACCENT.mint} />
+      <ActFramingPanel actLabel={ACT_III} headline="One signal climbing through six blocks." accent={ACCENT.mint} />
     ),
   },
   {
@@ -556,7 +556,7 @@ Modern variants: AdamW (decouples weight decay), Lion (uses sign only, cheaper m
     durationMs: 10000,
     details: `The architecture you just saw is GPT-2 vintage (2019). Llama 3 and friends keep the same backbone but swap in: rotary position embeddings (RoPE), grouped-query attention (GQA), SwiGLU activations, RMSNorm. Each is a small local change.`,
     render: () => (
-      <ActFramingPanel actLabel="Act V · Modern Upgrades" headline="Same skeleton, a few surgical upgrades." accent={ACCENT.mint} />
+      <ActFramingPanel actLabel={ACT_V} headline="Same skeleton, a few surgical upgrades." accent={ACCENT.mint} />
     ),
   },
   {

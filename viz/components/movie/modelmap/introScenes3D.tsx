@@ -148,7 +148,7 @@ export function SceneActFraming({
         <group>
           {[1, 3, 5].map((bi) => {
             const cx = blockStart(bi) + BLOCK_LEN / 2
-            const pop = smoothstep((bi - 1) / 6, bi / 6, p / 0.75)
+            const pop = smoothstep((bi - 1) / N_BLOCKS, bi / N_BLOCKS, p / 0.75)
             return (
               <mesh key={bi} position={[cx, SLAB_H / 2 + 0.25, 0.3]}>
                 <sphereGeometry args={[0.12, 16, 16]} />

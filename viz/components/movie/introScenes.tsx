@@ -1,14 +1,13 @@
 'use client'
 
 import { motion } from 'framer-motion'
+import { useSpeed } from './speedContext'
 
 const ACCENT = {
   blue: '#60a5fa',
   violet: '#a78bfa',
   mint: '#34d399',
   amber: '#f59e0b',
-  pink: '#ec4899',
-  cyan: '#22d3ee',
   red: '#f87171',
 }
 const FG = '#f5f5f4'
@@ -19,12 +18,13 @@ const DIM = '#737373'
 const PROMPT_TEXT = 'What if I asked my AI to finish this sentence: to be, or no'
 
 export function IntroColdOpenPanel() {
+  const speed = useSpeed()
   const CHAR_MS = 70
   const TYPE_START_S = 1.2
   const chars = PROMPT_TEXT.split('')
-  const TYPING_DONE_S = TYPE_START_S + (chars.length * CHAR_MS) / 1000
-  const SEND_PULSE_S = TYPING_DONE_S + 0.4
-  const DISSOLVE_S = SEND_PULSE_S + 1.8
+  const TYPING_DONE_S = TYPE_START_S + (chars.length * CHAR_MS) / 1000 / speed
+  const SEND_PULSE_S = TYPING_DONE_S + 0.4 / speed
+  const DISSOLVE_S = SEND_PULSE_S + 1.8 / speed
 
   return (
     <div className="relative h-full w-full">
@@ -32,7 +32,7 @@ export function IntroColdOpenPanel() {
         className="absolute inset-0 flex items-center justify-center px-10"
         initial={{ opacity: 1 }}
         animate={{ opacity: 0 }}
-        transition={{ delay: DISSOLVE_S, duration: 1.2, ease: 'easeIn' }}
+        transition={{ delay: DISSOLVE_S, duration: 1.2 / speed, ease: 'easeIn' }}
       >
         <motion.div
           className="w-full max-w-[540px] rounded-[6px] border px-4 py-3.5"
@@ -42,7 +42,7 @@ export function IntroColdOpenPanel() {
           }}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.5, ease: 'easeOut' }}
+          transition={{ delay: 0.15 / speed, duration: 0.5 / speed, ease: 'easeOut' }}
         >
           <div className="flex items-center gap-3">
             <div className="flex-1 min-h-[22px] font-mono text-[14px]" style={{ color: FG }}>
@@ -52,7 +52,7 @@ export function IntroColdOpenPanel() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{
-                    delay: TYPE_START_S + (i * CHAR_MS) / 1000,
+                    delay: TYPE_START_S + (i * CHAR_MS) / 1000 / speed,
                     duration: 0.001,
                   }}
                 >
@@ -68,7 +68,7 @@ export function IntroColdOpenPanel() {
                   background: ACCENT.blue,
                 }}
                 animate={{ opacity: [0, 1, 1, 0] }}
-                transition={{ duration: 1.0, repeat: Infinity, times: [0, 0.1, 0.9, 1] }}
+                transition={{ duration: 1.0 / speed, repeat: Infinity, times: [0, 0.1, 0.9, 1] }}
               />
             </div>
             <motion.div
@@ -89,7 +89,7 @@ export function IntroColdOpenPanel() {
               }}
               transition={{
                 delay: SEND_PULSE_S,
-                duration: 1.0,
+                duration: 1.0 / speed,
                 ease: 'easeOut',
                 repeat: 0,
               }}
@@ -104,7 +104,7 @@ export function IntroColdOpenPanel() {
         className="absolute inset-x-0 top-10 flex flex-col items-center gap-1.5 text-center"
         initial={{ opacity: 0, y: -6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: DISSOLVE_S + 0.6, duration: 0.8, ease: 'easeOut' }}
+        transition={{ delay: DISSOLVE_S + 0.6 / speed, duration: 0.8 / speed, ease: 'easeOut' }}
       >
         <div className="font-mono text-[10px] tracking-[0.18em] uppercase" style={{ color: ACCENT.blue }}>
           prologue
@@ -157,6 +157,7 @@ export function ActFramingPanel({ actLabel, headline, accent }: ActFramingPanelP
 /** --- Act 4: Training — miniature loss curve sketches in beside the tower --- */
 
 export function Act4LossOverlay() {
+  const speed = useSpeed()
   const points = [
     [0, 90], [60, 70], [120, 55], [180, 46], [240, 40],
     [300, 36], [360, 33], [420, 31], [480, 30], [540, 29.5],
@@ -171,13 +172,13 @@ export function Act4LossOverlay() {
         className="flex flex-col items-center gap-3 text-center"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.6, ease: 'easeOut' }}
+        transition={{ delay: 0.3 / speed, duration: 0.6 / speed, ease: 'easeOut' }}
       >
         <div className="font-mono text-[10px] tracking-[0.24em] uppercase" style={{ color: ACCENT.amber }}>
           Act IV
         </div>
         <div className="font-serif italic text-[28px] leading-tight" style={{ color: FG, maxWidth: 640 }}>
-          how the weights got there.
+          How the weights got there.
         </div>
 
         <svg width={560} height={120} viewBox="0 0 560 120" className="mt-3">
@@ -194,14 +195,14 @@ export function Act4LossOverlay() {
             strokeWidth={2}
             initial={{ pathLength: 0 }}
             animate={{ pathLength: 1 }}
-            transition={{ delay: 1.0, duration: 3.0, ease: 'easeOut' }}
+            transition={{ delay: 1.0 / speed, duration: 3.0 / speed, ease: 'easeOut' }}
           />
           <motion.path
             d={`${d} L 540 100 L 0 100 Z`}
             fill="url(#loss-fill)"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 3.6, duration: 0.8 }}
+            transition={{ delay: 3.6 / speed, duration: 0.8 / speed }}
           />
           <text x={6} y={12} fontSize={9} fontFamily="var(--font-mono)" fill={DIM}>loss</text>
           <text x={520} y={115} fontSize={9} fontFamily="var(--font-mono)" fill={DIM}>iters →</text>
@@ -214,6 +215,7 @@ export function Act4LossOverlay() {
 /** --- Act 6: Output — a logit distribution sketches in --- */
 
 export function Act6LogitOverlay() {
+  const speed = useSpeed()
   const bars = [
     { label: 't', h: 0.92, color: ACCENT.blue },
     { label: ' ', h: 0.55, color: DIM },
@@ -233,13 +235,13 @@ export function Act6LogitOverlay() {
         className="flex flex-col items-center gap-3 text-center"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.6, ease: 'easeOut' }}
+        transition={{ delay: 0.3 / speed, duration: 0.6 / speed, ease: 'easeOut' }}
       >
         <div className="font-mono text-[10px] tracking-[0.24em] uppercase" style={{ color: ACCENT.red }}>
           Act VI
         </div>
         <div className="font-serif italic text-[28px] leading-tight" style={{ color: FG, maxWidth: 640 }}>
-          the final pick.
+          And the final pick.
         </div>
 
         <svg
@@ -259,7 +261,7 @@ export function Act6LogitOverlay() {
                 fillOpacity={i === 0 ? 0.85 : 0.35}
                 initial={{ scaleY: 0, transformOrigin: '50% 100%' }}
                 animate={{ scaleY: 1 }}
-                transition={{ delay: 1.0 + i * 0.08, duration: 0.5, ease: 'easeOut' }}
+                transition={{ delay: (1.0 + i * 0.08) / speed, duration: 0.5 / speed, ease: 'easeOut' }}
               />
               <text
                 x={BW / 2}
