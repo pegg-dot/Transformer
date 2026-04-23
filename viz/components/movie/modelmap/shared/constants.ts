@@ -155,6 +155,11 @@ export const WAYPOINTS = {
     look: [MID_X, 0, 0],
     fov: 55,
   },
+  introHero: {
+    pos: [MID_X, 1.8, 14],
+    look: [MID_X, 0, 0],
+    fov: 58,
+  },
 } as const satisfies Record<string, Waypoint>
 
 export type WaypointKey = keyof typeof WAYPOINTS
@@ -186,6 +191,13 @@ export const SCENE_WAYPOINT: Record<string, WaypointKey> = {
   rope: 'dioramaCenter',
   modern: 'dioramaCenter',
   output: 'outputEnd',
+  'intro-cold-open': 'introHero',
+  'act1-intro': 'inputStageWide',
+  'act2-intro': 'block0Wide',
+  'act3-intro': 'stackPullback',
+  'act4-intro': 'dioramaWide',
+  'act5-intro': 'dioramaWide',
+  'act6-intro': 'outputStageWide',
 }
 
 /**
@@ -217,6 +229,11 @@ export const SCENE_VIA: Record<string, WaypointKey | null> = {
   rope: 'dioramaWide',
   // Act V finale: pull all the way back
   output: 'stackPullback',
+  'act2-intro': 'stackPullback',
+  'act3-intro': 'stackPullback',
+  'act4-intro': 'dioramaWide',
+  'act5-intro': 'dioramaWide',
+  'act6-intro': 'stackPullback',
 }
 
 // Widened fog range so pulled-back cameras don't fade-to-black the content.
