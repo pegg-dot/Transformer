@@ -29,6 +29,12 @@ import {
   SceneTokenization,
   SceneTraining,
 } from '@/components/movie/scenes'
+import {
+  IntroColdOpenPanel,
+  ActFramingPanel,
+  Act4LossOverlay,
+  Act6LogitOverlay,
+} from '@/components/movie/introScenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -40,6 +46,7 @@ const ACCENT = {
   red: '#f87171',
 }
 
+const PROLOGUE = 'Prologue'
 const ACT_I = 'Act I · Input'
 const ACT_II = 'Act II · Inside a Block'
 const ACT_III = 'Act III · The Full Stack'
@@ -54,7 +61,33 @@ const ACT_VI = 'Act VI · The Output'
  */
 
 const SCENES: MovieScene[] = [
+  // =============== PROLOGUE ===============
+  {
+    id: 'intro-cold-open',
+    section: PROLOGUE,
+    kicker: 'the setup',
+    title: 'This is what happens inside.',
+    caption: 'A full transformer, from prompt to next token. Every layer, every head.',
+    accent: ACCENT.blue,
+    durationMs: 20000,
+    details: `Every time you send a prompt to an AI, it runs through a stack like this. We're going to walk through it end-to-end — starting with the raw text, ending with the next character it picks.`,
+    render: () => <IntroColdOpenPanel />,
+  },
+
   // =============== ACT I — INPUT ===============
+  {
+    id: 'act1-intro',
+    section: ACT_I,
+    kicker: 'act one',
+    title: 'First: text becomes numbers.',
+    caption: 'Your prompt has to be turned into integers before the network can do math on it.',
+    accent: ACCENT.violet,
+    durationMs: 10000,
+    details: `The input stage. Three small steps: split the string into tokens, look up each token's vector in an embedding table, and add a position encoding so the network can tell what came first.`,
+    render: () => (
+      <ActFramingPanel actLabel="Act I · Input" headline="First: text becomes numbers." accent={ACCENT.violet} />
+    ),
+  },
   {
     id: 'tokens',
     section: ACT_I,
@@ -125,6 +158,19 @@ Modern models (LLaMA, GPT-NeoX) replaced this with RoPE — rotary position embe
   },
 
   // =============== ACT II — INSIDE A BLOCK ===============
+  {
+    id: 'act2-intro',
+    section: ACT_II,
+    kicker: 'act two',
+    title: 'Now zoom into one block.',
+    caption: 'Attention first, then a small feedforward net. Every block runs the same two sub-layers.',
+    accent: ACCENT.blue,
+    durationMs: 12000,
+    details: `A transformer block is a fixed recipe: normalize, run multi-head attention, add the result back to the residual stream, normalize again, run a feedforward net, add that back too. Every one of the six blocks does exactly this.`,
+    render: () => (
+      <ActFramingPanel actLabel="Act II · Inside a Block" headline="Attention, then a small feedforward net." accent={ACCENT.blue} />
+    ),
+  },
   {
     id: 'layernorm',
     section: ACT_II,
@@ -254,6 +300,19 @@ Empirically, smooth activations train a bit faster and reach slightly better fin
 
   // =============== ACT III — THE FULL STACK ===============
   {
+    id: 'act3-intro',
+    section: ACT_III,
+    kicker: 'act three',
+    title: 'That block, six times over.',
+    caption: 'One signal climbs through six identical blocks, each adding its own refinement.',
+    accent: ACCENT.mint,
+    durationMs: 10000,
+    details: `The residual stream is a 384-dim vector per token that flows through all six blocks. Each block reads it, computes a correction, adds that correction back. By the top, the stream carries everything the model knows about "what comes next."`,
+    render: () => (
+      <ActFramingPanel actLabel="Act III · The Full Stack" headline="One signal climbing through six blocks." accent={ACCENT.mint} />
+    ),
+  },
+  {
     id: 'stack',
     section: ACT_III,
     kicker: 'residual stack',
@@ -307,6 +366,17 @@ This is the single biggest optimization behind fast generation. It's also why co
   },
 
   // =============== ACT IV — TRAINING (LOSS → BACKPROP → GD) ===============
+  {
+    id: 'act4-intro',
+    section: ACT_IV,
+    kicker: 'act four',
+    title: 'How the weights got there.',
+    caption: 'The model above was trained. Here is what "trained" means.',
+    accent: ACCENT.amber,
+    durationMs: 12000,
+    details: `Training means: run a forward pass, measure how wrong the prediction was (loss), compute which weights are to blame (backprop), nudge them slightly (gradient descent). Repeat a few hundred thousand times.`,
+    render: () => <Act4LossOverlay />,
+  },
   // ── LOSS ──
   {
     id: 'loss',
@@ -477,6 +547,19 @@ Modern variants: AdamW (decouples weight decay), Lion (uses sign only, cheaper m
 
   // =============== ACT V — MODERN UPGRADES ===============
   {
+    id: 'act5-intro',
+    section: ACT_V,
+    kicker: 'act five',
+    title: 'What modern models changed.',
+    caption: 'Same skeleton. A few surgical upgrades that make real-world LLMs work.',
+    accent: ACCENT.mint,
+    durationMs: 10000,
+    details: `The architecture you just saw is GPT-2 vintage (2019). Llama 3 and friends keep the same backbone but swap in: rotary position embeddings (RoPE), grouped-query attention (GQA), SwiGLU activations, RMSNorm. Each is a small local change.`,
+    render: () => (
+      <ActFramingPanel actLabel="Act V · Modern Upgrades" headline="Same skeleton, a few surgical upgrades." accent={ACCENT.mint} />
+    ),
+  },
+  {
     id: 'rope',
     section: ACT_V,
     kicker: 'rotary position',
@@ -517,6 +600,17 @@ Stacked together, these changes give a faster, smaller, slightly better model wi
   },
 
   // =============== ACT VI — THE OUTPUT ===============
+  {
+    id: 'act6-intro',
+    section: ACT_VI,
+    kicker: 'act six',
+    title: 'And the final pick.',
+    caption: 'The network outputs a probability over every possible next token. One gets chosen.',
+    accent: ACCENT.red,
+    durationMs: 10000,
+    details: `The top of the stack produces one vector per token position. We only care about the last one — it represents the model's best guess at what should come next. A final linear layer projects that vector to a vector of size vocab_size; softmax turns it into probabilities; we sample one.`,
+    render: () => <Act6LogitOverlay />,
+  },
   {
     id: 'output',
     section: ACT_VI,
