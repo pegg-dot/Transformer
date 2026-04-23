@@ -102,21 +102,30 @@ export const DEFAULT_KIND: TransitionKind = 'within-part'
  * default kind. Keys match `id` values in `app/tour/page.tsx`.
  */
 export const INCOMING_KIND: Record<string, TransitionKind> = {
+  // --- intros (all fire the act-change banner) ---
+  'intro-cold-open': 'act-change',
+  'act1-intro': 'act-change',
+  'act2-intro': 'act-change',
+  'act3-intro': 'act-change',
+  'act4-intro': 'act-change',
+  'act5-intro': 'act-change',
+  'act6-intro': 'act-change',
+  // --- existing scenes ---
   tokens: 'within-part',
   bpe: 'within-part',
   embed: 'forward-flow',
   positional: 'forward-flow',
-  layernorm: 'act-change',
+  layernorm: 'forward-flow',  // was 'act-change' — intro now owns the banner
   qkv: 'forward-flow',
   attn: 'within-part',
   multi: 'within-part',
   ffn: 'forward-flow',
   'ffn-feature': 'within-part',
   gelu: 'within-part',
-  stack: 'act-change',
+  stack: 'forward-flow',      // was 'act-change' — intro now owns the banner
   sample: 'forward-flow',
   kvcache: 'within-part',
-  loss: 'act-change',
+  loss: 'forward-flow',       // was 'act-change' — intro now owns the banner
   'loss-seq': 'within-part',
   'loss-batch': 'within-part',
   backprop: 'forward-flow',
@@ -125,7 +134,7 @@ export const INCOMING_KIND: Record<string, TransitionKind> = {
   training: 'forward-flow',
   'gd-ravine': 'within-part',
   'gd-adam': 'within-part',
-  rope: 'act-change',
+  rope: 'forward-flow',       // was 'act-change' — intro now owns the banner
   modern: 'within-part',
   output: 'pull-back',
 }
