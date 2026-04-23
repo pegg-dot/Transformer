@@ -36,6 +36,14 @@ import SceneModern from './sceneB_Modern'
 import SceneBackprop from './sceneC_Backprop'
 import SceneBpJacobian from './sceneC_BpJacobian'
 import SceneBpAccum from './sceneC_BpAccum'
+import SceneIntroReveal, {
+  SceneAct1Intro,
+  SceneAct2Intro,
+  SceneAct3Intro,
+  SceneAct4Intro,
+  SceneAct5Intro,
+  SceneAct6Intro,
+} from './introScenes3D'
 
 const SCENE_MAP: Record<string, ComponentType<SceneProps>> = {
   tokens: SceneTokens,
@@ -64,6 +72,13 @@ const SCENE_MAP: Record<string, ComponentType<SceneProps>> = {
   backprop: SceneBackprop,
   'bp-jacobian': SceneBpJacobian,
   'bp-accum': SceneBpAccum,
+  'intro-cold-open': SceneIntroReveal,
+  'act1-intro': SceneAct1Intro,
+  'act2-intro': SceneAct2Intro,
+  'act3-intro': SceneAct3Intro,
+  'act4-intro': SceneAct4Intro,
+  'act5-intro': SceneAct5Intro,
+  'act6-intro': SceneAct6Intro,
 }
 
 const MODE_A_SCENES = new Set([
