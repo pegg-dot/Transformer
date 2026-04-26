@@ -277,36 +277,103 @@ export function IntroColdOpenPanel() {
   )
 }
 
-/** --- Shared panel for act intros (1, 2, 3, 5) --- */
+/** --- Shared panel for act intros (1, 2, 3, 5) ---
+ *
+ * Phase 3 spatial-recursion redesign: every act intro now answers three
+ * questions in sequence so the viewer knows where they've been, where they
+ * are, and where they're about to go:
+ *
+ *   1. recap   "we just saw …"        (faint, top, slides in first)
+ *   2. headline "this act is about …"  (bold, center, the §4 narrative beat)
+ *   3. teaser  "coming up: …"          (accent dotted line, bottom)
+ *
+ * recap is omitted on Act I (nothing came before the cold open beyond
+ * "watch a transformer think"). Each line has its own delay so the eye
+ * reads them in order.
+ */
 
 export interface ActFramingPanelProps {
   actLabel: string
   headline: string
   accent: string
+  /** What the previous act covered. Omit on Act I. */
+  recap?: string
+  /** What this act will cover next. */
+  teaser?: string
 }
 
-export function ActFramingPanel({ actLabel, headline, accent }: ActFramingPanelProps) {
+export function ActFramingPanel({
+  actLabel,
+  headline,
+  accent,
+  recap,
+  teaser,
+}: ActFramingPanelProps) {
+  const speed = useSpeed()
+  const T_ACT = 0.25 / speed
+  const T_RECAP = 0.55 / speed
+  const T_HEADLINE = recap ? 1.1 / speed : 0.55 / speed
+  const T_TEASER = T_HEADLINE + 0.7 / speed
   return (
-    <div className="relative flex h-full w-full items-center justify-center">
-      <motion.div
-        className="flex flex-col items-center gap-2.5 text-center"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.6, ease: 'easeOut' }}
-      >
-        <div
-          className="font-mono text-[10px] tracking-[0.24em] uppercase"
+    <div className="relative flex h-full w-full items-center justify-center px-6">
+      <div className="flex max-w-[640px] flex-col items-center gap-5 text-center">
+        <motion.div
+          className="font-mono text-[10px] tracking-[0.26em] uppercase"
           style={{ color: accent }}
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: T_ACT, duration: 0.45 / speed, ease: 'easeOut' }}
         >
           {actLabel}
-        </div>
-        <div
+        </motion.div>
+
+        {recap && (
+          <motion.div
+            className="font-mono text-[11px] leading-5 tracking-wide"
+            style={{ color: DIM, maxWidth: '480px' }}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 0.9, y: 0 }}
+            transition={{ delay: T_RECAP, duration: 0.45 / speed, ease: 'easeOut' }}
+          >
+            <span className="opacity-60">we just saw — </span>
+            {recap}
+          </motion.div>
+        )}
+
+        <motion.div
           className="font-serif italic text-[28px] leading-tight"
-          style={{ color: FG, maxWidth: '640px' }}
+          style={{ color: FG }}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: T_HEADLINE, duration: 0.55 / speed, ease: 'easeOut' }}
         >
           {headline}
-        </div>
-      </motion.div>
+        </motion.div>
+
+        {teaser && (
+          <motion.div
+            className="flex items-center gap-2"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: T_TEASER, duration: 0.45 / speed, ease: 'easeOut' }}
+          >
+            <span
+              className="inline-block h-px w-6"
+              style={{ background: accent, opacity: 0.6 }}
+            />
+            <span
+              className="font-mono text-[10px] tracking-[0.18em] uppercase"
+              style={{ color: accent, opacity: 0.85 }}
+            >
+              coming up — {teaser}
+            </span>
+            <span
+              className="inline-block h-px w-6"
+              style={{ background: accent, opacity: 0.6 }}
+            />
+          </motion.div>
+        )}
+      </div>
     </div>
   )
 }

@@ -82,6 +82,7 @@ export const SCENES: MovieScene[] = [
   {
     id: 'act1-intro',
     section: ACT_I,
+    breadcrumb: ['Input'],
     kicker: 'act one',
     title: 'First: text becomes numbers.',
     caption: 'Your prompt has to be turned into integers before the network can do math on it.',
@@ -89,12 +90,18 @@ export const SCENES: MovieScene[] = [
     durationMs: 10000,
     details: `The input stage. Three small steps: split the string into tokens, look up each token's vector in an embedding table, and add a position encoding so the network can tell what came first.`,
     render: () => (
-      <ActFramingPanel actLabel={ACT_I} headline="First: text becomes numbers." accent={ACCENT.violet} />
+      <ActFramingPanel
+        actLabel={ACT_I}
+        headline="First — text becomes numbers."
+        accent={ACCENT.violet}
+        teaser="the input slab, before any block"
+      />
     ),
   },
   {
     id: 'tokens',
     section: ACT_I,
+    breadcrumb: ['Input', 'Tokens'],
     kicker: 'tokenization',
     title: 'Text becomes numbers.',
     caption:
@@ -113,6 +120,7 @@ Nothing about the model cares what the original characters looked like after thi
   {
     id: 'bpe',
     section: ACT_I,
+    breadcrumb: ['Input', 'BPE'],
     kicker: 'real tokenization',
     title: 'Real models use BPE — 3 phases.',
     caption:
@@ -130,6 +138,7 @@ The reason to use BPE instead of characters: way shorter sequences (fewer positi
   {
     id: 'embed',
     section: ACT_I,
+    breadcrumb: ['Input', 'Embedding'],
     kicker: 'embeddings',
     title: 'Every token becomes a vector.',
     caption: 'One row of 384 real numbers per vocab entry. The cursor walks through rows — that row IS the token.',
@@ -146,6 +155,7 @@ This is where the network first starts to encode meaning. Tokens that behave sim
   {
     id: 'positional',
     section: ACT_I,
+    breadcrumb: ['Input', 'Positional'],
     kicker: 'positional encoding',
     title: 'Position gets baked in.',
     caption:
@@ -165,6 +175,7 @@ Modern models (LLaMA, GPT-NeoX) replaced this with RoPE — rotary position embe
   {
     id: 'act2-intro',
     section: ACT_II,
+    breadcrumb: ['Block 0'],
     kicker: 'act two',
     title: 'Now zoom into one block.',
     caption: 'Attention first, then a small feedforward net. Every block runs the same two sub-layers.',
@@ -172,12 +183,19 @@ Modern models (LLaMA, GPT-NeoX) replaced this with RoPE — rotary position embe
     durationMs: 12000,
     details: `A transformer block is a fixed recipe: normalize, run multi-head attention, add the result back to the residual stream, normalize again, run a feedforward net, add that back too. Every one of the six blocks does exactly this.`,
     render: () => (
-      <ActFramingPanel actLabel={ACT_II} headline="Attention, then a small feedforward net." accent={ACCENT.blue} />
+      <ActFramingPanel
+        actLabel={ACT_II}
+        headline="Now zoom into one block."
+        accent={ACCENT.blue}
+        recap="tokens became 384-dim vectors"
+        teaser="attention, then a small feedforward net"
+      />
     ),
   },
   {
     id: 'layernorm',
     section: ACT_II,
+    breadcrumb: ['Block 0', 'LayerNorm'],
     kicker: 'layernorm',
     title: 'Normalize before every sublayer.',
     caption:
@@ -195,6 +213,7 @@ Modern models (LLaMA, PaLM) switched to RMSNorm, which drops the mean-subtractio
   {
     id: 'qkv',
     section: ACT_II,
+    breadcrumb: ['Block 0', 'Attention', 'Q · K · V'],
     kicker: 'q · k · v',
     title: 'One vector. Three roles.',
     caption:
@@ -212,6 +231,7 @@ All three are learned. Nothing special about the split — they start as random 
   {
     id: 'attn',
     section: ACT_II,
+    breadcrumb: ['Block 0', 'Attention'],
     kicker: 'self-attention',
     title: 'Attention — 4 sub-phases.',
     subGroup: { label: 'phases', index: 4, total: 4, color: ACCENT.blue },
@@ -231,6 +251,7 @@ This is the mechanism that lets "the animal didn't cross the street because IT w
   {
     id: 'multi',
     section: ACT_II,
+    breadcrumb: ['Block 0', 'Attention', 'Multi-head'],
     kicker: 'multi-head',
     title: 'Six heads in parallel.',
     caption:
@@ -250,6 +271,7 @@ Empirically, the heads DO specialize. Different heads attend to different kinds 
   {
     id: 'ffn',
     section: ACT_II,
+    breadcrumb: ['Block 0', 'FFN'],
     kicker: 'feed-forward',
     title: 'Expand. Fire. Compress.',
     subGroup: { label: 'FFN · structure', index: 1, total: 3, color: ACCENT.amber },
@@ -268,6 +290,7 @@ Attention moves information BETWEEN tokens. FFN processes information WITHIN a s
   {
     id: 'ffn-feature',
     section: ACT_II,
+    breadcrumb: ['Block 0', 'FFN', 'One feature'],
     kicker: 'feature detectors',
     title: 'Each hidden neuron detects something.',
     subGroup: { label: 'FFN · interpretation', index: 2, total: 3, color: ACCENT.amber },
@@ -286,6 +309,7 @@ Interpretability research is largely about teasing out what each dimension repre
   {
     id: 'gelu',
     section: ACT_II,
+    breadcrumb: ['Block 0', 'FFN', 'Activation'],
     kicker: 'activation functions',
     title: 'ReLU · GELU · Swish.',
     subGroup: { label: 'FFN · activation detail', index: 3, total: 3, color: ACCENT.amber },
@@ -306,6 +330,7 @@ Empirically, smooth activations train a bit faster and reach slightly better fin
   {
     id: 'act3-intro',
     section: ACT_III,
+    breadcrumb: ['Stack of 6'],
     kicker: 'act three',
     title: 'That block, six times over.',
     caption: 'One signal climbs through six identical blocks, each adding its own refinement.',
@@ -313,12 +338,19 @@ Empirically, smooth activations train a bit faster and reach slightly better fin
     durationMs: 10000,
     details: `The residual stream is a 384-dim vector per token that flows through all six blocks. Each block reads it, computes a correction, adds that correction back. By the top, the stream carries everything the model knows about "what comes next."`,
     render: () => (
-      <ActFramingPanel actLabel={ACT_III} headline="One signal climbing through six blocks." accent={ACCENT.mint} />
+      <ActFramingPanel
+        actLabel={ACT_III}
+        headline="Same block. Six times over."
+        accent={ACCENT.mint}
+        recap="one block: attention, then FFN"
+        teaser="one signal climbing through all six"
+      />
     ),
   },
   {
     id: 'stack',
     section: ACT_III,
+    breadcrumb: ['Stack of 6', 'One signal climbing'],
     kicker: 'residual stack',
     title: 'Stack six blocks.',
     caption:
@@ -336,6 +368,7 @@ Each block asks "given what I just read, what's a better representation?" and nu
   {
     id: 'sample',
     section: ACT_III,
+    breadcrumb: ['Output', 'Next-token pick'],
     kicker: 'softmax + sampling',
     title: 'Guess the next character.',
     caption:
@@ -353,6 +386,7 @@ The sampled token is then APPENDED to the input sequence and fed back into the m
   {
     id: 'kvcache',
     section: ACT_III,
+    breadcrumb: ['Stack of 6', 'KV cache'],
     kicker: 'kv cache',
     title: 'One new row per step.',
     caption:
@@ -560,7 +594,13 @@ Modern variants: AdamW (decouples weight decay), Lion (uses sign only, cheaper m
     durationMs: 10000,
     details: `The architecture you just saw is GPT-2 vintage (2019). Llama 3 and friends keep the same backbone but swap in: rotary position embeddings (RoPE), grouped-query attention (GQA), SwiGLU activations, RMSNorm. Each is a small local change.`,
     render: () => (
-      <ActFramingPanel actLabel={ACT_V} headline="Same skeleton, a few surgical upgrades." accent={ACCENT.mint} />
+      <ActFramingPanel
+        actLabel={ACT_V}
+        headline="Same skeleton, a few surgical upgrades."
+        accent={ACCENT.mint}
+        recap="loss, gradients, gradient descent"
+        teaser="RoPE · RMSNorm · SwiGLU · GQA"
+      />
     ),
   },
   {
@@ -618,6 +658,7 @@ Stacked together, these changes give a faster, smaller, slightly better model wi
   {
     id: 'output',
     section: ACT_VI,
+    breadcrumb: ['Output', 'Forward pass replay'],
     kicker: 'the generation',
     title: 'And this is what comes out.',
     caption:
