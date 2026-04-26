@@ -7,6 +7,21 @@ import { ModelMap3D, type ModelPart } from './modelmap'
 import { STAGE_VARIANTS, KIND_TIMING, incomingKindFor } from './transitions'
 import { SpeedContext } from './speedContext'
 
+/**
+ * Where the 2D detail panel for this scene lives.
+ * - 'right-rail' (default): docked in the right ~30% rail next to the 3D stage.
+ * - 'fullscreen': covers the whole stage (for content-dense scenes); 3D dims.
+ * - 'hidden': scene is pure 3D, no 2D panel.
+ * - block/output anchors are reserved for Phase 4 (Html-anchored callouts).
+ */
+export type PanelAnchor =
+  | 'right-rail'
+  | 'fullscreen'
+  | 'hidden'
+  | 'block0'
+  | 'block0.attn'
+  | 'output'
+
 export interface MovieScene {
   id: string
   kicker: string
@@ -21,6 +36,20 @@ export interface MovieScene {
   part?: ModelPart
   /** Optional deeper explanation. Shown in a side inspector when the user opens it. */
   details?: string
+  /** Where the 2D detail panel renders. Defaults to 'right-rail'. */
+  panelAnchor?: PanelAnchor
+  /**
+   * Spatial breadcrumb shown over the 3D stage as "you are here" context.
+   * If absent, derived from `section` and (when present) `subGroup.label`.
+   * Example: ['Block 0', 'Attention', 'Multi-head'].
+   */
+  breadcrumb?: string[]
+  /**
+   * Whether the persistent token strip should be visible for this scene.
+   * Defaults to true for forward-pass acts (Prologue/Input/Inside-block/Stack/Output)
+   * and false for training/modern. Override per-scene if needed.
+   */
+  showTokenStrip?: boolean
 }
 
 interface Props {
@@ -144,6 +173,12 @@ function Inner({ scenes }: Props) {
   const sceneProgress = Math.min(1, elapsed / current.durationMs)
 
   const incomingTiming = KIND_TIMING[incomingKind]
+
+  // Phase 1 spatial framework: panel anchor, breadcrumb, token-strip visibility.
+  // All three default by-section so existing scenes work without per-scene wiring.
+  const panelAnchor: PanelAnchor = current.panelAnchor ?? 'right-rail'
+  const crumbs = deriveBreadcrumb(current)
+  const tokenStripVisible = current.showTokenStrip ?? defaultTokenStripVisible(current)
 
   function jump(to: number) {
     lastAdvancedFromRef.current = null
@@ -416,140 +451,167 @@ function Inner({ scenes }: Props) {
         )}
       </AnimatePresence>
 
-      {/* Stage + sidebar */}
+      {/* Stage row — 3D leads (flex-1), 2D detail rail at ~32% on the right.
+          Phase 1 default. Scenes can opt into 'fullscreen' to overlay the
+          stage with their 2D panel (e.g. cold open) or 'hidden' to go pure 3D. */}
       <div className="relative flex flex-1 overflow-hidden">
-        <div className="relative flex flex-1 items-center justify-center overflow-hidden px-4 py-3">
-          <AnimatePresence mode="sync" initial={false}>
-            <motion.div
-              key={`${current.id}-${cycle}`}
-              variants={STAGE_VARIANTS[incomingKind]}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: incomingTiming.duration, ease: incomingTiming.easing }}
-              className="absolute inset-0 flex items-center justify-center px-4 py-3"
-            >
-              <div className="h-full w-full max-w-[1400px]">
-                {current.render()}
-              </div>
-            </motion.div>
-          </AnimatePresence>
+        {/* 3D stage — visible whenever the 2D panel isn't fullscreen */}
+        {panelAnchor !== 'fullscreen' && (
+          <div className="relative flex-1 overflow-hidden">
+            <ModelMap3D
+              part={current.part}
+              sceneId={current.id}
+              accent={current.accent}
+              duration={current.durationMs}
+              playing={playing && !anyPopoverOpen && !finished && !actHeld}
+            />
 
-          {/* Act-change banner — center-stage announcement. Shows for ~2.5s:
-              fade in 0-0.6s, hold 0.6-2.0s, fade out 2.0-2.5s. */}
-          <AnimatePresence>
-            {isActChange && actBannerVisible && current.section && (
-              <motion.div
-                key={`act-banner-${current.id}`}
-                initial={{ opacity: 0, scale: 0.94, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 1.02, y: -6 }}
-                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-                className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
-              >
-                <div
-                  className="rounded-[4px] border-2 bg-[rgba(7,7,9,0.92)] px-12 py-7 text-center shadow-2xl backdrop-blur-lg"
-                  style={{ borderColor: current.accent }}
-                >
-                  <div
-                    className="small-caps text-[12px] opacity-75 tracking-widest"
-                    style={{ color: current.accent }}
-                  >
-                    entering
-                  </div>
-                  <div
-                    className="display mt-2 text-[32px]"
-                    style={{ color: current.accent }}
-                  >
-                    {current.section}
-                  </div>
-                  <div className="mt-2 h-px w-12 mx-auto" style={{ background: current.accent, opacity: 0.5 }} />
-                </div>
-              </motion.div>
+            {/* Persistent breadcrumb — top-left "you are here". */}
+            {started && <BreadcrumbOverlay crumbs={crumbs} accent={current.accent} />}
+
+            {/* Persistent token strip — top-center, forward-pass acts only. */}
+            {started && tokenStripVisible && (
+              <TokenStripOverlay prompt={prompt} accent={current.accent} />
             )}
-          </AnimatePresence>
+          </div>
+        )}
 
-          <AnimatePresence>
-            {finished && isLastScene && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-                className="pointer-events-none absolute inset-0 flex items-center justify-center"
-              >
-                <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-[3px] border border-[var(--rule-strong)] bg-[rgba(7,7,9,0.85)] px-6 py-5 backdrop-blur-md">
-                  <div className="small-caps text-[var(--fg-dim)]">end of the tour</div>
-                  <div className="display text-[22px] text-[var(--fg)]">that&apos;s the whole machine.</div>
-                  <div className="flex items-center gap-2 mono text-[11px]">
+        {/* 2D detail rail — right ~32% by default; absolute overlay when fullscreen. */}
+        {panelAnchor !== 'hidden' && (
+          <div
+            className={
+              panelAnchor === 'fullscreen'
+                ? 'absolute inset-0 z-10'
+                : 'relative shrink-0 border-l border-[var(--rule)] bg-[var(--bg)]'
+            }
+            style={
+              panelAnchor === 'fullscreen'
+                ? undefined
+                : { width: 'clamp(380px, 32%, 540px)' }
+            }
+          >
+            <div className="relative h-full overflow-hidden">
+              <AnimatePresence mode="sync" initial={false}>
+                <motion.div
+                  key={`${current.id}-${cycle}`}
+                  variants={STAGE_VARIANTS[incomingKind]}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: incomingTiming.duration, ease: incomingTiming.easing }}
+                  className="absolute inset-0 flex items-center justify-center px-4 py-3"
+                >
+                  <div className="h-full w-full max-w-[1400px]">
+                    {current.render()}
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+
+            {/* Inspector panel — slides in from the right edge of the rail */}
+            <AnimatePresence>
+              {inspectorOpen && current.details && (
+                <motion.div
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '100%' }}
+                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute inset-y-0 right-0 z-20 w-full overflow-y-auto border-l bg-[var(--bg-elevated)] px-5 py-4 shadow-2xl"
+                  style={{ borderLeftColor: current.accent }}
+                >
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div
+                        className="small-caps text-[10px]"
+                        style={{ color: current.accent, opacity: 0.8 }}
+                      >
+                        {current.kicker} · details
+                      </div>
+                      <div
+                        className="display mt-0.5 text-[18px] leading-tight"
+                        style={{ color: current.accent }}
+                      >
+                        {current.title}
+                      </div>
+                    </div>
                     <button
                       type="button"
-                      onClick={restart}
-                      className="rounded-full border border-[var(--accent)] bg-[rgba(96,165,250,0.1)] px-4 py-1.5 text-[var(--accent)] hover:bg-[rgba(96,165,250,0.2)]"
+                      onClick={() => setInspectorOpen(false)}
+                      className="shrink-0 rounded-full border border-[var(--rule-strong)] px-2 py-0.5 mono text-[10px] text-[var(--fg-muted)] hover:border-[var(--accent)] hover:text-[var(--fg)]"
+                      title="Close (i or esc)"
                     >
-                      ↺ replay
+                      ✕
                     </button>
                   </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <div
-          className="relative shrink-0 border-l border-[var(--rule)]"
-          style={{ width: 'clamp(360px, 40%, 560px)' }}
-        >
-          <ModelMap3D
-            part={current.part}
-            sceneId={current.id}
-            accent={current.accent}
-            duration={current.durationMs}
-            playing={playing && !anyPopoverOpen && !finished && !actHeld}
-          />
-
-          {/* Inspector panel — slides in from the right edge of the 3D sidebar */}
-          <AnimatePresence>
-            {inspectorOpen && current.details && (
-              <motion.div
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
-                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                className="absolute inset-y-0 right-0 z-20 w-full overflow-y-auto border-l bg-[var(--bg-elevated)] px-5 py-4 shadow-2xl"
-                style={{ borderLeftColor: current.accent }}
-              >
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div
-                      className="small-caps text-[10px]"
-                      style={{ color: current.accent, opacity: 0.8 }}
-                    >
-                      {current.kicker} · details
-                    </div>
-                    <div
-                      className="display mt-0.5 text-[18px] leading-tight"
-                      style={{ color: current.accent }}
-                    >
-                      {current.title}
-                    </div>
+                  <div className="whitespace-pre-line text-[13px] leading-6 text-[var(--fg-muted)]">
+                    {current.details}
                   </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
+        {/* Act-change banner — center-stage announcement, ~2.5s. Overlays the
+            whole row so it's centered across both 3D and 2D panes. */}
+        <AnimatePresence>
+          {isActChange && actBannerVisible && current.section && (
+            <motion.div
+              key={`act-banner-${current.id}`}
+              initial={{ opacity: 0, scale: 0.94, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 1.02, y: -6 }}
+              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+              className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
+            >
+              <div
+                className="rounded-[4px] border-2 bg-[rgba(7,7,9,0.92)] px-12 py-7 text-center shadow-2xl backdrop-blur-lg"
+                style={{ borderColor: current.accent }}
+              >
+                <div
+                  className="small-caps text-[12px] opacity-75 tracking-widest"
+                  style={{ color: current.accent }}
+                >
+                  entering
+                </div>
+                <div
+                  className="display mt-2 text-[32px]"
+                  style={{ color: current.accent }}
+                >
+                  {current.section}
+                </div>
+                <div className="mt-2 h-px w-12 mx-auto" style={{ background: current.accent, opacity: 0.5 }} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* End-card — overlays whole row */}
+        <AnimatePresence>
+          {finished && isLastScene && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
+            >
+              <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-[3px] border border-[var(--rule-strong)] bg-[rgba(7,7,9,0.85)] px-6 py-5 backdrop-blur-md">
+                <div className="small-caps text-[var(--fg-dim)]">end of the tour</div>
+                <div className="display text-[22px] text-[var(--fg)]">that&apos;s the whole machine.</div>
+                <div className="flex items-center gap-2 mono text-[11px]">
                   <button
                     type="button"
-                    onClick={() => setInspectorOpen(false)}
-                    className="shrink-0 rounded-full border border-[var(--rule-strong)] px-2 py-0.5 mono text-[10px] text-[var(--fg-muted)] hover:border-[var(--accent)] hover:text-[var(--fg)]"
-                    title="Close (i or esc)"
+                    onClick={restart}
+                    className="rounded-full border border-[var(--accent)] bg-[rgba(96,165,250,0.1)] px-4 py-1.5 text-[var(--accent)] hover:bg-[rgba(96,165,250,0.2)]"
                   >
-                    ✕
+                    ↺ replay
                   </button>
                 </div>
-                <div className="whitespace-pre-line text-[13px] leading-6 text-[var(--fg-muted)]">
-                  {current.details}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Press-play splash — shown on first load until user clicks play */}
         <AnimatePresence>
@@ -750,4 +812,116 @@ function formatMs(ms: number) {
   const mm = Math.floor(s / 60)
   const ss = s % 60
   return `${mm}:${String(ss).padStart(2, '0')}`
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Phase 1 spatial framework helpers
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Strip the "Act I · " prefix from section labels so the breadcrumb reads
+ * "Input" rather than "Act I · Input". Sections without the separator pass
+ * through unchanged.
+ */
+function trimActPrefix(section: string | undefined): string {
+  if (!section) return ''
+  const idx = section.indexOf('·')
+  return idx >= 0 ? section.slice(idx + 1).trim() : section
+}
+
+function deriveBreadcrumb(scene: MovieScene): string[] {
+  if (scene.breadcrumb && scene.breadcrumb.length > 0) return scene.breadcrumb
+  const root = trimActPrefix(scene.section)
+  const tail = scene.subGroup?.label
+  return tail ? [root, tail] : [root]
+}
+
+const FORWARD_PASS_SECTIONS = new Set([
+  'Prologue',
+  'Act I · Input',
+  'Act II · Inside a Block',
+  'Act III · The Full Stack',
+  'Act VI · The Output',
+])
+
+function defaultTokenStripVisible(scene: MovieScene): boolean {
+  if (!scene.section) return false
+  return FORWARD_PASS_SECTIONS.has(scene.section)
+}
+
+function BreadcrumbOverlay({
+  crumbs,
+  accent,
+}: {
+  crumbs: string[]
+  accent: string
+}) {
+  if (crumbs.length === 0) return null
+  return (
+    <div className="pointer-events-none absolute left-4 top-3 z-10 flex items-baseline gap-1.5 text-[12px]">
+      <span className="mono text-[10px] tracking-wider text-[var(--fg-dim)]">
+        transformer
+      </span>
+      {crumbs.map((c, i) => {
+        const isLast = i === crumbs.length - 1
+        return (
+          <span key={i} className="flex items-baseline gap-1.5">
+            <span className="mono text-[10px] text-[var(--fg-dim)]">›</span>
+            <span
+              className="small-caps tracking-wide"
+              style={{
+                color: isLast ? accent : 'var(--fg-muted)',
+                opacity: isLast ? 0.95 : 0.7,
+              }}
+            >
+              {c}
+            </span>
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+const TOKEN_STRIP_MAX = 36
+
+function TokenStripOverlay({
+  prompt,
+  accent,
+}: {
+  prompt: string
+  accent: string
+}) {
+  // Char-level model: each character is one token. Trim to context length.
+  const chars = (prompt || '').slice(0, TOKEN_STRIP_MAX).split('')
+  if (chars.length === 0) return null
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center">
+      <div className="flex items-center gap-[3px] rounded-[3px] border border-[var(--rule)] bg-[rgba(7,7,9,0.6)] px-2 py-1.5 backdrop-blur-sm">
+        <div className="mono mr-2 text-[9px] tracking-widest text-[var(--fg-dim)]">
+          tokens
+        </div>
+        {chars.map((ch, i) => (
+          <div
+            key={i}
+            className="mono flex h-5 min-w-[14px] items-center justify-center rounded-[2px] border px-1 text-[10px] leading-none"
+            style={{
+              borderColor: 'rgba(255,255,255,0.12)',
+              color: 'var(--fg-muted)',
+              background: 'rgba(255,255,255,0.02)',
+            }}
+            title={`token ${i}`}
+          >
+            {ch === ' ' ? '·' : ch}
+          </div>
+        ))}
+        <div
+          className="mono ml-2 tabular text-[9px] text-[var(--fg-dim)]"
+          style={{ color: chars.length === TOKEN_STRIP_MAX ? accent : undefined }}
+        >
+          {chars.length}
+        </div>
+      </div>
+    </div>
+  )
 }

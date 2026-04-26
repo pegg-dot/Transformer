@@ -72,6 +72,10 @@ export const SCENES: MovieScene[] = [
     durationMs: 16000,
     details: `Every time you send a prompt to an AI, it runs through a stack like this. We're going to walk through it end-to-end — starting with the raw text, ending with the next character it picks.`,
     render: () => <IntroColdOpenPanel />,
+    // Phase 1: cold open is a fullscreen chat UI — no 3D underneath yet.
+    // Phase 3 will add the morph-into-stack camera dive at the end of this scene.
+    panelAnchor: 'fullscreen',
+    breadcrumb: ['Prologue'],
   },
 
   // =============== ACT I — INPUT ===============
