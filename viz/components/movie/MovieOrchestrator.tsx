@@ -50,6 +50,12 @@ export interface MovieScene {
    * and false for training/modern. Override per-scene if needed.
    */
   showTokenStrip?: boolean
+  /**
+   * Index of the prompt token this scene focuses on (e.g. 3 = the "b" of
+   * "To be, or no"). When set, the persistent token strip glows that cell
+   * so the viewer knows which token's vector the scene is talking about.
+   */
+  focusedToken?: number
 }
 
 interface Props {
@@ -469,9 +475,14 @@ function Inner({ scenes }: Props) {
             {/* Persistent breadcrumb — top-left "you are here". */}
             {started && <BreadcrumbOverlay crumbs={crumbs} accent={current.accent} />}
 
-            {/* Persistent token strip — top-center, forward-pass acts only. */}
+            {/* Persistent token strip — top-center, forward-pass acts only.
+                Lights up the focused token cell when a scene declares one. */}
             {started && tokenStripVisible && (
-              <TokenStripOverlay prompt={prompt} accent={current.accent} />
+              <TokenStripOverlay
+                prompt={prompt}
+                accent={current.accent}
+                focusedToken={current.focusedToken}
+              />
             )}
           </div>
         )}
@@ -888,9 +899,11 @@ const TOKEN_STRIP_MAX = 36
 function TokenStripOverlay({
   prompt,
   accent,
+  focusedToken,
 }: {
   prompt: string
   accent: string
+  focusedToken?: number
 }) {
   // Char-level model: each character is one token. Trim to context length.
   const chars = (prompt || '').slice(0, TOKEN_STRIP_MAX).split('')
@@ -901,20 +914,32 @@ function TokenStripOverlay({
         <div className="mono mr-2 text-[9px] tracking-widest text-[var(--fg-dim)]">
           tokens
         </div>
-        {chars.map((ch, i) => (
-          <div
-            key={i}
-            className="mono flex h-5 min-w-[14px] items-center justify-center rounded-[2px] border px-1 text-[10px] leading-none"
-            style={{
-              borderColor: 'rgba(255,255,255,0.12)',
-              color: 'var(--fg-muted)',
-              background: 'rgba(255,255,255,0.02)',
-            }}
-            title={`token ${i}`}
-          >
-            {ch === ' ' ? '·' : ch}
-          </div>
-        ))}
+        {chars.map((ch, i) => {
+          const isFocused = focusedToken === i
+          return (
+            <div
+              key={i}
+              className="mono flex h-5 min-w-[14px] items-center justify-center rounded-[2px] border px-1 text-[10px] leading-none transition-colors"
+              style={
+                isFocused
+                  ? {
+                      borderColor: accent,
+                      color: accent,
+                      background: 'rgba(96,165,250,0.18)',
+                      boxShadow: `0 0 12px ${accent}55`,
+                    }
+                  : {
+                      borderColor: 'rgba(255,255,255,0.12)',
+                      color: 'var(--fg-muted)',
+                      background: 'rgba(255,255,255,0.02)',
+                    }
+              }
+              title={`token ${i}${isFocused ? ' · focused' : ''}`}
+            >
+              {ch === ' ' ? '·' : ch}
+            </div>
+          )
+        })}
         <div
           className="mono ml-2 tabular text-[9px] text-[var(--fg-dim)]"
           style={{ color: chars.length === TOKEN_STRIP_MAX ? accent : undefined }}

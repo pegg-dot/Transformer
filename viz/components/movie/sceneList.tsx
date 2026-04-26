@@ -139,6 +139,7 @@ The reason to use BPE instead of characters: way shorter sequences (fewer positi
     id: 'embed',
     section: ACT_I,
     breadcrumb: ['Input', 'Embedding'],
+    focusedToken: 3,
     kicker: 'embeddings',
     title: 'Every token becomes a vector.',
     caption: 'One row of 384 real numbers per vocab entry. The cursor walks through rows — that row IS the token.',
@@ -156,6 +157,7 @@ This is where the network first starts to encode meaning. Tokens that behave sim
     id: 'positional',
     section: ACT_I,
     breadcrumb: ['Input', 'Positional'],
+    focusedToken: 3,
     kicker: 'positional encoding',
     title: 'Position gets baked in.',
     caption:
@@ -196,6 +198,7 @@ Modern models (LLaMA, GPT-NeoX) replaced this with RoPE — rotary position embe
     id: 'layernorm',
     section: ACT_II,
     breadcrumb: ['Block 0', 'LayerNorm'],
+    focusedToken: 3,
     kicker: 'layernorm',
     title: 'Normalize before every sublayer.',
     caption:
@@ -214,6 +217,7 @@ Modern models (LLaMA, PaLM) switched to RMSNorm, which drops the mean-subtractio
     id: 'qkv',
     section: ACT_II,
     breadcrumb: ['Block 0', 'Attention', 'Q · K · V'],
+    focusedToken: 3,
     kicker: 'q · k · v',
     title: 'One vector. Three roles.',
     caption:
@@ -232,6 +236,7 @@ All three are learned. Nothing special about the split — they start as random 
     id: 'attn',
     section: ACT_II,
     breadcrumb: ['Block 0', 'Attention'],
+    focusedToken: 3,
     kicker: 'self-attention',
     title: 'Attention — 4 sub-phases.',
     subGroup: { label: 'phases', index: 4, total: 4, color: ACCENT.blue },
@@ -252,6 +257,7 @@ This is the mechanism that lets "the animal didn't cross the street because IT w
     id: 'multi',
     section: ACT_II,
     breadcrumb: ['Block 0', 'Attention', 'Multi-head'],
+    focusedToken: 3,
     kicker: 'multi-head',
     title: 'Six heads in parallel.',
     caption:
@@ -272,6 +278,7 @@ Empirically, the heads DO specialize. Different heads attend to different kinds 
     id: 'ffn',
     section: ACT_II,
     breadcrumb: ['Block 0', 'FFN'],
+    focusedToken: 3,
     kicker: 'feed-forward',
     title: 'Expand. Fire. Compress.',
     subGroup: { label: 'FFN · structure', index: 1, total: 3, color: ACCENT.amber },
@@ -291,6 +298,7 @@ Attention moves information BETWEEN tokens. FFN processes information WITHIN a s
     id: 'ffn-feature',
     section: ACT_II,
     breadcrumb: ['Block 0', 'FFN', 'One feature'],
+    focusedToken: 3,
     kicker: 'feature detectors',
     title: 'Each hidden neuron detects something.',
     subGroup: { label: 'FFN · interpretation', index: 2, total: 3, color: ACCENT.amber },
@@ -310,6 +318,7 @@ Interpretability research is largely about teasing out what each dimension repre
     id: 'gelu',
     section: ACT_II,
     breadcrumb: ['Block 0', 'FFN', 'Activation'],
+    focusedToken: 3,
     kicker: 'activation functions',
     title: 'ReLU · GELU · Swish.',
     subGroup: { label: 'FFN · activation detail', index: 3, total: 3, color: ACCENT.amber },
@@ -351,6 +360,7 @@ Empirically, smooth activations train a bit faster and reach slightly better fin
     id: 'stack',
     section: ACT_III,
     breadcrumb: ['Stack of 6', 'One signal climbing'],
+    focusedToken: 3,
     kicker: 'residual stack',
     title: 'Stack six blocks.',
     caption:
@@ -369,6 +379,7 @@ Each block asks "given what I just read, what's a better representation?" and nu
     id: 'sample',
     section: ACT_III,
     breadcrumb: ['Output', 'Next-token pick'],
+    focusedToken: 11,
     kicker: 'softmax + sampling',
     title: 'Guess the next character.',
     caption:
@@ -659,6 +670,7 @@ Stacked together, these changes give a faster, smaller, slightly better model wi
     id: 'output',
     section: ACT_VI,
     breadcrumb: ['Output', 'Forward pass replay'],
+    focusedToken: 11,
     kicker: 'the generation',
     title: 'And this is what comes out.',
     caption:
