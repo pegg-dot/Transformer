@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import Link from 'next/link'
 import { PromptProvider, usePrompt, MAX_LEN } from './promptContext'
 import { ModelMap3D, type ModelPart } from './modelmap'
 import { STAGE_VARIANTS, KIND_TIMING, incomingKindFor } from './transitions'
@@ -28,6 +27,8 @@ interface Props {
   scenes: MovieScene[]
 }
 
+const ACCENT_BLUE = '#60a5fa'
+
 export function MovieOrchestrator(props: Props) {
   return (
     <PromptProvider>
@@ -38,7 +39,8 @@ export function MovieOrchestrator(props: Props) {
 
 function Inner({ scenes }: Props) {
   const [idx, setIdx] = useState(0)
-  const [playing, setPlaying] = useState(true)
+  const [started, setStarted] = useState(false)
+  const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [elapsed, setElapsed] = useState(0)
   const [cycle, setCycle] = useState(0)
@@ -123,12 +125,16 @@ function Inner({ scenes }: Props) {
       }
       if (e.key === ' ') {
         e.preventDefault()
-        setPlaying((p) => !p)
+        if (!started) {
+          begin()
+        } else {
+          setPlaying((p) => !p)
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [started])
 
   if (!current) return null
   const total = scenes.reduce((a, s) => a + s.durationMs, 0)
@@ -146,6 +152,7 @@ function Inner({ scenes }: Props) {
     setCycle((c) => c + 1)
     setFinished(false)
     setPlaying(true)
+    setStarted(true)
     setSceneListOpen(false)
   }
 
@@ -156,6 +163,17 @@ function Inner({ scenes }: Props) {
     setCycle((c) => c + 1)
     setFinished(false)
     setPlaying(true)
+    setStarted(true)
+  }
+
+  function begin() {
+    setStarted(true)
+    setPlaying(true)
+    // Force the current scene to remount so its animations start fresh
+    // when the user actually presses Play (otherwise they fire while the
+    // splash is still covering the canvas).
+    setElapsed(0)
+    setCycle((c) => c + 1)
   }
 
   return (
@@ -163,12 +181,22 @@ function Inner({ scenes }: Props) {
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg)]">
       {/* Header — single row, compact */}
       <header className="relative z-20 flex h-12 shrink-0 items-center gap-4 border-b border-[var(--rule)] px-4">
-        <Link
-          href="/"
+        <button
+          type="button"
+          onClick={() => {
+            lastAdvancedFromRef.current = null
+            setIdx(0)
+            setElapsed(0)
+            setCycle((c) => c + 1)
+            setFinished(false)
+            setPlaying(false)
+            setStarted(false)
+          }}
           className="mono shrink-0 text-[11px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
+          title="Back to start"
         >
-          ← /play
-        </Link>
+          transformer.live
+        </button>
 
         {/* Section · title */}
         <AnimatePresence mode="wait">
@@ -457,16 +485,10 @@ function Inner({ scenes }: Props) {
                     <button
                       type="button"
                       onClick={restart}
-                      className="rounded-full border border-[var(--rule-strong)] px-4 py-1.5 text-[var(--fg-muted)] hover:border-[var(--accent)] hover:text-[var(--fg)]"
+                      className="rounded-full border border-[var(--accent)] bg-[rgba(96,165,250,0.1)] px-4 py-1.5 text-[var(--accent)] hover:bg-[rgba(96,165,250,0.2)]"
                     >
                       ↺ replay
                     </button>
-                    <Link
-                      href="/"
-                      className="rounded-full border border-[var(--accent)] bg-[rgba(96,165,250,0.1)] px-4 py-1.5 text-[var(--accent)] hover:bg-[rgba(96,165,250,0.2)]"
-                    >
-                      run the real model →
-                    </Link>
                   </div>
                 </div>
               </motion.div>
@@ -528,6 +550,44 @@ function Inner({ scenes }: Props) {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Press-play splash — shown on first load until user clicks play */}
+        <AnimatePresence>
+          {!started && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+              className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-[rgba(7,7,9,0.94)] backdrop-blur-md"
+            >
+              <div
+                className="small-caps text-[11px] tracking-[0.25em]"
+                style={{ color: ACCENT_BLUE }}
+              >
+                transformer.live
+              </div>
+              <div className="display mt-5 max-w-[900px] px-6 text-center text-[clamp(40px,6.5vw,76px)] leading-[1.05] text-[var(--fg)]">
+                Watch a transformer think.
+              </div>
+              <p className="mt-5 max-w-[560px] px-6 text-center text-[14px] leading-7 text-[var(--fg-muted)]">
+                A char-level GPT trained on Shakespeare, end-to-end. From prompt to next token — every layer, every head. About 10 minutes.
+              </p>
+              <button
+                type="button"
+                onClick={begin}
+                className="group mt-10 flex items-center gap-3 rounded-full border bg-[rgba(96,165,250,0.1)] px-9 py-4 transition-colors hover:bg-[rgba(96,165,250,0.22)]"
+                style={{ borderColor: ACCENT_BLUE, color: ACCENT_BLUE }}
+              >
+                <span className="text-[14px] leading-none">▶</span>
+                <span className="display text-[18px] leading-none">Play</span>
+              </button>
+              <div className="mt-8 mono text-[10px] tracking-wider text-[var(--fg-dim)]">
+                space = play/pause · i = scene details · esc = close popovers
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Bottom dock: caption + timeline. Fixed height, always visible. */}
@@ -552,7 +612,13 @@ function Inner({ scenes }: Props) {
         <div className="flex items-center gap-3 px-4 py-2">
           <button
             type="button"
-            onClick={() => setPlaying((p) => !p)}
+            onClick={() => {
+              if (!started) {
+                begin()
+              } else {
+                setPlaying((p) => !p)
+              }
+            }}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--rule-strong)] text-[11px] text-[var(--fg-muted)] hover:border-[var(--accent)] hover:text-[var(--fg)]"
             title="Play/pause (space)"
           >

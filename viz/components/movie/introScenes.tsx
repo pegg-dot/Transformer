@@ -19,103 +19,260 @@ const PROMPT_TEXT = 'What if I asked my AI to finish this sentence: to be, or no
 
 export function IntroColdOpenPanel() {
   const speed = useSpeed()
-  const CHAR_MS = 70
-  const TYPE_START_S = 1.2
+  const CHAR_MS = 80
   const chars = PROMPT_TEXT.split('')
-  const TYPING_DONE_S = TYPE_START_S + (chars.length * CHAR_MS) / 1000 / speed
-  const SEND_PULSE_S = TYPING_DONE_S + 0.4 / speed
-  const DISSOLVE_S = SEND_PULSE_S + 1.8 / speed
+
+  // ─── Timeline (seconds, at speed 1×) ─────────────────────────────
+  // PHASE 1 — title card alone, centered
+  const T_CARD = 0.3
+  const T_CARD_OUT = 2.4
+  // PHASE 2 — small header + empty chat input
+  const T_HEADER = 2.7
+  const T_INPUT = 3.0
+  // PHASE 3 — typing → send → user message → assistant thinking
+  const T_TYPE = 3.6
+  const T_TYPING_DONE = T_TYPE + (chars.length * CHAR_MS) / 1000
+  const T_SEND = T_TYPING_DONE + 0.4
+  const T_INPUT_OUT = T_SEND + 0.5
+  const T_USER = T_SEND + 0.55
+  const T_AI = T_USER + 0.75
+  const T_DOTS = T_AI + 0.3
+  const T_HINT = T_DOTS + 2.5
+
+  // Card opacity keyframes — fade in 0.5s, hold, fade out + slide up
+  const CARD_DUR = T_CARD_OUT - T_CARD + 0.45
+  const cardTimes = [0, 0.5 / CARD_DUR, (T_CARD_OUT - T_CARD) / CARD_DUR, 1]
+  // Input opacity keyframes
+  const INPUT_DUR = T_INPUT_OUT - T_INPUT + 0.5
+  const inputTimes = [0, 0.5 / INPUT_DUR, (T_INPUT_OUT - T_INPUT) / INPUT_DUR, 1]
 
   return (
     <div className="relative h-full w-full">
+      {/* ───────── PHASE 1 — title card, centered ───────── */}
       <motion.div
-        className="absolute inset-0 flex items-center justify-center px-10"
-        initial={{ opacity: 1 }}
-        animate={{ opacity: 0 }}
-        transition={{ delay: DISSOLVE_S, duration: 1.2 / speed, ease: 'easeIn' }}
+        className="pointer-events-none absolute inset-0 flex items-center justify-center px-10"
+        initial={{ opacity: 0, y: 8, scale: 0.97 }}
+        animate={{
+          opacity: [0, 1, 1, 0],
+          y: [8, 0, 0, -16],
+          scale: [0.97, 1, 1, 0.96],
+        }}
+        transition={{
+          delay: T_CARD / speed,
+          duration: CARD_DUR / speed,
+          times: cardTimes,
+          ease: 'easeInOut',
+        }}
       >
-        <motion.div
-          className="w-full max-w-[540px] rounded-[6px] border px-4 py-3.5"
+        <div
+          className="rounded-[10px] border-2 px-9 py-8 text-center"
           style={{
-            borderColor: 'rgba(115, 115, 115, 0.5)',
-            background: 'rgba(18, 18, 21, 0.85)',
+            borderColor: 'rgba(96,165,250,0.4)',
+            background: 'rgba(18,18,21,0.95)',
+            boxShadow: '0 14px 48px rgba(96,165,250,0.12)',
+            maxWidth: 520,
           }}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 / speed, duration: 0.5 / speed, ease: 'easeOut' }}
         >
-          <div className="flex items-center gap-3">
-            <div className="flex-1 min-h-[22px] font-mono text-[14px]" style={{ color: FG }}>
-              {chars.map((ch, i) => (
-                <motion.span
-                  key={i}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{
-                    delay: TYPE_START_S + (i * CHAR_MS) / 1000 / speed,
-                    duration: 0.001,
-                  }}
-                >
-                  {ch === ' ' ? '\u00A0' : ch}
-                </motion.span>
-              ))}
-              <motion.span
-                className="inline-block align-middle"
-                style={{
-                  width: 2,
-                  height: 16,
-                  marginLeft: 2,
-                  background: ACCENT.blue,
-                }}
-                animate={{ opacity: [0, 1, 1, 0] }}
-                transition={{ duration: 1.0 / speed, repeat: Infinity, times: [0, 0.1, 0.9, 1] }}
-              />
-            </div>
-            <motion.div
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px]"
-              style={{
-                borderColor: ACCENT.blue,
-                border: '1px solid',
-                color: ACCENT.blue,
-                opacity: 0.8,
-              }}
-              animate={{
-                opacity: [0.8, 1, 0.8],
-                boxShadow: [
-                  '0 0 0 rgba(96,165,250,0)',
-                  '0 0 14px rgba(96,165,250,0.6)',
-                  '0 0 0 rgba(96,165,250,0)',
-                ],
-              }}
-              transition={{
-                delay: SEND_PULSE_S,
-                duration: 1.0 / speed,
-                ease: 'easeOut',
-                repeat: 0,
-              }}
-            >
-              ↵
-            </motion.div>
+          <div
+            className="font-mono text-[10px] tracking-[0.28em] uppercase"
+            style={{ color: ACCENT.blue }}
+          >
+            prologue · the setup
           </div>
-        </motion.div>
+          <div
+            className="mt-3 font-serif italic text-[34px] leading-[1.05]"
+            style={{ color: FG }}
+          >
+            This is what happens inside.
+          </div>
+          <div className="mt-3 text-[13px] leading-6" style={{ color: DIM }}>
+            A full transformer, from prompt to next token.
+            <br />
+            Every layer, every head.
+          </div>
+        </div>
       </motion.div>
 
-      <motion.div
-        className="absolute inset-x-0 top-10 flex flex-col items-center gap-1.5 text-center"
-        initial={{ opacity: 0, y: -6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: DISSOLVE_S + 0.6 / speed, duration: 0.8 / speed, ease: 'easeOut' }}
-      >
-        <div className="font-mono text-[10px] tracking-[0.18em] uppercase" style={{ color: ACCENT.blue }}>
-          prologue
+      {/* ───────── PHASE 2/3 — header at top + chat ───────── */}
+      <div className="absolute inset-0 flex flex-col items-center justify-start gap-5 px-10 pt-8">
+        {/* Small header (after card dismisses) */}
+        <motion.div
+          className="flex flex-col items-center gap-1 text-center"
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: T_HEADER / speed, duration: 0.5 / speed, ease: 'easeOut' }}
+        >
+          <div
+            className="font-mono text-[9px] tracking-[0.26em] uppercase"
+            style={{ color: ACCENT.blue, opacity: 0.85 }}
+          >
+            prologue · the setup
+          </div>
+          <div
+            className="font-serif italic text-[18px] leading-tight"
+            style={{ color: FG, opacity: 0.85 }}
+          >
+            This is what happens inside.
+          </div>
+        </motion.div>
+
+        {/* Chat zone — input fades out, conversation fades in */}
+        <div className="relative w-full max-w-[560px]" style={{ minHeight: 220 }}>
+          {/* Input box */}
+          <motion.div
+            className="absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-[10px] border-2 px-4 py-3.5"
+            style={{
+              borderColor: 'rgba(96, 165, 250, 0.45)',
+              background: 'rgba(18, 18, 21, 0.95)',
+              boxShadow: '0 8px 32px rgba(96,165,250,0.12)',
+            }}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{
+              opacity: [0, 1, 1, 0],
+              y: [12, 0, 0, -8],
+            }}
+            transition={{
+              delay: T_INPUT / speed,
+              duration: INPUT_DUR / speed,
+              times: inputTimes,
+              ease: 'easeInOut',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex-1 min-h-[22px] font-mono text-[14px]" style={{ color: FG }}>
+                {chars.map((ch, i) => (
+                  <motion.span
+                    key={i}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{
+                      delay: T_TYPE / speed + (i * CHAR_MS) / 1000 / speed,
+                      duration: 0.04 / speed,
+                    }}
+                  >
+                    {ch === ' ' ? '\u00A0' : ch}
+                  </motion.span>
+                ))}
+                <motion.span
+                  className="inline-block align-middle"
+                  style={{ width: 2, height: 16, marginLeft: 2, background: ACCENT.blue }}
+                  animate={{ opacity: [0, 1, 1, 0] }}
+                  transition={{ duration: 1.0 / speed, repeat: Infinity, times: [0, 0.1, 0.9, 1] }}
+                />
+              </div>
+              <motion.div
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px]"
+                style={{
+                  borderColor: ACCENT.blue,
+                  border: '1px solid',
+                  color: ACCENT.blue,
+                  opacity: 0.55,
+                }}
+                animate={{
+                  opacity: [0.55, 1, 0.85],
+                  boxShadow: [
+                    '0 0 0 rgba(96,165,250,0)',
+                    '0 0 24px rgba(96,165,250,0.9)',
+                    '0 0 6px rgba(96,165,250,0.25)',
+                  ],
+                }}
+                transition={{
+                  delay: T_SEND / speed,
+                  duration: 0.9 / speed,
+                  ease: 'easeOut',
+                  repeat: 0,
+                }}
+              >
+                ↵
+              </motion.div>
+            </div>
+          </motion.div>
+
+          {/* Chat thread — user bubble + AI thinking */}
+          <div className="absolute inset-0 flex flex-col justify-center gap-3">
+            {/* User message */}
+            <motion.div
+              className="self-end max-w-[88%] rounded-[14px] rounded-br-[4px] px-4 py-2.5"
+              style={{
+                background: 'rgba(96,165,250,0.18)',
+                border: '1px solid rgba(96,165,250,0.45)',
+                color: FG,
+              }}
+              initial={{ opacity: 0, y: 14, scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{
+                delay: T_USER / speed,
+                duration: 0.45 / speed,
+                ease: [0.22, 1.2, 0.36, 1],
+              }}
+            >
+              <div className="text-[13px] leading-5">{PROMPT_TEXT}</div>
+            </motion.div>
+
+            {/* AI message — thinking dots */}
+            <motion.div
+              className="self-start max-w-[88%] rounded-[14px] rounded-bl-[4px] px-4 py-3"
+              style={{
+                background: 'rgba(115,115,115,0.10)',
+                border: '1px solid rgba(115,115,115,0.32)',
+              }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                delay: T_AI / speed,
+                duration: 0.4 / speed,
+                ease: 'easeOut',
+              }}
+            >
+              <div
+                className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.18em]"
+                style={{ color: DIM }}
+              >
+                assistant
+              </div>
+              <div className="flex items-end gap-2 h-3">
+                {[0, 1, 2].map((i) => (
+                  <motion.span
+                    key={i}
+                    className="inline-block rounded-full"
+                    style={{ width: 8, height: 8, background: FG }}
+                    initial={{ opacity: 0.2, y: 0, scale: 0.8 }}
+                    animate={{
+                      opacity: [0.2, 1, 0.2],
+                      y: [0, -6, 0],
+                      scale: [0.8, 1.05, 0.8],
+                    }}
+                    transition={{
+                      delay: (T_DOTS + i * 0.16) / speed,
+                      duration: 1.0 / speed,
+                      ease: 'easeInOut',
+                      repeat: Infinity,
+                    }}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          </div>
         </div>
-        <div className="font-serif text-[22px] italic" style={{ color: FG }}>
-          This is what happens inside.
-        </div>
-        <div className="max-w-[480px] text-[13px]" style={{ color: DIM }}>
-          A full transformer, from prompt to next token. Every layer, every head.
-        </div>
-      </motion.div>
+
+        {/* Hint pointing into the next scene */}
+        <motion.div
+          className="mt-2 font-mono text-[11px] tracking-[0.22em] uppercase"
+          style={{ color: ACCENT.blue }}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: [0, 1, 1], y: [4, 0, 0] }}
+          transition={{
+            delay: T_HINT / speed,
+            duration: 1.5 / speed,
+            times: [0, 0.4, 1],
+            ease: 'easeOut',
+            repeat: Infinity,
+            repeatType: 'mirror',
+          }}
+        >
+          let&apos;s go inside ↓
+        </motion.div>
+      </div>
     </div>
   )
 }
