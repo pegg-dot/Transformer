@@ -7,9 +7,11 @@ import { mulberry32 } from './shared/rng'
 import { clamp01, smoothstep, loopPhase } from './shared/easing'
 import { Slab } from './shared/Slab'
 import { Label } from './shared/Label'
+import { VectorGrid } from './shared/VectorGrid'
 
 const V = 16
 const D = 20
+const VEC_ROWS = 12 // protagonist column compressed from d=384
 
 export default function SceneEmbed({ t, duration }: SceneProps) {
   const p = clamp01(t / Math.max(0.01, duration * 0.75))
@@ -76,6 +78,21 @@ export default function SceneEmbed({ t, duration }: SceneProps) {
           )
         })}
       </group>
+
+      {/* Protagonist column: the same row, materialized as a tall vertical
+          vector grid that lingers after the horizontal "fly-out" finishes.
+          This is the form the vector takes for the rest of the tour. */}
+      <VectorGrid
+        position={[matW / 2 + 1.5, -0.2, 0.1]}
+        values={Array.from({ length: VEC_ROWS }).map((_, r) =>
+          matrix[(rowIdx * D + (r * D / VEC_ROWS) | 0) % (V * D)]
+        )}
+        cellWidth={0.18}
+        cellHeight={0.08}
+        cellGap={0.01}
+        label="d=384"
+        fade={pFly}
+      />
     </group>
   )
 }
