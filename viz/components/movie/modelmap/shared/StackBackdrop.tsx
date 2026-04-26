@@ -15,6 +15,13 @@ export interface StackBackdropProps {
 export function StackBackdrop({ mode, activeBlock }: StackBackdropProps) {
   const baseOpacity = mode === 'A' ? 0.3 : mode === 'C' ? 0.22 : 0.08
 
+  // When a specific block is active (camera dollied into it) every other
+  // stage element recesses further so the active one reads as "filling the
+  // frame." When nothing is highlighted (overview / training) the stack
+  // holds its baseline opacity.
+  const hasActive = activeBlock !== undefined
+  const recess = hasActive ? 0.55 : 1
+
   return (
     <group>
       <Slab
@@ -22,13 +29,13 @@ export function StackBackdrop({ mode, activeBlock }: StackBackdropProps) {
         width={INPUT_LEN * 0.8}
         height={SLAB_H}
         color={COLORS.violet}
-        opacity={baseOpacity * 0.5}
+        opacity={baseOpacity * 0.5 * recess}
         showCornerTicks={false}
       />
 
       {Array.from({ length: N_BLOCKS }).map((_, bi) => {
         const isActive = activeBlock === bi
-        const opacity = isActive ? baseOpacity * 2.2 : baseOpacity
+        const opacity = isActive ? baseOpacity * 2.2 : baseOpacity * recess
         const cx = blockStart(bi) + BLOCK_LEN / 2
         return (
           <group key={bi}>
@@ -63,7 +70,7 @@ export function StackBackdrop({ mode, activeBlock }: StackBackdropProps) {
         width={OUTPUT_LEN * 0.8}
         height={SLAB_H}
         color={COLORS.gold}
-        opacity={baseOpacity * 0.5}
+        opacity={baseOpacity * 0.5 * recess}
         showCornerTicks={false}
       />
     </group>
