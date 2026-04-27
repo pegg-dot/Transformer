@@ -82,7 +82,11 @@ export function IntroColdOpenPanel() {
   const T_TOKENS_BEAT = T_PIPELINE_START + 0.8
   const T_IDS_BEAT = T_TOKENS_BEAT + 0.8
   const T_MATRIX_BEAT = T_IDS_BEAT + 0.9
-  const T_MATRIX_HOLD = T_MATRIX_BEAT + 1.5
+  // Hold extended (was +1.5) so the matrix has time to register as the
+  // "thing that becomes Scene 2's slab". Earlier pipeline rows dim during
+  // the hold so the matrix is the clear focal point.
+  const T_MATRIX_FOCUS = T_MATRIX_BEAT + 1.6
+  const T_MATRIX_HOLD = T_MATRIX_BEAT + 4.5
   // Final beat: the chat + pipeline panel morphs down-and-left toward where
   // the model's input slab will appear in the next scene. Triggers after
   // the matrix has been visible long enough to read.
@@ -443,6 +447,19 @@ export function IntroColdOpenPanel() {
             minWidth: 580,
           }}
         >
+          {/* Rows 1–3 (prompt, tokens, IDs) — dim to ~30% during the matrix
+              hold so the matrix becomes the clear focal point. */}
+          <motion.div
+            className="flex flex-col items-stretch gap-2"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: [1, 1, 0.32] }}
+            transition={{
+              delay: T_PIPELINE_START / speed,
+              duration: (T_MATRIX_FOCUS - T_PIPELINE_START + 0.6) / speed,
+              times: [0, (T_MATRIX_FOCUS - T_PIPELINE_START) / (T_MATRIX_FOCUS - T_PIPELINE_START + 0.6), 1],
+              ease: 'easeInOut',
+            }}
+          >
           {/* Row 1: YOUR PROMPT */}
           <PipelineRow
             label="YOUR PROMPT"
@@ -525,15 +542,33 @@ export function IntroColdOpenPanel() {
           </PipelineRow>
 
           <PipelineArrow delay={T_MATRIX_BEAT - 0.25} speed={speed} />
+          </motion.div>
 
-          {/* Row 4: INPUT MATRIX */}
+          {/* Row 4: INPUT MATRIX — stays bright during hold, breathes a soft
+              violet glow so it reads as a live focal object. */}
           <PipelineRow
             label="INPUT MATRIX"
             labelColor={ACCENT.violet}
             delay={T_MATRIX_BEAT}
             speed={speed}
           >
-            <div className="flex items-center gap-3">
+            <motion.div
+              className="flex items-center gap-3"
+              animate={{
+                filter: [
+                  `drop-shadow(0 0 0 ${ACCENT.violet}00)`,
+                  `drop-shadow(0 0 16px ${ACCENT.violet}cc)`,
+                  `drop-shadow(0 0 4px ${ACCENT.violet}44)`,
+                  `drop-shadow(0 0 16px ${ACCENT.violet}cc)`,
+                ],
+              }}
+              transition={{
+                delay: (T_MATRIX_FOCUS) / speed,
+                duration: 3.0 / speed,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            >
               <motion.svg
                 width={pipelineChars.length * 30}
                 height={56}
@@ -545,8 +580,8 @@ export function IntroColdOpenPanel() {
                   ease: [0.22, 1.1, 0.36, 1],
                 }}
               >
-                {/* Border */}
-                <rect
+                {/* Border — breathes during the hold */}
+                <motion.rect
                   x={0.5}
                   y={0.5}
                   width={pipelineChars.length * 30 - 1}
@@ -556,6 +591,16 @@ export function IntroColdOpenPanel() {
                   stroke={ACCENT.violet}
                   strokeWidth={1.4}
                   strokeOpacity={0.85}
+                  animate={{
+                    strokeWidth: [1.4, 2.4, 1.4],
+                    strokeOpacity: [0.85, 1, 0.85],
+                  }}
+                  transition={{
+                    delay: T_MATRIX_FOCUS / speed,
+                    duration: 3.0 / speed,
+                    repeat: Infinity,
+                    ease: 'easeInOut',
+                  }}
                 />
                 {/* Cells: T columns × 7 d_model rows */}
                 {pipelineChars.map((_, t) =>
@@ -602,7 +647,7 @@ export function IntroColdOpenPanel() {
                   this enters Block 0 →
                 </span>
               </motion.div>
-            </div>
+            </motion.div>
           </PipelineRow>
         </div>
       </motion.div>
