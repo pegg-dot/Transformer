@@ -1778,255 +1778,574 @@ export function VizEmbedding() {
 
 /* ─────────────────── Scene E · Positional Encoding ─────────────────── */
 
+/**
+ * Positional Encoding walkthrough.
+ *
+ * Visual story per design feedback:
+ *   1. Top — wave bank: 5 sinusoids (ω₀..ω₄) across token positions 1..8.
+ *   2. Active position has a tall "sampling window" (rounded violet rect).
+ *      Colored sample dots brighten on every wave at that position.
+ *   3. Vertical dashed guide lines descend from the sample dots into the
+ *      mini-PE(i) column to the right of the wave bank, showing how
+ *      sampled wave values become PE(i).
+ *   4. Below the waves: three FULL-SIZE vector columns side by side —
+ *         x_i^embed   +   PE(i)   =   x_i^input
+ *      The PE column shares values with the mini-PE bar above, so the
+ *      viewer reads "the wave samples flow down into this addition".
+ *   5. The input vector is the payoff — brighter color, soft glow.
+ */
 export function VizPositional() {
   const speed = useSpeed()
+
   const POSITIONS = 8
-  const D = 12 // visible dim count
+  const NUM_WAVES = 5
+  const NUM_DIMS = 12 // visible cell count for embedding/PE/input vectors
 
-  // Pre-compute sinusoidal values for each (pos, dim)
-  const peValues = useMemo(() => {
-    const arr: number[][] = []
-    for (let p = 0; p < POSITIONS; p++) {
-      const row: number[] = []
-      for (let d = 0; d < D; d++) {
-        const dim = Math.floor(d / 2)
-        const freq = 1 / Math.pow(10000, (2 * dim) / D)
-        row.push(d % 2 === 0 ? Math.sin(p * freq * 1.4) : Math.cos(p * freq * 1.4))
-      }
-      arr.push(row)
-    }
-    return arr
-  }, [])
+  // Cycle through positions
+  const [pos, setPos] = useState(5)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPos((p) => (p + 1) % POSITIONS),
+      1800 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
 
-  // Embedding values (random but stable)
-  const embValues = useMemo(() => {
-    const out: number[] = []
-    for (let i = 0; i < D; i++) out.push(Math.sin(i * 1.7 + 0.5) * 0.6)
-    return out
-  }, [])
+  // ── Geometry ──────────────────────────────────────────────────────────
+  const WAVE_X0 = 140
+  const WAVE_X1 = 920
+  const WAVE_BASE_Y = 145
+  const WAVE_GAP = 48
+  const WAVE_AREA_BOT = WAVE_BASE_Y + (NUM_WAVES - 1) * WAVE_GAP + 60
 
-  const POS_X_START = 230
-  const POS_DX = 130
-  const COL_W = 88
+  const posX = (p: number): number =>
+    WAVE_X0 + (p / (POSITIONS - 1)) * (WAVE_X1 - WAVE_X0)
+
+  // Wave properties
+  const waveColors = [
+    ACCENT.cyan,   // ω0
+    ACCENT.blue,   // ω1
+    ACCENT.violet, // ω2
+    ACCENT.amber,  // ω3
+    ACCENT.mint,   // ω4
+  ]
+  const waveFreqs = [0.6, 0.95, 1.4, 1.9, 2.5]
+  const waveAmps = [18, 16, 14, 12, 10]
+
+  // Sample value at a position on wave w (in SVG y-offset)
+  const sampleAtPos = (p: number, w: number): number => {
+    const t = (p / (POSITIONS - 1)) * Math.PI * 2 * waveFreqs[w]
+    return Math.sin(t + w * 0.7) * waveAmps[w]
+  }
+  // Pure value in [-1, 1]
+  const sampleValue = (p: number, w: number): number => {
+    const t = (p / (POSITIONS - 1)) * Math.PI * 2 * waveFreqs[w]
+    return Math.sin(t + w * 0.7)
+  }
+
+  // Mini PE(i) column geometry (right of wave bank)
+  const MINI_PE_X = 980
+  const MINI_PE_W = 36
+  const MINI_PE_CELL_H = 22
+  const MINI_PE_Y = WAVE_BASE_Y - 12
+
+  // Vector ops zone (below wave bank)
+  const OPS_TOP_Y = WAVE_AREA_BOT + 90
+  const VEC_W = 60
   const CELL_H = 22
+  const VEC_H = NUM_DIMS * CELL_H
+  // Layout: embedding | + | PE | = | input — centered around x=700
+  const PLUS_W = 60
+  const EQ_W = 60
+  const TOTAL_W = VEC_W + PLUS_W + VEC_W + EQ_W + VEC_W
+  const OPS_LEFT = (1400 - TOTAL_W) / 2 // centered in 1400-wide viewBox
+  const X_EMBED = OPS_LEFT
+  const X_PLUS = X_EMBED + VEC_W + PLUS_W / 2
+  const X_PE = X_EMBED + VEC_W + PLUS_W
+  const X_EQ = X_PE + VEC_W + EQ_W / 2
+  const X_INPUT = X_PE + VEC_W + EQ_W
 
-  const WAVE_X0 = POS_X_START - 30
-  const WAVE_X1 = POS_X_START + (POSITIONS - 1) * POS_DX + 30
+  // ── Cell values (signed) ──────────────────────────────────────────────
+  // Embedding values — deterministic, position-invariant
+  const embedValue = (d: number): number =>
+    Math.sin(d * 1.27 + 0.7) * 0.6
 
-  const colorWave = [ACCENT.cyan, ACCENT.blue, ACCENT.violet, ACCENT.amber, ACCENT.mint]
+  // PE value at position p, dim d — wraps wave palette
+  const peValue = (p: number, d: number): number => {
+    const w = d % NUM_WAVES
+    return sampleValue(p, w)
+  }
+
+  // Input cell = embed + PE (clipped to [-1, 1])
+  const inputValue = (p: number, d: number): number => {
+    const v = embedValue(d) + peValue(p, d)
+    return Math.max(-1, Math.min(1, v / 1.4))
+  }
+
+  // Diverging color (positive violet, negative red) — same as Scene 5
+  const colorFor = (v: number, hue: 'violet' | 'wave' = 'violet', d?: number): string => {
+    if (hue === 'wave' && d !== undefined) {
+      const c = waveColors[d % NUM_WAVES]
+      const a = 0.18 + Math.min(1, Math.abs(v)) * 0.6
+      // Convert hex to rgba — simple approach: just use the color directly
+      // with alpha. Negative values get a faded look (lower alpha + slight desaturation
+      // by mixing with red).
+      if (v >= 0) return `${c}${Math.round(a * 255).toString(16).padStart(2, '0')}`
+      // Negative — pulled toward red
+      const a2 = 0.18 + Math.min(1, Math.abs(v)) * 0.55
+      return `rgba(248,113,113,${a2})`
+    }
+    if (v >= 0) {
+      const a = 0.10 + Math.min(1, v) * 0.62
+      return `rgba(167,139,250,${a})`
+    }
+    const a = 0.10 + Math.min(1, -v) * 0.55
+    return `rgba(248,113,113,${a})`
+  }
 
   return (
     <div className="relative h-full w-full">
-      <svg viewBox="0 0 1400 900" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <svg viewBox="0 0 1400 1050" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
         <defs>
           <filter id="pos-glow"><feGaussianBlur stdDeviation="2" /></filter>
+          <filter id="input-bloom" x="-30%" y="-10%" width="160%" height="120%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
         </defs>
 
-        {/* Top — wave bank */}
-        <text x={WAVE_X0} y={45} fontSize="11" fontFamily="var(--font-mono)"
-          fill={ACCENT.dim} letterSpacing="0.22em">POSITIONAL ENCODING (PE)</text>
+        {/* ────── Header ────── */}
+        <text x={WAVE_X0 - 40} y={70} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.22em">
+          POSITIONAL ENCODING (PE)
+        </text>
 
-        {Array.from({ length: 5 }).map((_, w) => {
-          const freq = 0.6 + w * 0.6
-          const ampl = 22 - w * 1.8
-          const yBase = 90 + w * 36
+        {/* ────── Wave bank ────── */}
+        {/* Vertical position guide-lines (from top of waves to position labels) */}
+        {Array.from({ length: POSITIONS }).map((_, p) => (
+          <line
+            key={`guide-${p}`}
+            x1={posX(p)}
+            x2={posX(p)}
+            y1={WAVE_BASE_Y - 20}
+            y2={WAVE_AREA_BOT - 30}
+            stroke={ACCENT.dim}
+            strokeOpacity={p === pos ? 0.55 : 0.18}
+            strokeDasharray="3 5"
+            strokeWidth={1}
+          />
+        ))}
+
+        {/* Active position sampling window — rounded violet rectangle that
+            spans the wave bank vertically. */}
+        <motion.rect
+          animate={{ x: posX(pos) - 30 }}
+          transition={{ type: 'spring', stiffness: 140, damping: 22 }}
+          y={WAVE_BASE_Y - 26}
+          width={60}
+          height={(NUM_WAVES - 1) * WAVE_GAP + 70}
+          rx={10}
+          fill="rgba(167,139,250,0.08)"
+          stroke={ACCENT.violet}
+          strokeWidth={2}
+          strokeOpacity={0.85}
+        />
+
+        {/* Wave curves */}
+        {Array.from({ length: NUM_WAVES }).map((_, w) => {
+          const yBase = WAVE_BASE_Y + w * WAVE_GAP
+          // Build smooth path through wave samples
+          const segments = 80
           const pts: string[] = []
-          for (let x = WAVE_X0; x <= WAVE_X1; x += 4) {
-            const t = (x - WAVE_X0) / (WAVE_X1 - WAVE_X0)
-            const y = yBase + Math.sin(t * Math.PI * 2 * freq + w * 0.7) * ampl
-            pts.push(`${x === WAVE_X0 ? 'M' : 'L'} ${x} ${y}`)
+          for (let s = 0; s <= segments; s++) {
+            const t = s / segments
+            const x = WAVE_X0 + t * (WAVE_X1 - WAVE_X0)
+            const phase = t * Math.PI * 2 * waveFreqs[w]
+            const y = yBase + Math.sin(phase + w * 0.7) * waveAmps[w]
+            pts.push(`${s === 0 ? 'M' : 'L'} ${x} ${y}`)
           }
           return (
-            <g key={w}>
-              <text x={WAVE_X0 - 28} y={yBase + 4} textAnchor="end" fontSize="13"
-                fontFamily="var(--font-display)" fontStyle="italic" fill={colorWave[w]}>
-                ω<tspan fontSize="9" dy="3">{w}</tspan>
+            <g key={`wave-${w}`}>
+              {/* ω label */}
+              <text
+                x={WAVE_X0 - 40}
+                y={yBase + 5}
+                fontSize="14"
+                fontFamily="var(--font-display)"
+                fontStyle="italic"
+                fill={waveColors[w]}
+              >
+                ω
+                <tspan fontSize="10" dy="3">{w}</tspan>
               </text>
-              <motion.path d={pts.join(' ')} fill="none" stroke={colorWave[w]}
-                strokeOpacity={0.65} strokeWidth={1.5}
-                initial={{ pathLength: 0 }} animate={{ pathLength: 1 }}
-                transition={{ duration: 1.6 / speed, delay: w * 0.18 / speed }} />
+              {/* Wave path */}
+              <motion.path
+                d={pts.join(' ')}
+                fill="none"
+                stroke={waveColors[w]}
+                strokeOpacity={0.75}
+                strokeWidth={1.5}
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 1.2 / speed, delay: w * 0.15 / speed }}
+              />
               {/* Sample dots at each position */}
               {Array.from({ length: POSITIONS }).map((_, p) => {
-                const t = p / (POSITIONS - 1)
-                const x = WAVE_X0 + t * (WAVE_X1 - WAVE_X0)
-                const y = yBase + Math.sin(t * Math.PI * 2 * freq + w * 0.7) * ampl
+                const isActive = p === pos
+                const cx = posX(p)
+                const cy = yBase + sampleAtPos(p, w)
                 return (
-                  <motion.circle key={p} cx={x} cy={y} r={3} fill={colorWave[w]}
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                    transition={{ delay: 1.8 / speed + p * 0.05 / speed }} />
+                  <motion.circle
+                    key={`dot-${w}-${p}`}
+                    cx={cx}
+                    cy={cy}
+                    fill={waveColors[w]}
+                    animate={{
+                      r: isActive ? 5 : 2.6,
+                      opacity: isActive ? 1 : 0.45,
+                    }}
+                    transition={{ duration: 0.3 }}
+                    filter={isActive ? 'url(#pos-glow)' : undefined}
+                  />
                 )
               })}
             </g>
           )
         })}
 
-        {/* Position labels */}
+        {/* Vertical guide lines from active sample dots → mini PE column */}
+        {Array.from({ length: NUM_WAVES }).map((_, w) => {
+          const yBase = WAVE_BASE_Y + w * WAVE_GAP
+          const cy = yBase + sampleAtPos(pos, w)
+          const cx = posX(pos)
+          // Target cell in mini PE
+          const targetY = MINI_PE_Y + w * MINI_PE_CELL_H + MINI_PE_CELL_H / 2
+          return (
+            <motion.path
+              key={`flow-${w}-${pos}`}
+              d={`M ${cx} ${cy} L ${MINI_PE_X - 4} ${targetY}`}
+              stroke={waveColors[w]}
+              strokeOpacity={0.45}
+              strokeWidth={1}
+              strokeDasharray="2 4"
+              fill="none"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 0.5 / speed }}
+            />
+          )
+        })}
+
+        {/* Position labels under wave bank */}
+        <text x={WAVE_X0 - 40} y={WAVE_AREA_BOT - 18}
+          fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.18em">
+          TOKEN POSITION{' '}
+          <tspan fontStyle="italic" fontFamily="var(--font-display)" fill={ACCENT.violet}>i</tspan>
+        </text>
         {Array.from({ length: POSITIONS }).map((_, p) => (
-          <text key={p}
-            x={POS_X_START + p * POS_DX}
-            y={310}
+          <motion.text
+            key={`pos-label-${p}`}
+            x={posX(p)}
+            y={WAVE_AREA_BOT - 18}
             textAnchor="middle"
-            fontSize="13"
+            fontSize="14"
             fontFamily="var(--font-mono)"
-            fill={ACCENT.dim}>{p + 1}</text>
-        ))}
-        <text x={WAVE_X0 - 28} y={310} textAnchor="end" fontSize="10"
-          fontFamily="var(--font-mono)" fill={ACCENT.dim}
-          letterSpacing="0.18em">TOKEN POSITION</text>
-
-        {/* Sampling lines (dropping into columns) */}
-        {Array.from({ length: POSITIONS }).map((_, p) => (
-          <motion.line key={p}
-            x1={POS_X_START + p * POS_DX}
-            x2={POS_X_START + p * POS_DX}
-            y1={88}
-            y2={335}
-            stroke={ACCENT.cyan}
-            strokeOpacity={0.25}
-            strokeDasharray="2 4"
-            strokeWidth={1}
-            initial={{ pathLength: 0 }} animate={{ pathLength: 1 }}
-            transition={{ duration: 0.6 / speed, delay: 2.0 / speed + p * 0.05 / speed }} />
+            animate={{
+              fill: p === pos ? ACCENT.violet : ACCENT.dim,
+              opacity: p === pos ? 1 : 0.55,
+            }}
+            transition={{ duration: 0.3 }}
+          >
+            {p + 1}
+          </motion.text>
         ))}
 
-        {/* EMBEDDING row label */}
-        <text x={POS_X_START - COL_W / 2 - 20} y={368} textAnchor="end" fontSize="10"
-          fontFamily="var(--font-mono)" fill={ACCENT.violet} letterSpacing="0.18em">
+        {/* ────── Mini PE(i) column on the right of the wave bank ────── */}
+        <text x={MINI_PE_X + MINI_PE_W / 2} y={MINI_PE_Y - 18}
+          textAnchor="middle"
+          fontSize="13"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill={ACCENT.violet}>
+          PE({pos + 1})
+        </text>
+        {Array.from({ length: NUM_WAVES }).map((_, w) => {
+          const v = sampleValue(pos, w)
+          return (
+            <motion.rect
+              key={`mini-${w}-${pos}`}
+              x={MINI_PE_X}
+              y={MINI_PE_Y + w * MINI_PE_CELL_H}
+              width={MINI_PE_W}
+              height={MINI_PE_CELL_H - 1}
+              initial={{ opacity: 0.3 }}
+              animate={{
+                fill: colorFor(v, 'wave', w),
+                opacity: 1,
+              }}
+              transition={{ duration: 0.4 }}
+            />
+          )
+        })}
+        {/* ⋮ continuation hint below the 5 visible PE samples */}
+        <text
+          x={MINI_PE_X + MINI_PE_W / 2}
+          y={MINI_PE_Y + NUM_WAVES * MINI_PE_CELL_H + 22}
+          textAnchor="middle"
+          fontSize="14"
+          fontFamily="var(--font-mono)"
+          fill={ACCENT.dim}
+        >
+          ⋮
+        </text>
+
+        {/* ────── Divider line (between wave zone and vector ops) ────── */}
+        <line
+          x1={120}
+          x2={1280}
+          y1={WAVE_AREA_BOT + 30}
+          y2={WAVE_AREA_BOT + 30}
+          stroke={ACCENT.rule}
+          strokeWidth={1}
+          strokeDasharray="4 6"
+          opacity="0.5"
+        />
+
+        {/* Vertical "PE flows down" channel — from mini PE → big PE column */}
+        <motion.path
+          d={`M ${MINI_PE_X + MINI_PE_W / 2} ${MINI_PE_Y + NUM_WAVES * MINI_PE_CELL_H + 30}
+              L ${MINI_PE_X + MINI_PE_W / 2} ${OPS_TOP_Y - 30}
+              L ${X_PE + VEC_W / 2} ${OPS_TOP_Y - 12}`}
+          stroke={ACCENT.violet}
+          strokeOpacity={0.35}
+          strokeDasharray="3 5"
+          strokeWidth={1.2}
+          fill="none"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 0.8 / speed, delay: 0.3 / speed }}
+        />
+
+        {/* ────── Vector operation zone — embedding + PE = input ────── */}
+        {/* EMBEDDING column */}
+        <text x={X_EMBED + VEC_W / 2} y={OPS_TOP_Y - 24}
+          textAnchor="middle"
+          fontSize="11"
+          fontFamily="var(--font-mono)"
+          fill={ACCENT.dim}
+          letterSpacing="0.22em">
           EMBEDDING
         </text>
-        <text x={POS_X_START - COL_W / 2 - 20} y={386} textAnchor="end" fontSize="10"
-          fontFamily="var(--font-display)" fontStyle="italic" fill={ACCENT.dim}>
+        <text x={X_EMBED + VEC_W / 2} y={OPS_TOP_Y - 8}
+          textAnchor="middle"
+          fontSize="11"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill={ACCENT.dim}
+          opacity={0.7}>
           (original)
         </text>
-
-        {/* Embedding columns (same vertical bar of cells per position) */}
-        {Array.from({ length: POSITIONS }).map((_, p) => (
-          <motion.g key={p} transform={`translate(${POS_X_START + p * POS_DX - COL_W / 2}, 350)`}
-            initial={{ opacity: 0, y: 360 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 / speed + p * 0.06 / speed, duration: 0.5 / speed }}>
-            {embValues.map((v, d) => {
-              const t = Math.max(-1, Math.min(1, v))
-              const fill = t >= 0
-                ? `rgba(167,139,250,${0.30 + t * 0.55})`
-                : `rgba(248,113,113,${0.25 + -t * 0.55})`
-              return <rect key={d} x={0} y={d * CELL_H} width={COL_W} height={CELL_H - 1.5} fill={fill} />
-            })}
-            <rect x={0} y={0} width={COL_W} height={D * CELL_H - 1.5}
-              fill="none" stroke={ACCENT.violet} strokeOpacity={0.45} strokeWidth={1.2} />
-          </motion.g>
+        <text x={X_EMBED - 14} y={OPS_TOP_Y + VEC_H / 2}
+          textAnchor="end"
+          fontSize="22"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill="rgba(255,255,255,0.85)">
+          x
+          <tspan fontSize="13" dy="6">{pos + 1}</tspan>
+          <tspan fontSize="11" dx="-8" dy="-12">embed</tspan>
+        </text>
+        <rect
+          x={X_EMBED}
+          y={OPS_TOP_Y}
+          width={VEC_W}
+          height={VEC_H}
+          fill="none"
+          stroke={ACCENT.violet}
+          strokeOpacity={0.45}
+          strokeWidth={1.2}
+          rx={3}
+        />
+        {Array.from({ length: NUM_DIMS }).map((_, d) => (
+          <rect
+            key={`emb-${d}`}
+            x={X_EMBED + 1}
+            y={OPS_TOP_Y + d * CELL_H + 1}
+            width={VEC_W - 2}
+            height={CELL_H - 2}
+            fill={colorFor(embedValue(d))}
+          />
         ))}
 
-        {/* + sign on the left */}
-        <text x={POS_X_START - COL_W / 2 - 60} y={464} fontSize="36"
-          fontFamily="var(--font-display)" fill={ACCENT.amber}>+</text>
+        {/* + sign */}
+        <motion.text
+          x={X_PLUS}
+          y={OPS_TOP_Y + VEC_H / 2 + 10}
+          textAnchor="middle"
+          fontSize="42"
+          fontFamily="var(--font-display)"
+          fill={ACCENT.amber}
+          animate={{
+            opacity: [0.65, 1, 0.65],
+            scale: [1, 1.08, 1],
+          }}
+          transition={{
+            duration: 2 / speed,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        >
+          +
+        </motion.text>
 
-        {/* PE row label */}
-        <text x={POS_X_START - COL_W / 2 - 20} y={624} textAnchor="end" fontSize="10"
-          fontFamily="var(--font-mono)" fill={ACCENT.cyan} letterSpacing="0.18em">
-          POSITIONAL
+        {/* PE column */}
+        <text x={X_PE + VEC_W / 2} y={OPS_TOP_Y - 16}
+          textAnchor="middle"
+          fontSize="14"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill={ACCENT.violet}>
+          PE({pos + 1})
         </text>
-        <text x={POS_X_START - COL_W / 2 - 20} y={642} textAnchor="end" fontSize="10"
-          fontFamily="var(--font-mono)" fill={ACCENT.cyan} letterSpacing="0.18em">
-          ENCODING (PE)
-        </text>
-
-        {/* PE columns */}
-        {peValues.map((row, p) => (
-          <motion.g key={p} transform={`translate(${POS_X_START + p * POS_DX - COL_W / 2}, 600)`}
-            initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 2.4 / speed + p * 0.05 / speed, duration: 0.5 / speed }}>
-            {row.map((v, d) => {
-              const t = Math.max(-1, Math.min(1, v))
-              const fill = t >= 0
-                ? `rgba(34,211,238,${0.25 + t * 0.55})`
-                : `rgba(248,113,113,${0.20 + -t * 0.55})`
-              return <rect key={d} x={0} y={d * 6} width={COL_W} height={5} fill={fill} />
-            })}
-            <rect x={0} y={0} width={COL_W} height={D * 6 - 1}
-              fill="none" stroke={ACCENT.cyan} strokeOpacity={0.45} strokeWidth={1.2} />
-          </motion.g>
+        <rect
+          x={X_PE}
+          y={OPS_TOP_Y}
+          width={VEC_W}
+          height={VEC_H}
+          fill="none"
+          stroke={ACCENT.violet}
+          strokeOpacity={0.55}
+          strokeWidth={1.4}
+          rx={3}
+        />
+        {Array.from({ length: NUM_DIMS }).map((_, d) => (
+          <motion.rect
+            key={`pe-${d}-${pos}`}
+            x={X_PE + 1}
+            y={OPS_TOP_Y + d * CELL_H + 1}
+            width={VEC_W - 2}
+            height={CELL_H - 2}
+            initial={{ opacity: 0.5 }}
+            animate={{
+              fill: colorFor(peValue(pos, d), 'wave', d),
+              opacity: 1,
+            }}
+            transition={{ duration: 0.4 / speed, delay: d * 0.015 / speed }}
+          />
         ))}
 
         {/* = sign */}
-        <text x={POS_X_START - COL_W / 2 - 60} y={730} fontSize="36"
-          fontFamily="var(--font-display)" fill={ACCENT.mint}>=</text>
-
-        {/* Result row label */}
-        <text x={POS_X_START - COL_W / 2 - 20} y={730} textAnchor="end" fontSize="10"
-          fontFamily="var(--font-mono)" fill={ACCENT.mint} letterSpacing="0.18em">
-          INPUT
-        </text>
-        <text x={POS_X_START - COL_W / 2 - 20} y={748} textAnchor="end" fontSize="10"
-          fontFamily="var(--font-display)" fontStyle="italic" fill={ACCENT.dim}>
-          (with position)
+        <text
+          x={X_EQ}
+          y={OPS_TOP_Y + VEC_H / 2 + 10}
+          textAnchor="middle"
+          fontSize="42"
+          fontFamily="var(--font-display)"
+          fill={ACCENT.mint}
+        >
+          =
         </text>
 
-        {/* Result columns — sum of embed + PE */}
-        {peValues.map((row, p) => (
-          <motion.g key={p} transform={`translate(${POS_X_START + p * POS_DX - COL_W / 2}, 700)`}
-            initial={{ opacity: 0, y: 740 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 3.4 / speed + p * 0.05 / speed, duration: 0.5 / speed }}>
-            {row.map((pe, d) => {
-              const sum = pe + embValues[d]
-              const t = Math.max(-1, Math.min(1, sum / 1.2))
-              const fill = t >= 0
-                ? `rgba(52,211,153,${0.30 + t * 0.55})`
-                : `rgba(248,113,113,${0.20 + -t * 0.55})`
-              return <rect key={d} x={0} y={d * CELL_H * 0.6} width={COL_W}
-                height={CELL_H * 0.6 - 1} fill={fill} />
-            })}
-            <rect x={0} y={0} width={COL_W} height={D * CELL_H * 0.6 - 1}
-              fill="none" stroke={ACCENT.mint} strokeOpacity={0.55} strokeWidth={1.2} />
-          </motion.g>
-        ))}
+        {/* INPUT column — payoff with soft glow */}
+        <text x={X_INPUT + VEC_W / 2} y={OPS_TOP_Y - 24}
+          textAnchor="middle"
+          fontSize="11"
+          fontFamily="var(--font-mono)"
+          fill="rgba(255,255,255,0.9)"
+          letterSpacing="0.22em">
+          INPUT VECTOR
+        </text>
+        <text x={X_INPUT + VEC_W + 14} y={OPS_TOP_Y + VEC_H / 2}
+          fontSize="22"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill="rgba(255,255,255,0.92)">
+          x
+          <tspan fontSize="13" dy="6">{pos + 1}</tspan>
+          <tspan fontSize="11" dx="-8" dy="-12">input</tspan>
+        </text>
+        <motion.rect
+          x={X_INPUT - 4}
+          y={OPS_TOP_Y - 4}
+          width={VEC_W + 8}
+          height={VEC_H + 8}
+          rx={6}
+          fill="rgba(167,139,250,0.04)"
+          filter="url(#input-bloom)"
+          animate={{ opacity: [0.45, 0.85, 0.45] }}
+          transition={{
+            duration: 3 / speed,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        />
+        <rect
+          x={X_INPUT}
+          y={OPS_TOP_Y}
+          width={VEC_W}
+          height={VEC_H}
+          fill="rgba(167,139,250,0.06)"
+          stroke={ACCENT.violet}
+          strokeWidth={2}
+          strokeOpacity={0.95}
+          rx={3}
+        />
+        {Array.from({ length: NUM_DIMS }).map((_, d) => {
+          const v = inputValue(pos, d)
+          return (
+            <motion.rect
+              key={`in-${d}-${pos}`}
+              x={X_INPUT + 1}
+              y={OPS_TOP_Y + d * CELL_H + 1}
+              width={VEC_W - 2}
+              height={CELL_H - 2}
+              initial={{ opacity: 0 }}
+              animate={{
+                fill: colorFor(v),
+                opacity: 1,
+              }}
+              transition={{
+                duration: 0.5 / speed,
+                delay: (0.3 + d * 0.025) / speed,
+              }}
+            />
+          )
+        })}
 
-        {/* Equation card at bottom */}
-        <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          transition={{ delay: 4.5 / speed, duration: 0.6 / speed }}>
-          <rect x={500} y={830} width={400} height={48} rx={4}
-            fill="rgba(255,255,255,0.03)" stroke={ACCENT.rule} />
-          <text x={700} y={862} textAnchor="middle" fontSize="20"
-            fontFamily="var(--font-display)" fontStyle="italic" fill="rgba(255,255,255,0.95)">
-            x<tspan fontSize="13" dy="3">i</tspan>
-            <tspan dy="-3" fontSize="11">input</tspan>
-            <tspan fontSize="20" dy="0"> = </tspan>
-            x<tspan fontSize="13" dy="3">i</tspan>
-            <tspan dy="-3" fontSize="11">embed</tspan>
-            <tspan fontSize="20"> + PE(i)</tspan>
-          </text>
-        </motion.g>
-
-        {/* Continuous position scrubber — after waves draw + columns appear,
-            a glowing vertical highlight slides across position-by-position
-            so the viewer keeps seeing motion through the long static phase. */}
+        {/* ────── Bottom equation card ────── */}
         <motion.g
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 5.6 / speed, duration: 0.4 / speed }}
+          transition={{ delay: 1.0 / speed, duration: 0.5 / speed }}
         >
-          <motion.rect
-            y={88}
-            width={POS_DX * 0.78}
-            height={690}
+          <rect
+            x={520}
+            y={OPS_TOP_Y + VEC_H + 60}
+            width={360}
+            height={56}
             rx={6}
-            fill="rgba(167,139,250,0.06)"
-            stroke={ACCENT.violet}
-            strokeOpacity={0.65}
-            strokeWidth={1.5}
-            animate={{
-              x: Array.from({ length: POSITIONS + 1 }).map(
-                (_, i) =>
-                  POS_X_START + ((i % POSITIONS) * POS_DX) - POS_DX * 0.39,
-              ),
-            }}
-            transition={{
-              duration: (POSITIONS * 1.1) / speed,
-              ease: 'linear',
-              repeat: Infinity,
-              delay: 6 / speed,
-            }}
+            fill="rgba(8,8,11,0.65)"
+            stroke="rgba(167,139,250,0.32)"
           />
+          <text
+            x={700}
+            y={OPS_TOP_Y + VEC_H + 95}
+            textAnchor="middle"
+            fontSize="22"
+            fontFamily="var(--font-display)"
+            fontStyle="italic"
+            fill="rgba(255,255,255,0.95)"
+          >
+            x
+            <tspan fontSize="13" dy="6">i</tspan>
+            <tspan fontSize="11" dx="-6" dy="-12">input</tspan>
+            <tspan fontSize="22" dy="6"> = </tspan>
+            <tspan fontSize="22">x</tspan>
+            <tspan fontSize="13" dy="6">i</tspan>
+            <tspan fontSize="11" dx="-6" dy="-12">embed</tspan>
+            <tspan fontSize="22" dy="6"> + </tspan>
+            <tspan fontSize="22" fill={ACCENT.violet}>PE(i)</tspan>
+          </text>
         </motion.g>
       </svg>
     </div>
