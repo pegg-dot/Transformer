@@ -689,12 +689,32 @@ function BPEPairCard({ speed }: { speed: number }) {
 }
 
 function BPEMergeTree({ speed }: { speed: number }) {
+  // Word laid out at x = 228 + i*80 (cell centers).
+  //   u(0)=228 n(1)=308 b(2)=388 e(3)=468 l(4)=548 i(5)=628
+  //   e(6)=708 v(7)=788 a(8)=868 b(9)=948 l(10)=1028 y(11)=1108
+  // Finals → constituent merges + bytes:
+  //   un   = u(0) + n(1)              [no mid]
+  //   bel  = be(2,3) + l(4)           [be mid]
+  //   iev  = i(5)   + ev(6,7)         [ev mid]
+  //   ably = ab(8,9) + ly(10,11)      [both ab and ly mids]
   const word = 'unbelievably'.split('')
+  const cellCenter = (i: number) => 228 + i * 80
+  const mids = [
+    { from: [2, 3], cx: cellCenter(2.5), label: 'be' }, // 428
+    { from: [6, 7], cx: cellCenter(6.5), label: 'ev' }, // 748
+    { from: [8, 9], cx: cellCenter(8.5), label: 'ab' }, // 908
+    { from: [10, 11], cx: cellCenter(10.5), label: 'ly' }, // 1068
+  ]
+  // Final positions sit centered over their constituents
   const finals = [
-    { x: 280, label: 'un' },
-    { x: 510, label: 'bel' },
-    { x: 740, label: 'iev' },
-    { x: 970, label: 'ably' },
+    { x: 268, label: 'un', // midpoint of u, n
+      sources: [{ x: cellCenter(0), y: 550 }, { x: cellCenter(1), y: 550 }] },
+    { x: 488, label: 'bel', // midpoint of be-mid, l-byte
+      sources: [{ x: 428, y: 460 }, { x: cellCenter(4), y: 550 }] },
+    { x: 688, label: 'iev', // midpoint of i-byte, ev-mid
+      sources: [{ x: cellCenter(5), y: 550 }, { x: 748, y: 460 }] },
+    { x: 988, label: 'ably', // midpoint of ab-mid, ly-mid
+      sources: [{ x: 908, y: 460 }, { x: 1068, y: 460 }] },
   ]
   return (
     <g>
@@ -723,24 +743,39 @@ function BPEMergeTree({ speed }: { speed: number }) {
         </motion.g>
       ))}
 
-      {/* Mid merges */}
-      {[
-        { from: [2, 3], cx: 348, label: 'be' },
-        { from: [4, 5], cx: 508, label: 'li' },
-        { from: [6, 7], cx: 668, label: 'ev' },
-        { from: [8, 9], cx: 828, label: 'ab' },
-        { from: [10, 11], cx: 988, label: 'ly' },
-      ].map((m, i) => (
+      {/* Mid merges — only the 4 that actually feed the finals. */}
+      {mids.map((m, i) => (
         <motion.g key={`mid-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           transition={{ delay: 1.6 / speed + i * 0.15 / speed }}>
-          <path d={`M ${228 + m.from[0] * 80} 550 L ${m.cx} 510 L ${228 + m.from[1] * 80} 550`}
-            fill="none" stroke={ACCENT.mint} strokeOpacity={0.35} strokeWidth={1} />
+          <path d={`M ${cellCenter(m.from[0])} 550 L ${m.cx} 510 L ${cellCenter(m.from[1])} 550`}
+            fill="none" stroke={ACCENT.mint} strokeOpacity={0.45} strokeWidth={1.2} />
           <rect x={m.cx - 32} y={460} width={64} height={44} rx={3}
             fill="rgba(52,211,153,0.10)" stroke={ACCENT.mint} strokeOpacity={0.7} />
           <text x={m.cx} y={490} textAnchor="middle" fontSize="20"
             fontFamily="var(--font-display)" fontStyle="italic" fill={ACCENT.mint}>{m.label}</text>
         </motion.g>
       ))}
+
+      {/* Final → source connector lines (drawn before the final cards so the
+          cards sit on top of the line ends). */}
+      {finals.map((f, i) =>
+        f.sources.map((s, j) => (
+          <motion.path
+            key={`final-conn-${i}-${j}`}
+            d={`M ${s.x} ${s.y - 10} L ${f.x} 416`}
+            fill="none"
+            stroke={ACCENT.violet}
+            strokeOpacity={0.35}
+            strokeWidth={1}
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{
+              duration: 0.6 / speed,
+              delay: 2.6 / speed + i * 0.15 / speed + j * 0.05 / speed,
+            }}
+          />
+        )),
+      )}
 
       {/* Final tokens — initial spring-in, then continuous breathing pulse
           so the bottom of the scene stays alive throughout. */}
