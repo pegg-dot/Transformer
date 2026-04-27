@@ -6,8 +6,12 @@ import { COLORS, N_BLOCKS, blockStart, BLOCK_LEN } from './shared/constants'
 import { clamp01, smoothstep } from './shared/easing'
 import { Label } from './shared/Label'
 import { VectorGrid, syntheticVector } from './shared/VectorGrid'
+import { useTokenTrace } from '@/lib/useTokenTrace'
 
 const VEC_ROWS = 12 // compressed view of the d=384 residual stream
+// Token index in the CAPTURED activations run. The user's tour prompt may
+// differ; this is just the protagonist token whose real residual we trace.
+const TRACE_TOKEN = 3
 
 export default function SceneStack({ t, duration }: SceneProps) {
   const p = clamp01(t / Math.max(0.01, duration * 0.75))
@@ -17,10 +21,15 @@ export default function SceneStack({ t, duration }: SceneProps) {
   const activeIdx = Math.min(N_BLOCKS - 1, Math.floor(pulse))
   const local = pulse - activeIdx
 
-  // Deterministic per-block vectors: block N's vector = block N-1's vector
-  // blended 70/30 with a delta. The viewer reads "the same signal,
-  // gradually transformed" instead of six unrelated grids.
+  // Try to use real captured residuals from activations.json. If they're
+  // not loaded yet (or absent), fall back to synthetic vectors with the
+  // same "blended forward" structure so the scene always reads.
+  const trace = useTokenTrace(TRACE_TOKEN, VEC_ROWS)
   const blockVectors = useMemo(() => {
+    if (trace.ready && trace.blockResiduals) {
+      return trace.blockResiduals
+    }
+    // Synthetic fallback: each block = previous blended 70/30 with a delta.
     const base = syntheticVector(7, VEC_ROWS)
     const out: number[][] = [base]
     for (let i = 1; i < N_BLOCKS; i++) {
@@ -32,13 +41,24 @@ export default function SceneStack({ t, duration }: SceneProps) {
       out.push(next)
     }
     return out
-  }, [])
+  }, [trace.ready, trace.blockResiduals])
 
   return (
     <group>
       <Label position={[blockStart(N_BLOCKS / 2) + BLOCK_LEN / 2, 1.5, 0.3]} size={0.2} opacity={0.9 * pEst}>
         Six blocks · one direction
       </Label>
+      {/* Tag what data is driving the protagonist column */}
+      {trace.ready && (
+        <Label
+          position={[blockStart(N_BLOCKS / 2) + BLOCK_LEN / 2, 1.22, 0.3]}
+          size={0.075}
+          color={COLORS.dim}
+          opacity={0.85 * pEst}
+        >
+          {`real residuals · token "${trace.capturedTokenChar}" of "${trace.capturedPrompt}"`}
+        </Label>
+      )}
 
       {Array.from({ length: N_BLOCKS }).map((_, i) => {
         const cx = blockStart(i) + BLOCK_LEN / 2

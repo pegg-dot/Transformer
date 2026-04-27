@@ -7,11 +7,13 @@ import { mulberry32 } from './shared/rng'
 import { clamp01, smoothstep, loopPhase } from './shared/easing'
 import { Slab } from './shared/Slab'
 import { Label } from './shared/Label'
-import { VectorGrid } from './shared/VectorGrid'
+import { VectorGrid, syntheticVector } from './shared/VectorGrid'
+import { useTokenTrace } from '@/lib/useTokenTrace'
 
 const V = 16
 const D = 20
 const VEC_ROWS = 12 // protagonist column compressed from d=384
+const TRACE_TOKEN = 3
 
 export default function SceneEmbed({ t, duration }: SceneProps) {
   const p = clamp01(t / Math.max(0.01, duration * 0.75))
@@ -81,18 +83,25 @@ export default function SceneEmbed({ t, duration }: SceneProps) {
 
       {/* Protagonist column: the same row, materialized as a tall vertical
           vector grid that lingers after the horizontal "fly-out" finishes.
-          This is the form the vector takes for the rest of the tour. */}
-      <VectorGrid
-        position={[matW / 2 + 1.5, -0.2, 0.1]}
-        values={Array.from({ length: VEC_ROWS }).map((_, r) =>
-          matrix[(rowIdx * D + (r * D / VEC_ROWS) | 0) % (V * D)]
-        )}
-        cellWidth={0.18}
-        cellHeight={0.08}
-        cellGap={0.01}
-        label="d=384"
-        fade={pFly}
-      />
+          Uses real captured embed_sum if loaded, falls back to synthetic. */}
+      <ProtagonistEmbed position={[matW / 2 + 1.5, -0.2, 0.1]} fade={pFly} />
     </group>
+  )
+}
+
+function ProtagonistEmbed({ position, fade }: { position: [number, number, number]; fade: number }) {
+  const trace = useTokenTrace(TRACE_TOKEN, VEC_ROWS)
+  const fallback = useMemo(() => syntheticVector(307, VEC_ROWS), [])
+  const values = trace.ready && trace.embedSum ? trace.embedSum : fallback
+  return (
+    <VectorGrid
+      position={position}
+      values={values}
+      cellWidth={0.18}
+      cellHeight={0.08}
+      cellGap={0.01}
+      label={trace.ready ? `d=384 · "${trace.capturedTokenChar}"` : 'd=384'}
+      fade={fade}
+    />
   )
 }
