@@ -39,16 +39,32 @@ export function SplitPaneScene({
 }) {
   return (
     <div className="absolute inset-0 flex bg-[var(--bg)]">
-      {/* Left pane — visualization. ~62% width. */}
-      <div className="relative flex-1 overflow-hidden">{viz}</div>
+      {/* Left pane — visualization. ~68% width. Includes subtle bg grid so
+          empty space around letterboxed scenes reads as intentional stage. */}
+      <div className="relative flex-1 overflow-hidden">
+        {/* Background dressing — faint dot grid */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage:
+              'radial-gradient(rgba(167,139,250,0.6) 1px, transparent 1px)',
+            backgroundSize: '32px 32px',
+          }}
+        />
+        {/* The viz itself, centered, filling the pane */}
+        <div className="absolute inset-0 flex items-center justify-center px-6 py-6">
+          <div className="h-full w-full">{viz}</div>
+        </div>
+      </div>
 
       {/* Vertical rule between panes */}
       <div className="w-px shrink-0 bg-[var(--rule)]" />
 
-      {/* Right pane — persistent commentary. */}
+      {/* Right pane — persistent commentary. ~32% width. */}
       <div
         className="relative shrink-0"
-        style={{ width: 'clamp(420px, 38%, 640px)' }}
+        style={{ width: 'clamp(380px, 32%, 560px)' }}
       >
         <SceneTextPane data={text} />
       </div>
@@ -59,7 +75,7 @@ export function SplitPaneScene({
 export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
   const speed = useSpeed()
   return (
-    <div className="flex h-full w-full flex-col justify-center px-10 py-10 lg:px-14">
+    <div className="flex h-full w-full flex-col justify-center px-8 py-8 lg:px-10">
       <motion.div
         className="flex flex-col gap-7"
         initial={{ opacity: 0, y: 6 }}
@@ -77,7 +93,7 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
         {/* Big italic serif headline with violet underline */}
         <div className="flex flex-col gap-3">
           <h2
-            className="display text-[clamp(36px,4.2vw,56px)] font-light leading-[1.05]"
+            className="display text-[clamp(30px,3.4vw,48px)] font-light leading-[1.05]"
             style={{
               color: 'var(--fg)',
               fontStyle: 'italic',

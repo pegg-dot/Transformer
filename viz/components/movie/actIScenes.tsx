@@ -31,183 +31,226 @@ const ACCENT = {
 
 /* ─────────────────── Scene A · Act I Intro (slab + dim block stack) ─────────────────── */
 
+/**
+ * Single-composition cinematic intro: an empty input slab in axonometric
+ * perspective floats just above a tight stack of dim, inactive blocks.
+ * One unified object — no scattered dressing.
+ */
 export function VizActIIntro() {
   const speed = useSpeed()
+  // Centerline x. Use viewBox 1400×800 — closer to the panes' actual aspect.
+  const CX = 700
+
+  // Slab — top face is a parallelogram. Front face slightly visible underneath.
+  // Coords are absolute within the viewBox (no inner translate gymnastics).
+  const slab = {
+    // Top face polygon: back-left, back-right, front-right, front-left
+    backY: 220,
+    frontY: 320,
+    backHalf: 300,
+    frontHalf: 360,
+  }
+  const sb = slab
+  const slabPath =
+    `M ${CX - sb.backHalf} ${sb.backY}` +
+    ` L ${CX + sb.backHalf} ${sb.backY}` +
+    ` L ${CX + sb.frontHalf} ${sb.frontY}` +
+    ` L ${CX - sb.frontHalf} ${sb.frontY} Z`
+
+  // 6 blocks — tightly stacked just below the slab
+  const blockTopY = 380
+  const blockH = 22
+  const blockGap = 32
+  const blocks = Array.from({ length: 6 }).map((_, i) => ({
+    z: i,
+    backY: blockTopY + i * blockGap,
+    frontY: blockTopY + i * blockGap + blockH,
+    backHalf: 280 - i * 14,
+    frontHalf: 320 - i * 12,
+    opacity: 0.32 - i * 0.04,
+  }))
+
   return (
     <div className="relative h-full w-full">
-      <svg viewBox="0 0 1400 900" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <svg
+        viewBox="0 0 1400 800"
+        width="100%"
+        height="100%"
+        preserveAspectRatio="xMidYMid meet"
+      >
         <defs>
-          <linearGradient id="slab-glow" x1="0" y1="0" x2="1" y2="0.5">
-            <stop offset="0" stopColor={ACCENT.violet} stopOpacity="0.55" />
-            <stop offset="0.55" stopColor={ACCENT.violet} stopOpacity="0.18" />
-            <stop offset="1" stopColor={ACCENT.violet} stopOpacity="0.05" />
+          <linearGradient id="slab-glow" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor={ACCENT.violet} stopOpacity="0.6" />
+            <stop offset="0.5" stopColor={ACCENT.violet} stopOpacity="0.28" />
+            <stop offset="1" stopColor={ACCENT.violet} stopOpacity="0.08" />
           </linearGradient>
           <filter id="slab-bloom" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="3" />
+            <feGaussianBlur stdDeviation="4" />
           </filter>
         </defs>
 
-        {/* Background star dust */}
-        <g opacity="0.5">
-          {Array.from({ length: 60 }).map((_, i) => {
-            const x = (i * 977) % 1400
-            const y = (i * 311) % 900
-            return <circle key={i} cx={x} cy={y} r={0.6} fill="#fff" opacity={(i % 7) / 14 + 0.15} />
-          })}
-        </g>
-
-        {/* Dim block stack — 6 blocks, receding into the distance, perspective-skewed */}
-        <g transform="translate(700, 620)">
-          {Array.from({ length: 6 }).map((_, i) => {
-            const z = i // 0 = closest to slab, 5 = farthest
-            const w = 600 - z * 30
-            const h = 24
-            const x = -w / 2
-            const y = z * 32
-            const opacity = 0.32 - z * 0.04
+        {/* ────── Block stack — drawn first (behind the slab) ────── */}
+        {blocks
+          .slice()
+          .reverse()
+          .map((b, idx) => {
+            const i = blocks.length - 1 - idx
+            const path =
+              `M ${CX - b.backHalf} ${b.backY}` +
+              ` L ${CX + b.backHalf} ${b.backY}` +
+              ` L ${CX + b.frontHalf} ${b.frontY}` +
+              ` L ${CX - b.frontHalf} ${b.frontY} Z`
             return (
               <motion.g
                 key={i}
                 initial={{ opacity: 0 }}
-                animate={{ opacity }}
-                transition={{ delay: 0.8 / speed + i * 0.12, duration: 0.6 / speed }}
+                animate={{ opacity: b.opacity }}
+                transition={{
+                  delay: 1.0 / speed + i * 0.1,
+                  duration: 0.6 / speed,
+                }}
               >
-                {/* Top edge — slight perspective skew */}
                 <path
-                  d={`M ${x + 36} ${y} L ${x + w - 36} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`}
+                  d={path}
                   fill="none"
                   stroke={ACCENT.violet}
-                  strokeOpacity={0.4}
+                  strokeOpacity={0.55}
                   strokeWidth={1}
                 />
-                {/* Block label */}
                 <text
-                  x={x - 10}
-                  y={y + h / 2 + 3}
+                  x={CX - b.backHalf - 14}
+                  y={(b.backY + b.frontY) / 2 + 3}
                   textAnchor="end"
-                  fontSize="9"
+                  fontSize="10"
                   fontFamily="var(--font-mono)"
                   fill={ACCENT.dim}
                   letterSpacing="0.18em"
                 >
-                  BLOCK {z}
+                  BLOCK {i}
                 </text>
               </motion.g>
             )
           })}
-        </g>
 
-        {/* The hero — floating empty input slab in perspective */}
+        {/* ────── Hero slab ────── */}
         <motion.g
-          transform="translate(700, 380)"
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.4 / speed, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 1.2 / speed, ease: [0.22, 1, 0.36, 1] }}
         >
-          {/* Slab body — wider than it is tall, slight perspective parallelogram */}
-          <g>
-            {/* Glow underlay */}
-            <path
-              d="M -340 -100 L 340 -100 L 380 60 L -380 60 Z"
-              fill="url(#slab-glow)"
-              filter="url(#slab-bloom)"
-              opacity="0.85"
-            />
-            {/* Top face grid */}
-            <path
-              d="M -340 -100 L 340 -100 L 380 60 L -380 60 Z"
-              fill="none"
-              stroke={ACCENT.violet}
-              strokeWidth={2}
-              strokeOpacity={0.95}
-            />
-            {/* Faint grid lines — vertical (token positions) */}
-            {Array.from({ length: 11 }).map((_, i) => {
-              const t = (i + 1) / 12
-              const xTop = -340 + 680 * t
-              const xBot = -380 + 760 * t
-              return (
-                <motion.line
-                  key={`v-${i}`}
-                  x1={xTop}
-                  y1={-100}
-                  x2={xBot}
-                  y2={60}
-                  stroke={ACCENT.violet}
-                  strokeOpacity={0.18}
-                  strokeWidth={0.5}
-                  initial={{ pathLength: 0 }}
-                  animate={{ pathLength: 1 }}
-                  transition={{ delay: 1.2 / speed + i * 0.04, duration: 0.5 / speed }}
-                />
-              )
-            })}
-            {/* Horizontal grid lines (dimensions) */}
-            {Array.from({ length: 5 }).map((_, i) => {
-              const t = (i + 1) / 6
-              const y = -100 + 160 * t
-              const widen = 40 * t
-              return (
-                <motion.line
-                  key={`h-${i}`}
-                  x1={-340 - widen}
-                  y1={y}
-                  x2={340 + widen}
-                  y2={y}
-                  stroke={ACCENT.violet}
-                  strokeOpacity={0.14}
-                  strokeWidth={0.5}
-                  initial={{ pathLength: 0 }}
-                  animate={{ pathLength: 1 }}
-                  transition={{ delay: 1.2 / speed + i * 0.06, duration: 0.5 / speed }}
-                />
-              )
-            })}
-          </g>
-
-          {/* Slab dimension label */}
-          <motion.g
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1.6 / speed, duration: 0.5 / speed }}
-          >
-            <line
-              x1={350}
-              y1={-100}
-              x2={400}
-              y2={-150}
-              stroke={ACCENT.violet}
-              strokeOpacity={0.6}
-              strokeWidth={1}
-            />
-            <text
-              x={410}
-              y={-155}
-              fontSize="14"
-              fontFamily="var(--font-display)"
-              fontStyle="italic"
-              fill={ACCENT.violet}
-            >
-              [T, d
-              <tspan fontSize="11" dy="3">model</tspan>
-              <tspan dy="-3">]</tspan>
-            </text>
-          </motion.g>
-
-          {/* Pulse — scene tail signal */}
-          <motion.path
-            d="M -340 -100 L 340 -100 L 380 60 L -380 60 Z"
-            fill="none"
+          {/* Glow underlay */}
+          <path
+            d={slabPath}
+            fill="url(#slab-glow)"
+            filter="url(#slab-bloom)"
+            opacity="0.9"
+          />
+          {/* Outline */}
+          <path
+            d={slabPath}
+            fill="rgba(167,139,250,0.06)"
             stroke={ACCENT.violet}
             strokeWidth={2}
-            initial={{ opacity: 0.95 }}
-            animate={{
-              opacity: [0.95, 0.6, 0.95],
-              strokeWidth: [2, 3, 2],
-            }}
-            transition={{ duration: 3 / speed, delay: 5 / speed, repeat: Infinity }}
+            strokeOpacity={0.95}
           />
+          {/* Vertical grid lines */}
+          {Array.from({ length: 11 }).map((_, i) => {
+            const t = (i + 1) / 12
+            const xTop = CX - sb.backHalf + 2 * sb.backHalf * t
+            const xBot = CX - sb.frontHalf + 2 * sb.frontHalf * t
+            return (
+              <motion.line
+                key={`v-${i}`}
+                x1={xTop}
+                y1={sb.backY}
+                x2={xBot}
+                y2={sb.frontY}
+                stroke={ACCENT.violet}
+                strokeOpacity={0.2}
+                strokeWidth={0.5}
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{
+                  delay: 1.0 / speed + i * 0.03,
+                  duration: 0.5 / speed,
+                }}
+              />
+            )
+          })}
+          {/* Horizontal grid lines */}
+          {Array.from({ length: 5 }).map((_, i) => {
+            const t = (i + 1) / 6
+            const y = sb.backY + (sb.frontY - sb.backY) * t
+            const half = sb.backHalf + (sb.frontHalf - sb.backHalf) * t
+            return (
+              <motion.line
+                key={`h-${i}`}
+                x1={CX - half}
+                y1={y}
+                x2={CX + half}
+                y2={y}
+                stroke={ACCENT.violet}
+                strokeOpacity={0.16}
+                strokeWidth={0.5}
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{
+                  delay: 1.0 / speed + i * 0.05,
+                  duration: 0.5 / speed,
+                }}
+              />
+            )
+          })}
         </motion.g>
+
+        {/* ────── [T, d_model] dimension label ────── */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.4 / speed, duration: 0.5 / speed }}
+        >
+          <line
+            x1={CX + sb.backHalf - 6}
+            y1={sb.backY - 4}
+            x2={CX + sb.backHalf + 60}
+            y2={sb.backY - 60}
+            stroke={ACCENT.violet}
+            strokeOpacity={0.7}
+            strokeWidth={1}
+          />
+          <text
+            x={CX + sb.backHalf + 70}
+            y={sb.backY - 64}
+            fontSize="18"
+            fontFamily="var(--font-display)"
+            fontStyle="italic"
+            fill={ACCENT.violet}
+          >
+            [T, d
+            <tspan fontSize="13" dy="4">
+              model
+            </tspan>
+            <tspan dy="-4">]</tspan>
+          </text>
+        </motion.g>
+
+        {/* ────── Slab pulse (loop) ────── */}
+        <motion.path
+          d={slabPath}
+          fill="none"
+          stroke={ACCENT.violet}
+          strokeWidth={2}
+          initial={{ opacity: 0.95 }}
+          animate={{
+            opacity: [0.95, 0.6, 0.95],
+            strokeWidth: [2, 3.2, 2],
+          }}
+          transition={{
+            duration: 3 / speed,
+            delay: 4 / speed,
+            repeat: Infinity,
+          }}
+        />
       </svg>
     </div>
   )
