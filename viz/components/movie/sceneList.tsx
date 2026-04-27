@@ -105,7 +105,7 @@ export const SCENES: MovieScene[] = [
     title: 'First: text becomes numbers.',
     caption: 'Your prompt has to be turned into integers before the network can do math on it.',
     accent: ACCENT.violet,
-    durationMs: 12000,
+    durationMs: 14000,
     panelAnchor: 'fullscreen',
     details: `The input stage. Three small steps: split the string into tokens, look up each token's vector in an embedding table, and add a position encoding so the network can tell what came first.`,
     render: () => (
@@ -131,7 +131,7 @@ export const SCENES: MovieScene[] = [
     caption:
       'Each character of your prompt gets mapped to an integer ID from a 65-entry vocabulary.',
     accent: ACCENT.violet,
-    durationMs: 18000,
+    durationMs: 26000,
     promptAware: true,
     part: 'tokenize',
     panelAnchor: 'fullscreen',
@@ -168,7 +168,7 @@ Nothing about the model cares what the original characters looked like after thi
     caption:
       'Start from bytes. Count adjacent pairs. Merge the most frequent. Repeat — thousands of times.',
     accent: ACCENT.violet,
-    durationMs: 22000,
+    durationMs: 36000,
     part: 'tokenize',
     panelAnchor: 'fullscreen',
     details: `BPE ("byte-pair encoding") is how modern tokenizers are built. Start with a vocabulary of all 256 bytes. Count every adjacent-pair of tokens in the training corpus. Merge the most frequent pair into one new token. Repeat thousands of times.
@@ -209,7 +209,7 @@ The reason to use BPE instead of characters: way shorter sequences (fewer positi
     caption:
       'A token ID indexes into a learned embedding table. The matching row IS the model’s view of that token.',
     accent: ACCENT.violet,
-    durationMs: 20000,
+    durationMs: 28000,
     part: 'embed',
     panelAnchor: 'fullscreen',
     details: `The embedding matrix is a learned parameter table: shape [vocab_size, d_model]. In our tiny model that's [65, 384]. For every token ID, look up row ID, get back a 384-dimensional vector.
@@ -255,7 +255,7 @@ This is where the network first starts to encode meaning. Tokens that behave sim
     caption:
       'A unique sinusoidal pattern for each position is added directly to the token embedding.',
     accent: ACCENT.violet,
-    durationMs: 22000,
+    durationMs: 26000,
     part: 'positional',
     panelAnchor: 'fullscreen',
     details: `Attention on its own has no notion of order — "cat sat" and "sat cat" would produce identical attention outputs. Positional encoding fixes this by adding a position-dependent pattern to every embedding, so position 0 looks different from position 5 even for the same token.
@@ -292,7 +292,7 @@ Modern models (LLaMA, GPT-NeoX) replaced this with RoPE — rotary position embe
     caption:
       'After tokenization, embedding lookup, and positional encoding, the model has a T × d_model input slab.',
     accent: ACCENT.violet,
-    durationMs: 12000,
+    durationMs: 14000,
     panelAnchor: 'fullscreen',
     details: `The output of Act I is a matrix: one row per token position, one column per hidden dimension. This object is the residual stream — the running representation that flows through every transformer block, with each block adding (not replacing) its own contribution.
 

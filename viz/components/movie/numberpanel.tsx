@@ -74,6 +74,7 @@ export function NumberPanelDiv({
 }) {
   return (
     <div
+      data-num-panel="true"
       className={`absolute top-4 right-4 z-10 w-[200px] rounded-[2px] border border-[rgba(255,255,255,0.1)] bg-[rgba(7,7,9,0.7)] px-3 py-2 mono text-[10px] backdrop-blur-md ${className}`}
     >
       <div className="small-caps mb-1.5 text-[var(--fg-dim)]">real values</div>

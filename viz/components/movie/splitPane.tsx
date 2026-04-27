@@ -52,8 +52,12 @@ export function SplitPaneScene({
             backgroundSize: '32px 32px',
           }}
         />
-        {/* The viz itself, centered, filling the pane */}
-        <div className="absolute inset-0 flex items-center justify-center px-6 py-6">
+        {/* The viz itself, centered, filling the pane.
+            The descendant selector hides legacy in-SVG number-chip strips
+            (NumberPanelDiv) which were positioned for the old fullscreen
+            layout and now collide with content; their data lives in the
+            right pane's structured fields instead. */}
+        <div className="absolute inset-0 flex items-center justify-center px-6 py-6 [&_[data-num-panel='true']]:hidden">
           <div className="h-full w-full">{viz}</div>
         </div>
       </div>

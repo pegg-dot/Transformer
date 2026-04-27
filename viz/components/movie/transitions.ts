@@ -143,7 +143,11 @@ export const DEFAULT_KIND: TransitionKind = 'within-part'
 export const INCOMING_KIND: Record<string, TransitionKind> = {
   // --- intros (all fire the act-change banner) ---
   'intro-cold-open': 'act-change',
-  'act1-intro': 'act-change',
+  // act1-intro now uses forward-flow: the new split-pane design already
+  // shows "ACT I · INPUT" as a kicker on the right pane, so the heavy
+  // banner + blur overlay is redundant and was making the right pane
+  // feel "not playing" for the first ~2.5s.
+  'act1-intro': 'forward-flow',
   'act2-intro': 'act-change',
   'act3-intro': 'act-change',
   'act4-intro': 'act-change',
@@ -151,10 +155,11 @@ export const INCOMING_KIND: Record<string, TransitionKind> = {
   'act6-intro': 'act-change',
 
   // --- Act I: input pipeline ---
-  tokens: 'within-part',          // first content scene after act1-intro
+  tokens: 'forward-flow',         // first content scene after act1-intro
   bpe: 'lateral',                 // sibling concept: same input strip, different tokenizer
-  embed: 'zoom-in',               // descend from token strip into one token's vector
+  embed: 'forward-flow',          // descend from token strip into one token's vector
   positional: 'lateral',          // same vector, different overlay (position embedding)
+  'ready-for-block-0': 'forward-flow', // input slab handoff to Act II
 
   // --- Act II: inside one block ---
   layernorm: 'zoom-in',           // entering block 0 from above
