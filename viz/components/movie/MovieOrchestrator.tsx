@@ -6,6 +6,8 @@ import { PromptProvider, usePrompt, MAX_LEN } from './promptContext'
 import { ModelMap3D, type ModelPart } from './modelmap'
 import { STAGE_VARIANTS, KIND_TIMING, incomingKindFor } from './transitions'
 import { SpeedContext } from './speedContext'
+import { useActivations } from '@/lib/useActivations'
+import { useTransformer } from '@/lib/useTransformer'
 
 /**
  * Where the 2D detail panel for this scene lives.
@@ -91,6 +93,12 @@ function Inner({ scenes }: Props) {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const tickRef = useRef<number | null>(null)
   const { prompt, setPrompt } = usePrompt()
+
+  // Pre-warm the heavy loaders so by the time the user clicks Play the
+  // VectorGrids show real residuals and the cold-open chat shows real
+  // model output. Status is surfaced in a tiny bottom-right pill.
+  const { data: actData, loading: actLoading } = useActivations()
+  const { ready: modelReady, loading: modelLoading } = useTransformer()
 
   const safeIdx = scenes.length > 0 ? Math.min(Math.max(0, idx), scenes.length - 1) : 0
   const current = scenes[safeIdx]
@@ -675,6 +683,21 @@ function Inner({ scenes }: Props) {
           )}
         </AnimatePresence>
 
+        {/* Asset-load status pill — bottom-right, only when something is
+            still loading or after a brief "ready" moment. Tells the viewer
+            whether VectorGrids show real activations and the chat shows
+            real model output. */}
+        <div className="pointer-events-none absolute bottom-3 right-3 z-30 flex flex-col items-end gap-1">
+          <StatusPill
+            label="activations"
+            state={actData ? 'ready' : actLoading ? 'loading' : 'idle'}
+          />
+          <StatusPill
+            label="model"
+            state={modelReady ? 'ready' : modelLoading ? 'loading' : 'idle'}
+          />
+        </div>
+
         {/* Press-play splash — shown on first load until user clicks play */}
         <AnimatePresence>
           {!started && (
@@ -891,6 +914,49 @@ function formatMs(ms: number) {
   const mm = Math.floor(s / 60)
   const ss = s % 60
   return `${mm}:${String(ss).padStart(2, '0')}`
+}
+
+function StatusPill({
+  label,
+  state,
+}: {
+  label: string
+  state: 'idle' | 'loading' | 'ready'
+}) {
+  const dotColor =
+    state === 'ready' ? '#34d399' : state === 'loading' ? '#f59e0b' : '#737373'
+  // Auto-dismiss "ready" after a few seconds so the pills don't clutter.
+  const [visible, setVisible] = useState(true)
+  useEffect(() => {
+    if (state === 'ready') {
+      const timer = setTimeout(() => setVisible(false), 4000)
+      return () => clearTimeout(timer)
+    }
+    setVisible(true)
+  }, [state])
+  if (!visible) return null
+  return (
+    <div className="mono flex items-center gap-2 rounded-full border border-[var(--rule)] bg-[rgba(7,7,9,0.6)] px-2.5 py-1 text-[9px] tracking-wider text-[var(--fg-dim)] backdrop-blur-sm">
+      <motion.span
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ background: dotColor }}
+        animate={
+          state === 'loading'
+            ? { opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }
+            : { opacity: 1, scale: 1 }
+        }
+        transition={
+          state === 'loading'
+            ? { duration: 1.0, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 0.3 }
+        }
+      />
+      <span>
+        {label}{' '}
+        {state === 'loading' ? 'loading…' : state === 'ready' ? 'ready' : '—'}
+      </span>
+    </div>
+  )
 }
 
 // ────────────────────────────────────────────────────────────────────────
