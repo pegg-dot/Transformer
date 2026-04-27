@@ -39,17 +39,18 @@ const ACCENT = {
  */
 export function VizActIIntro() {
   const speed = useSpeed()
+  const { prompt } = usePrompt()
+  const T = Math.max(1, (prompt || '').length || 19)
+
   // Centerline x. Use viewBox 1400×800 — closer to the panes' actual aspect.
   const CX = 700
 
-  // Slab — top face is a parallelogram. Front face slightly visible underneath.
-  // Coords are absolute within the viewBox (no inner translate gymnastics).
+  // Slab — top face is a parallelogram with axonometric depth.
   const slab = {
-    // Top face polygon: back-left, back-right, front-right, front-left
     backY: 220,
-    frontY: 320,
-    backHalf: 300,
-    frontHalf: 360,
+    frontY: 340,
+    backHalf: 320,
+    frontHalf: 380,
   }
   const sb = slab
   const slabPath =
@@ -58,17 +59,24 @@ export function VizActIIntro() {
     ` L ${CX + sb.frontHalf} ${sb.frontY}` +
     ` L ${CX - sb.frontHalf} ${sb.frontY} Z`
 
-  // 6 blocks — tightly stacked just below the slab
-  const blockTopY = 380
+  // Visible matrix grid inside the slab — quiet "blueprint" texture so it
+  // reads as [T, d_model] and not as a flat platform.
+  const SLAB_COLS = Math.min(T, 24) // visible token columns (cap so it stays readable)
+  const SLAB_ROWS = 8 // compressed d_model micro-rows
+
+  // 6 blocks — tightly stacked just below the slab. Block 0 is the active /
+  // visible one; subsequent blocks fade exponentially into darkness.
+  const blockTopY = 410
   const blockH = 22
   const blockGap = 32
+  const blockOpacities = [0.85, 0.6, 0.4, 0.24, 0.14, 0.07]
   const blocks = Array.from({ length: 6 }).map((_, i) => ({
     z: i,
     backY: blockTopY + i * blockGap,
     frontY: blockTopY + i * blockGap + blockH,
-    backHalf: 280 - i * 14,
-    frontHalf: 320 - i * 12,
-    opacity: 0.32 - i * 0.04,
+    backHalf: 300 - i * 16,
+    frontHalf: 340 - i * 14,
+    opacity: blockOpacities[i],
   }))
 
   return (
@@ -90,7 +98,9 @@ export function VizActIIntro() {
           </filter>
         </defs>
 
-        {/* ────── Block stack — drawn first (behind the slab) ────── */}
+        {/* ────── Block stack — drawn first (behind the slab) ──────
+            Block 0 is the prominent active one (will receive the slab next).
+            Later blocks fade exponentially into darkness. */}
         {blocks
           .slice()
           .reverse()
@@ -101,6 +111,7 @@ export function VizActIIntro() {
               ` L ${CX + b.backHalf} ${b.backY}` +
               ` L ${CX + b.frontHalf} ${b.frontY}` +
               ` L ${CX - b.frontHalf} ${b.frontY} Z`
+            const isBlock0 = i === 0
             return (
               <motion.g
                 key={i}
@@ -113,19 +124,20 @@ export function VizActIIntro() {
               >
                 <path
                   d={path}
-                  fill="none"
+                  fill={isBlock0 ? 'rgba(167,139,250,0.04)' : 'none'}
                   stroke={ACCENT.violet}
-                  strokeOpacity={0.55}
-                  strokeWidth={1}
+                  strokeOpacity={isBlock0 ? 0.85 : 0.55}
+                  strokeWidth={isBlock0 ? 1.6 : 1}
                 />
                 <text
                   x={CX - b.backHalf - 14}
                   y={(b.backY + b.frontY) / 2 + 3}
                   textAnchor="end"
-                  fontSize="10"
+                  fontSize={isBlock0 ? 11 : 10}
                   fontFamily="var(--font-mono)"
-                  fill={ACCENT.dim}
+                  fill={isBlock0 ? ACCENT.violet : ACCENT.dim}
                   letterSpacing="0.18em"
+                  opacity={isBlock0 ? 1 : 0.7}
                 >
                   BLOCK {i}
                 </text>
@@ -139,50 +151,98 @@ export function VizActIIntro() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1.2 / speed, ease: [0.22, 1, 0.36, 1] }}
         >
-          {/* Glow underlay */}
+          {/* Glow underlay — stronger so the slab has more presence */}
           <path
             d={slabPath}
             fill="url(#slab-glow)"
             filter="url(#slab-bloom)"
-            opacity="0.9"
+            opacity="0.95"
           />
-          {/* Outline */}
+          {/* Slab body fill */}
           <path
             d={slabPath}
-            fill="rgba(167,139,250,0.06)"
+            fill="rgba(167,139,250,0.07)"
             stroke={ACCENT.violet}
             strokeWidth={2}
             strokeOpacity={0.95}
           />
-          {/* Vertical grid lines */}
-          {Array.from({ length: 11 }).map((_, i) => {
-            const t = (i + 1) / 12
-            const xTop = CX - sb.backHalf + 2 * sb.backHalf * t
-            const xBot = CX - sb.frontHalf + 2 * sb.frontHalf * t
+
+          {/* Internal matrix cells — SLAB_COLS × SLAB_ROWS micro-rectangles
+              drawn in the slab's slanted coordinate system. Each cell is
+              tinted with a per-position color band so token columns are
+              visible. Quiet by default ("blueprint" feel for the intro);
+              the charging shimmer below brightens them on a loop. */}
+          {Array.from({ length: SLAB_COLS }).map((_, t) => {
+            const tNorm = SLAB_COLS <= 1 ? 0 : t / (SLAB_COLS - 1)
+            const xTopL = CX - sb.backHalf + 2 * sb.backHalf * tNorm
+            const xBotL = CX - sb.frontHalf + 2 * sb.frontHalf * tNorm
+            const tNorm2 =
+              SLAB_COLS <= 1
+                ? 1
+                : Math.min(1, tNorm + 1 / (SLAB_COLS - 1))
+            const xTopR = CX - sb.backHalf + 2 * sb.backHalf * tNorm2
+            const xBotR = CX - sb.frontHalf + 2 * sb.frontHalf * tNorm2
+
+            // Color band per token column (cycles palette)
+            const colors = [
+              ACCENT.violet, ACCENT.blue, ACCENT.cyan,
+              ACCENT.mint, ACCENT.amber, ACCENT.pink,
+            ]
+            const color = colors[t % colors.length]
+
             return (
-              <motion.line
-                key={`v-${i}`}
-                x1={xTop}
-                y1={sb.backY}
-                x2={xBot}
-                y2={sb.frontY}
-                stroke={ACCENT.violet}
-                strokeOpacity={0.2}
-                strokeWidth={0.5}
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{
-                  delay: 1.0 / speed + i * 0.03,
-                  duration: 0.5 / speed,
-                }}
-              />
+              <g key={`col-${t}`}>
+                {/* Column boundary line — slightly more visible than horizontal */}
+                <line
+                  x1={xTopL}
+                  y1={sb.backY}
+                  x2={xBotL}
+                  y2={sb.frontY}
+                  stroke={color}
+                  strokeOpacity={0.22}
+                  strokeWidth={0.6}
+                />
+                {/* d_model micro-rows — small filled rects for "matrix density" */}
+                {Array.from({ length: SLAB_ROWS }).map((_, d) => {
+                  const dt0 = d / SLAB_ROWS
+                  const dt1 = (d + 1) / SLAB_ROWS
+                  // Cell corners, interpolating across the trapezoid
+                  const tl = {
+                    x: xTopL + (xBotL - xTopL) * dt0,
+                    y: sb.backY + (sb.frontY - sb.backY) * dt0,
+                  }
+                  const tr = {
+                    x: xTopR + (xBotR - xTopR) * dt0,
+                    y: sb.backY + (sb.frontY - sb.backY) * dt0,
+                  }
+                  const br = {
+                    x: xTopR + (xBotR - xTopR) * dt1,
+                    y: sb.backY + (sb.frontY - sb.backY) * dt1,
+                  }
+                  const bl = {
+                    x: xTopL + (xBotL - xTopL) * dt1,
+                    y: sb.backY + (sb.frontY - sb.backY) * dt1,
+                  }
+                  const v = (Math.sin(t * 0.7 + d * 1.5) + 1) / 2
+                  const op = 0.05 + v * 0.18
+                  return (
+                    <path
+                      key={`cell-${t}-${d}`}
+                      d={`M ${tl.x} ${tl.y} L ${tr.x} ${tr.y} L ${br.x} ${br.y} L ${bl.x} ${bl.y} Z`}
+                      fill={color}
+                      opacity={op}
+                    />
+                  )
+                })}
+              </g>
             )
           })}
-          {/* Horizontal grid lines */}
+
+          {/* Horizontal d_model rule lines (sparse, subtle) */}
           {Array.from({ length: 5 }).map((_, i) => {
-            const t = (i + 1) / 6
-            const y = sb.backY + (sb.frontY - sb.backY) * t
-            const half = sb.backHalf + (sb.frontHalf - sb.backHalf) * t
+            const ti = (i + 1) / 6
+            const y = sb.backY + (sb.frontY - sb.backY) * ti
+            const half = sb.backHalf + (sb.frontHalf - sb.backHalf) * ti
             return (
               <motion.line
                 key={`h-${i}`}
@@ -191,7 +251,7 @@ export function VizActIIntro() {
                 x2={CX + half}
                 y2={y}
                 stroke={ACCENT.violet}
-                strokeOpacity={0.16}
+                strokeOpacity={0.14}
                 strokeWidth={0.5}
                 initial={{ pathLength: 0 }}
                 animate={{ pathLength: 1 }}
@@ -202,9 +262,31 @@ export function VizActIIntro() {
               />
             )
           })}
+
+          {/* Charging shimmer — a brighter band sweeps left→right across the
+              slab on a 5s loop. Briefly brightens the cells it passes over
+              so the slab feels like it's "charging up" with values. */}
+          <motion.path
+            d={slabPath}
+            fill="rgba(167,139,250,0.18)"
+            opacity={0}
+            animate={{
+              opacity: [0, 0.55, 0],
+            }}
+            transition={{
+              duration: 2.4 / speed,
+              repeat: Infinity,
+              repeatDelay: 1.6 / speed,
+              ease: 'easeInOut',
+              delay: 2.4 / speed,
+            }}
+            style={{
+              clipPath: 'inset(0 0 0 0)',
+            }}
+          />
         </motion.g>
 
-        {/* ────── [T, d_model] dimension label ────── */}
+        {/* ────── [T, d_model] kicker callout (top-right) ────── */}
         <motion.g
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -233,6 +315,111 @@ export function VizActIIntro() {
             </tspan>
             <tspan dy="-4">]</tspan>
           </text>
+        </motion.g>
+
+        {/* ────── Axis labels — directly on the slab ──────
+            Front edge: T = N TOKEN POSITIONS →
+            Left slanted edge: d_model = 384 ↑ */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.7 / speed, duration: 0.6 / speed }}
+        >
+          {/* T axis along the front edge (slightly below) */}
+          <line
+            x1={CX - sb.frontHalf + 30}
+            y1={sb.frontY + 18}
+            x2={CX + sb.frontHalf - 30}
+            y2={sb.frontY + 18}
+            stroke={ACCENT.dim}
+            strokeWidth={0.7}
+          />
+          <path
+            d={`M ${CX + sb.frontHalf - 36} ${sb.frontY + 14} L ${CX + sb.frontHalf - 26} ${sb.frontY + 18} L ${CX + sb.frontHalf - 36} ${sb.frontY + 22}`}
+            stroke={ACCENT.dim}
+            strokeWidth={0.7}
+            fill="none"
+          />
+          <text
+            x={CX}
+            y={sb.frontY + 36}
+            textAnchor="middle"
+            fontSize="11"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.violet}
+            letterSpacing="0.16em"
+            opacity={0.85}
+          >
+            T = {T} TOKEN POSITIONS →
+          </text>
+
+          {/* d_model axis along the left slanted edge */}
+          {(() => {
+            const sx1 = CX - sb.backHalf - 26
+            const sy1 = sb.backY + 8
+            const sx2 = CX - sb.frontHalf - 26
+            const sy2 = sb.frontY - 8
+            const angle =
+              (Math.atan2(sy2 - sy1, sx2 - sx1) * 180) / Math.PI
+            const mx = (sx1 + sx2) / 2
+            const my = (sy1 + sy2) / 2
+            return (
+              <>
+                <line
+                  x1={sx1}
+                  y1={sy1}
+                  x2={sx2}
+                  y2={sy2}
+                  stroke={ACCENT.dim}
+                  strokeWidth={0.7}
+                />
+                <text
+                  x={mx}
+                  y={my - 8}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fontFamily="var(--font-mono)"
+                  fill={ACCENT.cyan}
+                  letterSpacing="0.16em"
+                  opacity={0.85}
+                  transform={`rotate(${angle}, ${mx}, ${my - 8})`}
+                >
+                  d_model = 384 ↑
+                </text>
+              </>
+            )
+          })()}
+        </motion.g>
+
+        {/* ────── Connector — slab to Block 0 ────── */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.5 }}
+          transition={{ delay: 2.1 / speed, duration: 0.6 / speed }}
+        >
+          {/* Two faint vertical guides from slab front-edge corners down to
+              Block 0's back-edge — visualizes the alignment / "this is the
+              thing that will drop into Block 0 next". */}
+          <line
+            x1={CX - blocks[0].backHalf}
+            y1={sb.frontY + 4}
+            x2={CX - blocks[0].backHalf}
+            y2={blocks[0].backY - 4}
+            stroke={ACCENT.violet}
+            strokeOpacity={0.35}
+            strokeDasharray="3 4"
+            strokeWidth={0.8}
+          />
+          <line
+            x1={CX + blocks[0].backHalf}
+            y1={sb.frontY + 4}
+            x2={CX + blocks[0].backHalf}
+            y2={blocks[0].backY - 4}
+            stroke={ACCENT.violet}
+            strokeOpacity={0.35}
+            strokeDasharray="3 4"
+            strokeWidth={0.8}
+          />
         </motion.g>
 
         {/* ────── Slab pulse (loop) ────── */}
