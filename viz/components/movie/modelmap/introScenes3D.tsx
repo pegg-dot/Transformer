@@ -200,13 +200,13 @@ export function SceneActFraming({
 // Per-act wrapper components so modelmap/index.tsx registers one component
 // per scene id (matches how every other scene is wired up).
 export function SceneAct1Intro(props: SceneProps) {
-  return <SceneActFraming {...props} region="base" headline="input · text → numbers" />
+  return <SceneAct1Anatomy {...props} />
 }
 export function SceneAct2Intro(props: SceneProps) {
   return <SceneActFraming {...props} region="middle-block" headline="one block · attention + FFN" />
 }
 export function SceneAct3Intro(props: SceneProps) {
-  return <SceneActFraming {...props} region="full-stack" headline="six blocks stacked" />
+  return <SceneAct3StackBuild {...props} />
 }
 export function SceneAct4Intro(props: SceneProps) {
   return <SceneActFraming {...props} region="tower-tilt" headline="how the weights got there" />
@@ -216,4 +216,155 @@ export function SceneAct5Intro(props: SceneProps) {
 }
 export function SceneAct6Intro(props: SceneProps) {
   return <SceneActFraming {...props} region="top" headline="the final pick" />
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Act 1 intro: anatomy of the model.
+// Three labels float into 3D space — Tokens, 6 blocks · attention + FFN,
+// Output — naming the parts the rest of the tour will descend into.
+// ────────────────────────────────────────────────────────────────────────
+function SceneAct1Anatomy({ t, duration }: SceneProps) {
+  const p = clamp01(t / Math.max(0.01, duration))
+  const inputP = smoothstep(0.05, 0.35, p)
+  const blocksP = smoothstep(0.35, 0.65, p)
+  const outputP = smoothstep(0.65, 0.92, p)
+
+  const inputCx = INPUT_LEN / 2
+  const blocksCx = blockStart(N_BLOCKS / 2) + BLOCK_LEN / 2
+  const outputCx = TOTAL_X - OUTPUT_LEN / 2
+  const labelY = SLAB_H / 2 + 0.55
+
+  return (
+    <group>
+      {/* Input region pulse + label */}
+      <mesh position={[inputCx, 0, 0.3]}>
+        <planeGeometry args={[INPUT_LEN * 0.9, SLAB_H * 1.05]} />
+        <meshBasicMaterial color={COLORS.violet} transparent opacity={0.18 * inputP} />
+      </mesh>
+      <Label position={[inputCx, labelY, 0.3]} size={0.13} color={COLORS.violet} opacity={0.95 * inputP}>
+        tokens
+      </Label>
+      <mesh position={[inputCx, labelY - 0.18, 0.3]}>
+        <planeGeometry args={[0.4, 0.012]} />
+        <meshBasicMaterial color={COLORS.violet} transparent opacity={0.6 * inputP} />
+      </mesh>
+
+      {/* Six blocks region pulse + label */}
+      {Array.from({ length: N_BLOCKS }).map((_, bi) => {
+        const cx = blockStart(bi) + BLOCK_LEN / 2
+        return (
+          <mesh key={bi} position={[cx, 0, 0.3]}>
+            <planeGeometry args={[BLOCK_LEN * 0.9, SLAB_H * 1.0]} />
+            <meshBasicMaterial color={COLORS.blue} transparent opacity={0.14 * blocksP} />
+          </mesh>
+        )
+      })}
+      <Label position={[blocksCx, labelY, 0.3]} size={0.16} color={COLORS.blue} opacity={0.95 * blocksP}>
+        6 blocks · attention + FFN
+      </Label>
+      <mesh position={[blocksCx, labelY - 0.2, 0.3]}>
+        <planeGeometry args={[1.4, 0.012]} />
+        <meshBasicMaterial color={COLORS.blue} transparent opacity={0.6 * blocksP} />
+      </mesh>
+
+      {/* Output region pulse + label */}
+      <mesh position={[outputCx, 0, 0.3]}>
+        <planeGeometry args={[OUTPUT_LEN * 0.9, SLAB_H * 1.05]} />
+        <meshBasicMaterial color={COLORS.gold} transparent opacity={0.22 * outputP} />
+      </mesh>
+      <Label position={[outputCx, labelY, 0.3]} size={0.13} color={COLORS.gold} opacity={0.95 * outputP}>
+        output
+      </Label>
+      <mesh position={[outputCx, labelY - 0.18, 0.3]}>
+        <planeGeometry args={[0.4, 0.012]} />
+        <meshBasicMaterial color={COLORS.gold} transparent opacity={0.6 * outputP} />
+      </mesh>
+    </group>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Act 3 intro: block-duplication beat (image 30 from the plan).
+// Block 0 starts at full brightness (we just zoomed out from inside it).
+// Blocks 1–5 slide DOWN from above and fade in one at a time, so the
+// viewer literally sees "the same block, six times over" assembling.
+// "Many repetitions" brace appears across the top once they're in place.
+// ────────────────────────────────────────────────────────────────────────
+function SceneAct3StackBuild({ t, duration }: SceneProps) {
+  const p = clamp01(t / Math.max(0.01, duration))
+
+  // Block 0 fades up first (it was already there from Act II), then 1..5
+  // arrive over a window so each lands distinctly. By 0.85 they're all in.
+  const blockProgress = (bi: number): number => {
+    if (bi === 0) return smoothstep(0.0, 0.15, p)
+    const start = 0.18 + (bi - 1) * 0.13
+    return smoothstep(start, start + 0.12, p)
+  }
+
+  const slideY = (pi: number) => (1 - pi) * 1.6 // start 1.6u above, settle to 0
+
+  const bracePulse = smoothstep(0.85, 0.96, p)
+  const braceLeft = blockStart(0)
+  const braceRight = blockStart(N_BLOCKS - 1) + BLOCK_LEN
+  const braceY = SLAB_H / 2 + 0.45
+
+  return (
+    <group>
+      {Array.from({ length: N_BLOCKS }).map((_, bi) => {
+        const pi = blockProgress(bi)
+        const cx = blockStart(bi) + BLOCK_LEN / 2
+        const dy = slideY(pi)
+        const op = pi
+        return (
+          <group key={bi} position={[cx, dy, 0.3]}>
+            {/* Filled block plate */}
+            <mesh>
+              <boxGeometry args={[BLOCK_LEN * 0.92, SLAB_H * 1.05, 0.5]} />
+              <meshBasicMaterial color={COLORS.blue} transparent opacity={0.16 * op} />
+            </mesh>
+            {/* Inner attn / ffn slabs (mirrors the recipe) */}
+            <mesh position={[-BLOCK_LEN * 0.2, 0, 0.3]}>
+              <boxGeometry args={[BLOCK_LEN * 0.3, SLAB_H * 0.85, 0.05]} />
+              <meshBasicMaterial color={COLORS.blue} transparent opacity={0.45 * op} />
+            </mesh>
+            <mesh position={[BLOCK_LEN * 0.2, 0, 0.3]}>
+              <boxGeometry args={[BLOCK_LEN * 0.3, SLAB_H * 0.85, 0.05]} />
+              <meshBasicMaterial color={COLORS.mint} transparent opacity={0.45 * op} />
+            </mesh>
+            {/* Number label so the duplication reads as 1, 2, 3, … */}
+            <Label
+              position={[0, -SLAB_H * 0.7, 0.3]}
+              size={0.11}
+              color={bi === 0 ? COLORS.fg : COLORS.dim}
+              opacity={0.9 * op}
+            >
+              {`× ${bi + 1}`}
+            </Label>
+          </group>
+        )
+      })}
+
+      {/* "Many repetitions" brace across the top */}
+      <mesh position={[(braceLeft + braceRight) / 2, braceY, 0.3]}>
+        <planeGeometry args={[braceRight - braceLeft, 0.012]} />
+        <meshBasicMaterial color={COLORS.mint} transparent opacity={0.6 * bracePulse} />
+      </mesh>
+      <mesh position={[braceLeft, braceY - 0.05, 0.3]}>
+        <planeGeometry args={[0.012, 0.1]} />
+        <meshBasicMaterial color={COLORS.mint} transparent opacity={0.6 * bracePulse} />
+      </mesh>
+      <mesh position={[braceRight, braceY - 0.05, 0.3]}>
+        <planeGeometry args={[0.012, 0.1]} />
+        <meshBasicMaterial color={COLORS.mint} transparent opacity={0.6 * bracePulse} />
+      </mesh>
+      <Label
+        position={[(braceLeft + braceRight) / 2, braceY + 0.18, 0.3]}
+        size={0.13}
+        color={COLORS.mint}
+        opacity={0.95 * bracePulse}
+      >
+        many repetitions
+      </Label>
+    </group>
+  )
 }

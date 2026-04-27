@@ -498,7 +498,7 @@ function Inner({ scenes }: Props) {
             style={
               panelAnchor === 'fullscreen'
                 ? undefined
-                : { width: 'clamp(380px, 32%, 540px)' }
+                : { width: 'clamp(460px, 40%, 680px)' }
             }
           >
             <div className="relative h-full overflow-hidden">
