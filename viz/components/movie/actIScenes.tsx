@@ -1299,6 +1299,42 @@ export function VizPositional() {
 
 export function VizReadyForBlock0() {
   const speed = useSpeed()
+  const { prompt } = usePrompt()
+  // Real T from the user's prompt — fall back to 19 (default tour prompt length)
+  const T = Math.max(1, (prompt || '').length || 19)
+
+  // Color band per token position (cycle through palette)
+  const colorPalette = [
+    ACCENT.violet, ACCENT.blue, ACCENT.cyan,
+    ACCENT.mint, ACCENT.amber, ACCENT.pink,
+  ]
+  const colorFor = (t: number) => colorPalette[t % colorPalette.length]
+
+  // Slab geometry — back edge wider than front edge for axonometric perspective.
+  // (Inverted from before: the slab "rests" so the FRONT edge is closer/wider.)
+  const slab = {
+    backY: 380,
+    frontY: 600,
+    backLeft: 100,
+    backRight: 880,
+    frontLeft: 60,
+    frontRight: 920,
+  }
+  const slabPath =
+    `M ${slab.backLeft} ${slab.backY}` +
+    ` L ${slab.backRight} ${slab.backY}` +
+    ` L ${slab.frontRight} ${slab.frontY}` +
+    ` L ${slab.frontLeft} ${slab.frontY} Z`
+
+  // Block 0 intake slot — positioned so the slab visually slides into it.
+  // The slot's left edge sits ~30px to the right of the slab's front-right.
+  const intakeX = 970
+  const intakeTop = slab.backY - 12
+  const intakeBot = slab.frontY + 12
+
+  // Visible matrix grid — token columns × hidden-dim micro-rows
+  const ROWS_VIS = 24 // visible "d_model marks" per column (compressed from 384)
+
   return (
     <div className="relative h-full w-full">
       <svg viewBox="0 0 1400 900" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
@@ -1310,20 +1346,28 @@ export function VizReadyForBlock0() {
             <stop offset="0.8" stopColor="#34d399" stopOpacity="0.5" />
             <stop offset="1" stopColor="#f59e0b" stopOpacity="0.55" />
           </linearGradient>
+          <linearGradient id="intake-glow" x1="0" y1="0.5" x2="1" y2="0.5">
+            <stop offset="0" stopColor="#a78bfa" stopOpacity="0.0" />
+            <stop offset="0.4" stopColor="#a78bfa" stopOpacity="0.6" />
+            <stop offset="1" stopColor="#a78bfa" stopOpacity="0.95" />
+          </linearGradient>
           <filter id="ready-bloom" x="-30%" y="-30%" width="160%" height="160%">
             <feGaussianBlur stdDeviation="6" />
+          </filter>
+          <filter id="intake-bloom" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="8" />
           </filter>
         </defs>
 
         {/* Background — subtle perspective floor */}
         <g opacity="0.4">
           {Array.from({ length: 8 }).map((_, i) => {
-            const y = 600 + i * 35
+            const y = 620 + i * 32
             const widen = i * 30
             return (
               <line
                 key={i}
-                x1={100 - widen}
+                x1={40 - widen}
                 y1={y}
                 x2={1300 + widen}
                 y2={y}
@@ -1335,49 +1379,108 @@ export function VizReadyForBlock0() {
           })}
         </g>
 
-        {/* Title label */}
+        {/* Title label (top-left) */}
         <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           transition={{ duration: 0.6 / speed, delay: 0.2 / speed }}>
           <text x={130} y={210} fontSize="11" fontFamily="var(--font-mono)"
             fill={ACCENT.violet} letterSpacing="0.26em">INPUT SLAB</text>
           <text x={130} y={236} fontSize="20" fontFamily="var(--font-display)"
-            fontStyle="italic" fill={ACCENT.dim}>T × d
-            <tspan fontSize="13" dy="3">model</tspan>
+            fontStyle="italic" fill={ACCENT.dim}>
+            <tspan fill={ACCENT.violet}>{T}</tspan> × 384
           </text>
-          <line x1={140} y1={250} x2={210} y2={310} stroke={ACCENT.violet}
+          <line x1={140} y1={250} x2={210} y2={350} stroke={ACCENT.violet}
             strokeOpacity={0.5} strokeWidth={1} />
         </motion.g>
 
-        {/* Block stack on the right */}
-        {[0, 1, 2].map((i) => (
-          <motion.g key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 / speed + i * 0.15 / speed, duration: 0.5 / speed }}>
-            <text x={970 + i * 70} y={185} fontSize="11" fontFamily="var(--font-mono)"
-              fill={i === 0 ? ACCENT.violet : ACCENT.dim} letterSpacing="0.26em">
-              BLOCK {i}
+        {/* ───── Block stack on the right ─────
+            Block 0 is the focused/active one. Blocks 1–2 are dimmer and
+            sit behind it. Final ellipsis indicates more blocks beyond. */}
+        {/* Blocks 1–2 (dim, behind) — drawn first so Block 0 sits on top */}
+        {[1, 2].map((i) => (
+          <motion.g key={`bg-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 0.55 }}
+            transition={{ delay: 0.4 / speed + i * 0.12 / speed, duration: 0.5 / speed }}>
+            <text x={1090 + (i - 1) * 60} y={195} fontSize="9.5"
+              fontFamily="var(--font-mono)" fill={ACCENT.dim}
+              letterSpacing="0.22em" opacity="0.7">
+              Block {i}
             </text>
-            {/* Block as glassy parallelepiped */}
-            <g transform={`translate(${950 + i * 70}, 250)`}>
+            <g transform={`translate(${1075 + (i - 1) * 60}, 260)`}>
               <path
-                d="M 0 0 L 200 0 L 240 80 L 200 280 L 0 280 L -40 200 Z"
-                fill="rgba(255,255,255,0.02)"
-                stroke={i === 0 ? ACCENT.violet : 'rgba(167,139,250,0.32)'}
-                strokeWidth={i === 0 ? 2 : 1.2}
-                strokeOpacity={i === 0 ? 0.95 : 0.6}
-              />
-              {/* Top face */}
-              <path
-                d="M 0 0 L 200 0 L 240 80 L 40 80 Z"
-                fill="rgba(167,139,250,0.04)"
-                stroke={i === 0 ? ACCENT.violet : 'rgba(167,139,250,0.32)'}
+                d="M 0 0 L 160 0 L 195 60 L 160 240 L 0 240 L -35 180 Z"
+                fill="rgba(255,255,255,0.014)"
+                stroke="rgba(167,139,250,0.22)"
                 strokeWidth={1}
-                strokeOpacity={0.6}
               />
             </g>
           </motion.g>
         ))}
-        <text x={1200} y={185} fontSize="11" fontFamily="var(--font-mono)"
-          fill={ACCENT.dim} letterSpacing="0.26em">· · ·</text>
+        <text x={1230} y={195} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.26em" opacity="0.55">· · ·</text>
+
+        {/* Block 0 (active) — large, prominent, with glowing intake slot */}
+        <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 / speed, duration: 0.5 / speed }}>
+          <text x={985} y={185} fontSize="14" fontFamily="var(--font-mono)"
+            fill={ACCENT.violet} letterSpacing="0.32em" fontWeight={500}>
+            BLOCK 0
+          </text>
+          <g transform="translate(950, 240)">
+            <path
+              d="M 0 0 L 200 0 L 250 90 L 200 320 L 0 320 L -50 230 Z"
+              fill="rgba(255,255,255,0.025)"
+              stroke={ACCENT.violet}
+              strokeWidth={2}
+              strokeOpacity={0.95}
+            />
+            {/* Top face */}
+            <path
+              d="M 0 0 L 200 0 L 250 90 L 50 90 Z"
+              fill="rgba(167,139,250,0.05)"
+              stroke={ACCENT.violet}
+              strokeWidth={1}
+              strokeOpacity={0.7}
+            />
+          </g>
+        </motion.g>
+
+        {/* Block 0 intake slot — glowing rectangular doorway on the slab-side
+            face. Pulses to indicate it's actively receiving the slab. */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.2 / speed, duration: 0.6 / speed }}
+        >
+          {/* Glow halo */}
+          <motion.rect
+            x={intakeX - 6}
+            y={intakeTop}
+            width={20}
+            height={intakeBot - intakeTop}
+            fill="url(#intake-glow)"
+            filter="url(#intake-bloom)"
+            animate={{ opacity: [0.55, 0.95, 0.55] }}
+            transition={{
+              duration: 2.4 / speed,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+          {/* Slot inner edge */}
+          <line
+            x1={intakeX}
+            x2={intakeX}
+            y1={intakeTop}
+            y2={intakeBot}
+            stroke={ACCENT.violet}
+            strokeWidth={2.5}
+            strokeOpacity={0.9}
+          />
+          {/* Top + bottom slot caps */}
+          <line x1={intakeX - 4} x2={intakeX + 6} y1={intakeTop}
+            y2={intakeTop} stroke={ACCENT.violet} strokeWidth={2} strokeOpacity={0.85} />
+          <line x1={intakeX - 4} x2={intakeX + 6} y1={intakeBot}
+            y2={intakeBot} stroke={ACCENT.violet} strokeWidth={2} strokeOpacity={0.85} />
+        </motion.g>
 
         {/* The slab — moving toward Block 0 */}
         <motion.g
@@ -1386,50 +1489,159 @@ export function VizReadyForBlock0() {
           transition={{ duration: 1.6 / speed, ease: [0.22, 1, 0.36, 1], delay: 0.6 / speed }}>
           {/* Glow underlay */}
           <path
-            d="M 100 380 L 880 380 L 920 600 L 60 600 Z"
+            d={slabPath}
             fill="url(#slab-fill)"
             filter="url(#ready-bloom)"
             opacity="0.55"
           />
           {/* Slab body */}
           <path
-            d="M 100 380 L 880 380 L 920 600 L 60 600 Z"
+            d={slabPath}
             fill="rgba(167,139,250,0.10)"
             stroke={ACCENT.violet}
             strokeWidth={2}
           />
-          {/* Token columns inside slab — color-banded to preserve identity */}
-          {Array.from({ length: 14 }).map((_, t) => {
-            const colors = [
-              ACCENT.violet, ACCENT.blue, ACCENT.cyan, ACCENT.mint,
-              ACCENT.amber, ACCENT.pink, ACCENT.violet, ACCENT.blue,
-              ACCENT.cyan, ACCENT.mint, ACCENT.amber, ACCENT.pink,
-              ACCENT.violet, ACCENT.blue,
-            ]
-            const xTop = 100 + (t / 14) * 780
-            const xBot = 60 + (t / 14) * 860
+
+          {/* Token columns inside slab — one per real T, with visible
+              d_model micro-rows so the slab reads as a real matrix. */}
+          {Array.from({ length: T }).map((_, t) => {
+            const tNorm = T <= 1 ? 0 : t / (T - 1)
+            const xTop = slab.backLeft + tNorm * (slab.backRight - slab.backLeft)
+            const xBot = slab.frontLeft + tNorm * (slab.frontRight - slab.frontLeft)
+            const color = colorFor(t)
             return (
               <g key={t}>
-                <line x1={xTop} y1={380} x2={xBot} y2={600}
-                  stroke={colors[t]} strokeOpacity={0.18} strokeWidth={1.5} />
-                {/* Glowing dots within */}
-                {Array.from({ length: 8 }).map((_, d) => {
-                  const ti = (d + 1) / 9
+                {/* Vertical column edge — strong for first/last, lighter inside */}
+                <line
+                  x1={xTop} y1={slab.backY}
+                  x2={xBot} y2={slab.frontY}
+                  stroke={color}
+                  strokeOpacity={0.32}
+                  strokeWidth={1}
+                />
+                {/* d_model micro-rows: short cross-marks on each column */}
+                {Array.from({ length: ROWS_VIS }).map((_, d) => {
+                  const ti = (d + 0.5) / ROWS_VIS
                   const x = xTop + (xBot - xTop) * ti
-                  const y = 380 + (600 - 380) * ti
-                  return <circle key={d} cx={x} cy={y} r={0.9}
-                    fill={colors[t]} opacity={0.6} />
+                  const y = slab.backY + (slab.frontY - slab.backY) * ti
+                  // Synthesized intensity from sin(t,d) so each cell looks
+                  // like a real activation value
+                  const v = (Math.sin(t * 0.7 + d * 1.3) + 1) / 2
+                  const op = 0.18 + v * 0.65
+                  return (
+                    <rect
+                      key={d}
+                      x={x - 5}
+                      y={y - 1.2}
+                      width={10}
+                      height={2.4}
+                      fill={color}
+                      opacity={op}
+                    />
+                  )
                 })}
               </g>
             )
           })}
 
-          {/* Forward arrow */}
+          {/* Horizontal d_model rule lines — every ~6 rows, full slab width */}
+          {Array.from({ length: 4 }).map((_, k) => {
+            const ti = (k + 1) / 5
+            const x1 =
+              slab.backLeft + (slab.frontLeft - slab.backLeft) * ti
+            const x2 =
+              slab.backRight + (slab.frontRight - slab.backRight) * ti
+            const y =
+              slab.backY + (slab.frontY - slab.backY) * ti
+            return (
+              <line
+                key={`h-${k}`}
+                x1={x1}
+                x2={x2}
+                y1={y}
+                y2={y}
+                stroke={ACCENT.violet}
+                strokeOpacity={0.12}
+                strokeWidth={0.5}
+              />
+            )
+          })}
+
+          {/* Forward arrow — sliding into the intake slot */}
           <motion.path
-            d="M 920 490 L 980 490 M 968 478 L 980 490 L 968 502"
+            d={`M ${slab.frontRight + 5} 490 L ${intakeX - 5} 490 M ${intakeX - 17} 478 L ${intakeX - 5} 490 L ${intakeX - 17} 502`}
             stroke={ACCENT.violet} strokeWidth={2.2} fill="none"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             transition={{ delay: 2.0 / speed, duration: 0.5 / speed }} />
+        </motion.g>
+
+        {/* ───── Axis labels ─────
+            "T = N token positions →" along the front edge,
+            "d_model = 384 hidden dims" along the side edge. */}
+        <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          transition={{ delay: 2.4 / speed, duration: 0.6 / speed }}>
+          {/* Front-edge axis label (T) */}
+          <line
+            x1={slab.frontLeft + 10}
+            y1={slab.frontY + 22}
+            x2={slab.frontRight - 10}
+            y2={slab.frontY + 22}
+            stroke={ACCENT.dim}
+            strokeWidth={0.8}
+          />
+          <path
+            d={`M ${slab.frontRight - 14} ${slab.frontY + 18} L ${slab.frontRight - 4} ${slab.frontY + 22} L ${slab.frontRight - 14} ${slab.frontY + 26}`}
+            stroke={ACCENT.dim}
+            strokeWidth={0.8}
+            fill="none"
+          />
+          <text
+            x={(slab.frontLeft + slab.frontRight) / 2}
+            y={slab.frontY + 50}
+            textAnchor="middle"
+            fontSize="13"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.violet}
+            letterSpacing="0.16em"
+          >
+            T = {T} TOKEN POSITIONS →
+          </text>
+
+          {/* Side-edge axis label (d_model) — placed on the LEFT slanted edge */}
+          {(() => {
+            const sx1 = slab.backLeft - 30
+            const sy1 = slab.backY + 20
+            const sx2 = slab.frontLeft - 30
+            const sy2 = slab.frontY - 20
+            const angle =
+              (Math.atan2(sy2 - sy1, sx2 - sx1) * 180) / Math.PI
+            const mx = (sx1 + sx2) / 2
+            const my = (sy1 + sy2) / 2
+            return (
+              <>
+                <line
+                  x1={sx1}
+                  y1={sy1}
+                  x2={sx2}
+                  y2={sy2}
+                  stroke={ACCENT.dim}
+                  strokeWidth={0.8}
+                />
+                <text
+                  x={mx}
+                  y={my - 6}
+                  textAnchor="middle"
+                  fontSize="12"
+                  fontFamily="var(--font-mono)"
+                  fill={ACCENT.cyan}
+                  letterSpacing="0.16em"
+                  transform={`rotate(${angle}, ${mx}, ${my - 6})`}
+                >
+                  d_model = 384 ↑
+                </text>
+              </>
+            )
+          })()}
         </motion.g>
 
         {/* Streaks underneath — implies motion (looping) */}
@@ -1483,15 +1695,24 @@ export function VizReadyForBlock0() {
           )
         })}
 
-        {/* Caption */}
+        {/* Caption — payoff line. The prompt is no longer text. */}
         <motion.text
-          x={700} y={780} textAnchor="middle"
-          fontSize="18" fontFamily="var(--font-display)" fontStyle="italic"
-          fill={ACCENT.dim}
+          x={700} y={800} textAnchor="middle"
+          fontSize="20" fontFamily="var(--font-display)" fontStyle="italic"
+          fill="rgba(255,255,255,0.92)"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          transition={{ delay: 2.6 / speed, duration: 0.6 / speed }}
+          transition={{ delay: 2.8 / speed, duration: 0.6 / speed }}
         >
-          residual stream entering Block 0
+          The prompt is no longer text. It is a matrix of numbers
+        </motion.text>
+        <motion.text
+          x={700} y={830} textAnchor="middle"
+          fontSize="20" fontFamily="var(--font-display)" fontStyle="italic"
+          fill="rgba(255,255,255,0.92)"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          transition={{ delay: 3.0 / speed, duration: 0.6 / speed }}
+        >
+          entering the first transformer block.
         </motion.text>
       </svg>
     </div>
@@ -1788,7 +2009,7 @@ export function PositionalSplitPane() {
 /* ─────────── Scene 7 · Ready for Block 0 ─────────── */
 export function ReadyForBlock0SplitPane() {
   const { prompt } = usePrompt()
-  const T = (prompt || '').length || 14
+  const T = (prompt || '').length || 19
   const totalFloats = (T * 384).toLocaleString()
 
   return (
@@ -1811,11 +2032,16 @@ export function ReadyForBlock0SplitPane() {
           { label: 'total floats', value: totalFloats, color: ACCENT.mint },
         ],
         equation: {
-          label: 'input slab shape',
+          label: 'input slab → Block 0',
           body: (
             <>
-              [<span style={{ color: ACCENT.violet }}>{T}</span>
-              {', 384] → Block 0'}
+              <span style={{ color: ACCENT.violet }}>{T}</span> token
+              vectors × <span style={{ color: ACCENT.cyan }}>384</span>{' '}
+              numbers each
+              <br />
+              <span style={{ fontStyle: 'normal', fontSize: '0.78em', opacity: 0.7 }}>
+                X ∈ ℝ<sup>{T} × 384</sup> → Block 0
+              </span>
             </>
           ),
         },
