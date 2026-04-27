@@ -218,6 +218,7 @@ Modern models (LLaMA, PaLM) switched to RMSNorm, which drops the mean-subtractio
     section: ACT_II,
     breadcrumb: ['Block 0', 'Attention', 'Q · K · V'],
     focusedToken: 3,
+    wide: true,
     kicker: 'q · k · v',
     title: 'One vector. Three roles.',
     caption:
@@ -237,6 +238,7 @@ All three are learned. Nothing special about the split — they start as random 
     section: ACT_II,
     breadcrumb: ['Block 0', 'Attention'],
     focusedToken: 3,
+    wide: true,
     kicker: 'self-attention',
     title: 'Attention — 4 sub-phases.',
     subGroup: { label: 'phases', index: 4, total: 4, color: ACCENT.blue },
@@ -258,6 +260,7 @@ This is the mechanism that lets "the animal didn't cross the street because IT w
     section: ACT_II,
     breadcrumb: ['Block 0', 'Attention', 'Multi-head'],
     focusedToken: 3,
+    wide: true,
     kicker: 'multi-head',
     title: 'Six heads in parallel.',
     caption:
@@ -279,6 +282,7 @@ Empirically, the heads DO specialize. Different heads attend to different kinds 
     section: ACT_II,
     breadcrumb: ['Block 0', 'FFN'],
     focusedToken: 3,
+    wide: true,
     kicker: 'feed-forward',
     title: 'Expand. Fire. Compress.',
     subGroup: { label: 'FFN · structure', index: 1, total: 3, color: ACCENT.amber },
@@ -361,6 +365,7 @@ Empirically, smooth activations train a bit faster and reach slightly better fin
     section: ACT_III,
     breadcrumb: ['Stack of 6', 'One signal climbing'],
     focusedToken: 3,
+    wide: true,
     kicker: 'residual stack',
     title: 'Stack six blocks.',
     caption:
@@ -380,6 +385,7 @@ Each block asks "given what I just read, what's a better representation?" and nu
     section: ACT_III,
     breadcrumb: ['Output', 'Next-token pick'],
     focusedToken: 11,
+    wide: true,
     kicker: 'softmax + sampling',
     title: 'Guess the next character.',
     caption:
@@ -398,6 +404,7 @@ The sampled token is then APPENDED to the input sequence and fed back into the m
     id: 'kvcache',
     section: ACT_III,
     breadcrumb: ['Stack of 6', 'KV cache'],
+    wide: true,
     kicker: 'kv cache',
     title: 'One new row per step.',
     caption:

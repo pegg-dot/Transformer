@@ -56,6 +56,12 @@ export interface MovieScene {
    * so the viewer knows which token's vector the scene is talking about.
    */
   focusedToken?: number
+  /**
+   * Make the 2D detail rail wider for content-heavy scenes (matrix grids,
+   * multi-phase walkthroughs, anything that looks cramped at the default
+   * width). When true, the rail goes from ~45% to ~58%.
+   */
+  wide?: boolean
 }
 
 interface Props {
@@ -498,7 +504,9 @@ function Inner({ scenes }: Props) {
             style={
               panelAnchor === 'fullscreen'
                 ? undefined
-                : { width: 'clamp(460px, 40%, 680px)' }
+                : current.wide
+                  ? { width: 'clamp(580px, 58%, 880px)' }
+                  : { width: 'clamp(500px, 45%, 760px)' }
             }
           >
             <div className="relative h-full overflow-hidden">
@@ -724,8 +732,8 @@ function Inner({ scenes }: Props) {
           </AnimatePresence>
         </div>
 
-        {/* Transport + timeline */}
-        <div className="flex items-center gap-3 px-4 py-2">
+        {/* Transport + timeline (extra top padding to fit act labels above the bar) */}
+        <div className="flex items-center gap-3 px-4 pt-6 pb-2">
           <button
             type="button"
             onClick={() => {
@@ -760,12 +768,14 @@ function Inner({ scenes }: Props) {
             ▶
           </button>
 
-          {/* Segmented progress bar */}
+          {/* Segmented progress bar with act boundaries */}
           <div className="relative flex h-2 flex-1 items-center gap-[1px]">
             {scenes.map((s, i) => {
               const flex = s.durationMs / total
               const fillPct = i < safeIdx ? 1 : i === safeIdx ? sceneProgress : 0
               const isCurrent = i === safeIdx
+              const prevSection = i > 0 ? scenes[i - 1].section : undefined
+              const isActStart = s.section && s.section !== prevSection
               return (
                 <button
                   key={s.id}
@@ -774,6 +784,21 @@ function Inner({ scenes }: Props) {
                   className="group relative h-full cursor-pointer"
                   style={{ flex }}
                 >
+                  {/* Act-boundary tick + label above */}
+                  {isActStart && (
+                    <>
+                      <div
+                        className="pointer-events-none absolute top-[-8px] bottom-[-2px] left-0 w-px"
+                        style={{ background: s.accent, opacity: 0.55 }}
+                      />
+                      <div
+                        className="pointer-events-none absolute -top-[18px] left-0 small-caps whitespace-nowrap text-[8px] tracking-[0.18em]"
+                        style={{ color: s.accent, opacity: 0.85 }}
+                      >
+                        {trimActPrefix(s.section)}
+                      </div>
+                    </>
+                  )}
                   {/* Fill bar (clipped) */}
                   <div className="absolute inset-0 overflow-hidden rounded-full bg-[rgba(255,255,255,0.05)]">
                     <div
