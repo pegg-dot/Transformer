@@ -509,57 +509,11 @@ export function VizTokenization() {
           />
         </motion.g>
 
-        {/* Math callout for the focused token — shows charCode → mod 65 → ID
-            so the viewer sees how IDs are computed. Uses the first non-space
-            character of the prompt. */}
-        <motion.g
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{
-            delay: PHASE_ID + chars.length * STAGGER + 2.4 / speed,
-            duration: 0.6 / speed,
-          }}
-        >
-          <line
-            x1={startX}
-            y1={605}
-            x2={startX - 80}
-            y2={680}
-            stroke={ACCENT.violet}
-            strokeOpacity={0.4}
-            strokeWidth={1}
-          />
-          <rect
-            x={startX - 280}
-            y={682}
-            width={260}
-            height={56}
-            rx={4}
-            fill="rgba(7,7,9,0.7)"
-            stroke={ACCENT.rule}
-            strokeWidth={1}
-          />
-          <text
-            x={startX - 270}
-            y={702}
-            fontSize="10"
-            fontFamily="var(--font-mono)"
-            fill={ACCENT.dim}
-            letterSpacing="0.18em"
-          >
-            HOW THE ID IS COMPUTED
-          </text>
-          <text
-            x={startX - 270}
-            y={726}
-            fontSize="14"
-            fontFamily="var(--font-mono)"
-            fill="rgba(255,255,255,0.92)"
-          >
-            ‘{chars[0] === ' ' ? '·' : chars[0]}’.charCode % 65 ={' '}
-            <tspan fill={ACCENT.violet}>{idFor(chars[0])}</tspan>
-          </text>
-        </motion.g>
+        {/* (The "HOW THE ID IS COMPUTED" callout that used to live here was
+            getting clipped on the left edge for prompts of 14+ chars and
+            became redundant once the right pane's equation card started
+            showing the same live lookup ‘ch’ → ID synced to the scanner.
+            Removed in favor of the right pane.) */}
       </svg>
     </div>
   )
