@@ -72,6 +72,11 @@ export function IntroColdOpenPanel() {
   const REPLY_CHAR_MS = 50
   const T_REPLY_DONE = T_REPLY_START + (Math.max(replyText.length, 8) * REPLY_CHAR_MS) / 1000
   const T_HINT = T_REPLY_DONE + 0.6
+  // Final beat: the entire chat morphs down-and-left toward where the
+  // model's input slab will appear in the next scene's 3D view. Triggers
+  // near the end of the 22s scene so the act-change banner overlays a
+  // panel that's already shrinking "into the model."
+  const T_MORPH = T_HINT + 3.0
 
   // Card opacity keyframes — fade in 0.5s, hold, fade out + slide up
   const CARD_DUR = T_CARD_OUT - T_CARD + 0.45
@@ -81,7 +86,22 @@ export function IntroColdOpenPanel() {
   const inputTimes = [0, 0.5 / INPUT_DUR, (T_INPUT_OUT - T_INPUT) / INPUT_DUR, 1]
 
   return (
-    <div className="relative h-full w-full">
+    <motion.div
+      className="relative h-full w-full"
+      style={{ transformOrigin: 'bottom left' }}
+      animate={{
+        scale: [1, 1, 0.18],
+        x: [0, 0, -180],
+        y: [0, 0, 220],
+        opacity: [1, 1, 0],
+      }}
+      transition={{
+        delay: 0,
+        duration: T_MORPH + 1.4,
+        times: [0, T_MORPH / (T_MORPH + 1.4), 1],
+        ease: [0.7, 0, 0.3, 1],
+      }}
+    >
       {/* ───────── PHASE 1 — title card, centered ───────── */}
       <motion.div
         className="pointer-events-none absolute inset-0 flex items-center justify-center px-10"
@@ -376,7 +396,7 @@ export function IntroColdOpenPanel() {
           let&apos;s go inside ↓
         </motion.div>
       </div>
-    </div>
+    </motion.div>
   )
 }
 

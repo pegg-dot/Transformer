@@ -1,8 +1,9 @@
 'use client'
 
 import { Canvas } from '@react-three/fiber'
+import { Html } from '@react-three/drei'
 import { Fog } from 'three'
-import { useState, useMemo, useEffect, type ComponentType } from 'react'
+import { useState, useMemo, useEffect, type ComponentType, type ReactNode } from 'react'
 import { COLORS, FOG_NEAR, FOG_FAR, MID_X } from './shared/constants'
 import type { SceneMode, SceneProps } from './shared/types'
 import { CameraController } from './shared/CameraController'
@@ -109,9 +110,13 @@ export interface ModelMap3DProps {
   /** When false, freezes the scene clock and switches the Canvas to on-demand
    *  rendering so the GPU sleeps. */
   playing: boolean
+  /** Optional in-world 2D panel: rendered via drei's <Html> at a 3D
+   *  position so the 2D commentary anchors to a specific part of the
+   *  model rather than living in a separate column. */
+  worldPanel?: { node: ReactNode; pos: [number, number, number] }
 }
 
-export function ModelMap3D({ sceneId, accent, duration, playing }: ModelMap3DProps) {
+export function ModelMap3D({ sceneId, accent, duration, playing, worldPanel }: ModelMap3DProps) {
   const [t, setT] = useState(0)
   const Scene = SCENE_MAP[sceneId]
   const mode = useMemo(() => sceneMode(sceneId), [sceneId])
@@ -170,6 +175,35 @@ export function ModelMap3D({ sceneId, accent, duration, playing }: ModelMap3DPro
           <StackBackdrop mode={mode} activeBlock={activeBlock} />
 
           {Scene && <Scene t={t} duration={durationSec} accent={accent} sceneId={sceneId} />}
+
+          {/* In-world floating glass panel — the plan's full-bleed mode.
+              Renders the 2D detail panel as a drei <Html> at a chosen
+              world position. distanceFactor scales it with camera. */}
+          {worldPanel && (
+            <Html
+              position={worldPanel.pos}
+              transform
+              distanceFactor={6}
+              style={{
+                width: 420,
+                pointerEvents: 'auto',
+              }}
+            >
+              <div
+                style={{
+                  padding: '16px 18px',
+                  background: 'rgba(7,7,9,0.78)',
+                  border: '1.5px solid rgba(255,255,255,0.18)',
+                  borderRadius: 6,
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+                  color: 'var(--fg)',
+                }}
+              >
+                {worldPanel.node}
+              </div>
+            </Html>
+          )}
         </Canvas>
       </div>
     </div>

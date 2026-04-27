@@ -23,6 +23,9 @@ export type PanelAnchor =
   | 'block0'
   | 'block0.attn'
   | 'output'
+  /** Render the 2D panel as a floating glass card in 3D world-space via
+   *  drei's <Html>. Right rail is hidden. Position via `worldPanelPos`. */
+  | 'world'
 
 export interface MovieScene {
   id: string
@@ -64,6 +67,11 @@ export interface MovieScene {
    * width). When true, the rail goes from ~45% to ~58%.
    */
   wide?: boolean
+  /**
+   * For panelAnchor='world': position in 3D world space where the panel's
+   * floating glass card anchors. Default: [0, 1.5, 0] (above the model).
+   */
+  worldPanelPos?: [number, number, number]
 }
 
 interface Props {
@@ -484,6 +492,14 @@ function Inner({ scenes }: Props) {
               accent={current.accent}
               duration={current.durationMs}
               playing={playing && !anyPopoverOpen && !finished && !actHeld}
+              worldPanel={
+                panelAnchor === 'world'
+                  ? {
+                      node: current.render(),
+                      pos: current.worldPanelPos ?? [0, 1.5, 0],
+                    }
+                  : undefined
+              }
             />
 
             {/* Persistent breadcrumb — top-left "you are here". */}
@@ -501,8 +517,9 @@ function Inner({ scenes }: Props) {
           </div>
         )}
 
-        {/* 2D detail rail — right ~32% by default; absolute overlay when fullscreen. */}
-        {panelAnchor !== 'hidden' && (
+        {/* 2D detail rail — right ~32% by default; absolute overlay when
+            fullscreen; absent when 'world' (panel renders in-canvas via Html). */}
+        {panelAnchor !== 'hidden' && panelAnchor !== 'world' && (
           <div
             className={
               panelAnchor === 'fullscreen'
