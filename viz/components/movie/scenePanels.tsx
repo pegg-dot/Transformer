@@ -190,6 +190,242 @@ export function PanelKvCache() {
   )
 }
 
+/* ─────────── Act II — Attention ─────────── */
+export function PanelAttention() {
+  return (
+    <Panel
+      kicker="Block 0 · Attention"
+      title="Q · Kᵀ · softmax · V."
+      subtitle="Every token looks at every prior token, weighs them, and pulls in their values."
+      accent={ACCENT.blue}
+    >
+      <Eq accent={ACCENT.blue} caption="scaled-dot-product attention, one head">
+        Attn(Q,K,V) = softmax(Q Kᵀ / √d_k) V
+      </Eq>
+      <Bullet index={1} accent={ACCENT.blue} delay={0.4}>
+        <strong>Q · Kᵀ</strong> — pairwise scores. T × T grid of "how much should i attend to j?"
+      </Bullet>
+      <Bullet index={2} accent={ACCENT.violet} delay={0.55}>
+        <strong>÷ √d_k</strong> — keep variance under control before softmax.
+      </Bullet>
+      <Bullet index={3} accent={ACCENT.amber} delay={0.7}>
+        <strong>softmax</strong> per row — each token's row sums to 1. Causal mask zeros future tokens.
+      </Bullet>
+      <Bullet index={4} accent={ACCENT.mint} delay={0.85}>
+        <strong>· V</strong> — weighted average of value vectors becomes this token's update.
+      </Bullet>
+      <Numbers chips={[
+        { label: 'd_k', value: '64', color: ACCENT.amber },
+        { label: '√d_k', value: '8' },
+        { label: 'mask', value: 'causal' },
+        { label: 'rows sum', value: '1.000' },
+      ]} />
+    </Panel>
+  )
+}
+
+/* ─────────── Act II — Multi-head ─────────── */
+export function PanelMulti() {
+  return (
+    <Panel
+      kicker="Block 0 · Attention · Multi-head"
+      title="Six heads, in parallel."
+      subtitle="The same attention mechanism runs six times with different W_Q/W_K/W_V — each head specializes on a different relation."
+      accent={ACCENT.blue}
+    >
+      <Eq accent={ACCENT.blue} caption="concat all heads, then project back to model width">
+        MHA(x) = W_O · concat(head_1, …, head_h)
+      </Eq>
+      <Bullet index={1} accent={ACCENT.violet} delay={0.4}>
+        Each head gets its own Q/K/V projections. They don't share weights.
+      </Bullet>
+      <Bullet index={2} accent={ACCENT.blue} delay={0.55}>
+        Heads work on slimmer vectors — d/h instead of d. Width split, not depth duplicated.
+      </Bullet>
+      <Bullet index={3} accent={ACCENT.mint} delay={0.7}>
+        Outputs concatenate back to d, then a final W_O linear mixes the head streams.
+      </Bullet>
+      <Bullet index={4} accent={ACCENT.amber} delay={0.85}>
+        Different heads learn different jobs — syntax, position, named entities, etc.
+      </Bullet>
+      <Numbers chips={[
+        { label: 'heads · h', value: '6', color: ACCENT.blue },
+        { label: 'd / h', value: '64' },
+        { label: 'd_model', value: '384' },
+        { label: 'W_O · params', value: '147 K' },
+      ]} />
+    </Panel>
+  )
+}
+
+/* ─────────── Act III — Stack ─────────── */
+export function PanelStack() {
+  return (
+    <Panel
+      kicker="Stack of 6 · One Signal Climbing"
+      title="Same recipe, six times."
+      subtitle="The residual stream walks through six identical-shaped blocks. Each one rewrites the vector slightly. The signal climbs."
+      accent={ACCENT.mint}
+    >
+      <Eq accent={ACCENT.mint} caption="residual updates, applied sequentially">
+        x ← x + Attn(LN(x));  x ← x + FFN(LN(x))
+      </Eq>
+      <Bullet index={1} accent={ACCENT.blue} delay={0.4}>
+        <strong>LayerNorm</strong> first — every sublayer reads a normalized version of the residual.
+      </Bullet>
+      <Bullet index={2} accent={ACCENT.violet} delay={0.55}>
+        <strong>Attention adds</strong>, then <strong>FFN adds</strong>. The residual stream is a running sum of all rewrites so far.
+      </Bullet>
+      <Bullet index={3} accent={ACCENT.mint} delay={0.7}>
+        Six blocks deep. Same structure each time. The token's representation gets richer as it climbs.
+      </Bullet>
+      <Bullet index={4} accent={ACCENT.amber} delay={0.85}>
+        Skip-connections (the "+ x") let gradients flow back unchanged through any block.
+      </Bullet>
+      <Numbers chips={[
+        { label: 'blocks · n_layer', value: '6', color: ACCENT.mint },
+        { label: 'params · per block', value: '1.7 M' },
+        { label: 'total · model', value: '10.79 M' },
+      ]} />
+    </Panel>
+  )
+}
+
+/* ─────────── Act I — Embed ─────────── */
+export function PanelEmbed() {
+  return (
+    <Panel
+      kicker="Input · Embedding"
+      title="Each token becomes a vector."
+      subtitle="The token ID indexes into a learned table. The matching row is a 384-dim vector — the model's view of that character."
+      accent={ACCENT.violet}
+    >
+      <Eq accent={ACCENT.violet} caption="lookup, not multiplication — one table row per token">
+        embed(t) = E[t, :]
+      </Eq>
+      <Bullet index={1} accent={ACCENT.violet} delay={0.4}>
+        <strong>E ∈ ℝ<sup>V × d</sup></strong> — a learned matrix with one row per vocabulary entry.
+      </Bullet>
+      <Bullet index={2} accent={ACCENT.blue} delay={0.55}>
+        Lookup is just indexing — almost free at inference.
+      </Bullet>
+      <Bullet index={3} accent={ACCENT.amber} delay={0.7}>
+        Two tokens' rows can be close in vector space — the model has learned they're similar.
+      </Bullet>
+      <Numbers chips={[
+        { label: 'vocab · V', value: '65', color: ACCENT.violet },
+        { label: 'd', value: '384' },
+        { label: 'embed params', value: '24.96 K' },
+      ]} />
+    </Panel>
+  )
+}
+
+/* ─────────── Act IV — Loss ─────────── */
+export function PanelLoss() {
+  return (
+    <Panel
+      kicker="Training · Cross-Entropy"
+      title="How wrong is the guess?"
+      subtitle="Loss measures the surprise of the true next token under the model's distribution. Small when confident-and-right, huge when confident-and-wrong."
+      accent={ACCENT.red}
+    >
+      <Eq accent={ACCENT.red} caption="negative log probability of the true target token">
+        L = − log p(target)
+      </Eq>
+      <Bullet index={1} accent={ACCENT.red} delay={0.4}>
+        100% on the target → loss = 0. Perfect.
+      </Bullet>
+      <Bullet index={2} accent={ACCENT.amber} delay={0.55}>
+        50% → ≈ 0.69. Some surprise.
+      </Bullet>
+      <Bullet index={3} accent={ACCENT.violet} delay={0.7}>
+        1% → ≈ 4.6. Confident and wrong.
+      </Bullet>
+      <Bullet index={4} accent={ACCENT.mint} delay={0.85}>
+        Backprop only cares about this scalar. Every weight gets nudged by its gradient.
+      </Bullet>
+    </Panel>
+  )
+}
+
+/* ─────────── Act IV — Backprop ─────────── */
+export function PanelBackprop() {
+  return (
+    <Panel
+      kicker="Training · Backprop"
+      title="Gradient flows back."
+      subtitle="The chain rule walks the loss backward through every operation, depositing ∂L/∂param onto each weight as it passes."
+      accent={ACCENT.red}
+    >
+      <Eq accent={ACCENT.red} caption="upstream × local — repeated all the way back">
+        ∂L/∂W_i = ∂L/∂y · ∂y/∂W_i
+      </Eq>
+      <Bullet index={1} accent={ACCENT.red} delay={0.4}>
+        Start at the output. ∂L/∂logits is one easy derivative.
+      </Bullet>
+      <Bullet index={2} accent={ACCENT.amber} delay={0.55}>
+        Walk backward. Each layer multiplies its local Jacobian onto the upstream gradient.
+      </Bullet>
+      <Bullet index={3} accent={ACCENT.mint} delay={0.7}>
+        At every weight, deposit the gradient. That's the "blame" this weight gets for the loss.
+      </Bullet>
+      <Bullet index={4} accent={ACCENT.violet} delay={0.85}>
+        Skip connections in the residual stream let gradients flow back unchanged — no vanishing.
+      </Bullet>
+    </Panel>
+  )
+}
+
+/* ─────────── Act V — RoPE ─────────── */
+export function PanelRope() {
+  return (
+    <Panel
+      kicker="Modern Upgrades · RoPE"
+      title="Rotate, don't add."
+      subtitle="Modern transformers replace additive position encoding with rotation: each Q and K vector spins by an angle proportional to its position."
+      accent={ACCENT.violet}
+    >
+      <Eq accent={ACCENT.violet} caption="position becomes a rotation in 2D pairs">
+        q'_p = R(p) · q
+      </Eq>
+      <Bullet index={1} accent={ACCENT.violet} delay={0.4}>
+        Pairs of dimensions get rotated together — pos → angle → 2D rotation matrix.
+      </Bullet>
+      <Bullet index={2} accent={ACCENT.blue} delay={0.55}>
+        Q · K naturally encodes relative position. The dot product depends only on (pos_q − pos_k).
+      </Bullet>
+      <Bullet index={3} accent={ACCENT.amber} delay={0.7}>
+        No PE table to learn. Generalizes better to longer contexts than the model was trained on.
+      </Bullet>
+      <Bullet index={4} accent={ACCENT.mint} delay={0.85}>
+        Used in LLaMA, Qwen, Mistral, Gemini, etc. The current default.
+      </Bullet>
+    </Panel>
+  )
+}
+
+/* ─────────── Act V — Modern ─────────── */
+export function PanelModern() {
+  return (
+    <Panel
+      kicker="Modern Upgrades"
+      title="Same skeleton, three surgical upgrades."
+      subtitle="The architecture you just walked through still describes today's models. A handful of swaps make it faster, cheaper, and more numerically stable."
+      accent={ACCENT.mint}
+    >
+      <RoleRow label="RMSNorm" accent={ACCENT.blue} delay={0.4}
+        text={<>Drops the mean-subtract step of LayerNorm. Just divides by ‖x‖ — fewer FLOPs, similar effect.</>} />
+      <RoleRow label="SwiGLU" accent={ACCENT.gold} delay={0.55}
+        text={<>FFN's GELU becomes a gated activation: Swish(W₁ x) ⊙ W_v x. ~2% better, ~50% more params.</>} />
+      <RoleRow label="GQA" accent={ACCENT.mint} delay={0.7}
+        text={<>Grouped Query Attention — fewer K/V heads than Q heads. KV cache shrinks 4× with little quality cost.</>} />
+      <RoleRow label="RoPE" accent={ACCENT.violet} delay={0.85}
+        text={<>Rotary positional embeddings, see previous beat. Defaults today.</>} />
+    </Panel>
+  )
+}
+
 /* ─────────── Act VI — Output ─────────── */
 export function PanelOutput() {
   return (

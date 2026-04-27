@@ -43,6 +43,14 @@ import {
   PanelSample,
   PanelKvCache,
   PanelOutput,
+  PanelAttention,
+  PanelMulti,
+  PanelStack,
+  PanelEmbed,
+  PanelLoss,
+  PanelBackprop,
+  PanelRope,
+  PanelModern,
 } from './scenePanels'
 
 const ACCENT = {
@@ -160,7 +168,7 @@ The reason to use BPE instead of characters: way shorter sequences (fewer positi
 Every downstream layer reads the embedding vector, not the ID. The ID itself has no numerical meaning (ID 47 isn't "47 times bigger" than ID 1). The embedding converts the discrete ID into a dense vector the network can do math on.
 
 This is where the network first starts to encode meaning. Tokens that behave similarly (e.g. "king" and "queen") drift toward similar embedding vectors during training, because they produce similar gradient signals.`,
-    render: () => <SceneEmbedding />,
+    render: () => <PanelEmbed />,
   },
   {
     id: 'positional',
@@ -262,7 +270,7 @@ All three are learned. Nothing special about the split — they start as random 
 The output at position i is a weighted sum of everyone else's V vectors, weighted by how well i's question (Q_i) matched their key (K_j). If nothing matches, attention falls back on itself. If something matches strongly, that token dominates.
 
 This is the mechanism that lets "the animal didn't cross the street because IT was tired" resolve "it" to "animal" rather than "street" — the network learns to attend from "it" back to the right antecedent.`,
-    render: () => <SceneAttention />,
+    render: () => <PanelAttention />,
   },
   {
     id: 'multi',
@@ -283,7 +291,7 @@ This is the mechanism that lets "the animal didn't cross the street because IT w
 After all heads compute their output vectors, concatenate them into one wide vector, then apply one more linear projection (W_O) to mix the heads and return to d_model dimensions.
 
 Empirically, the heads DO specialize. Different heads attend to different kinds of relations, and you can visualize the patterns per head.`,
-    render: () => <SceneMultiHead />,
+    render: () => <PanelMulti />,
   },
   // FFN sub-section — structure first, then interpretation, then activation detail
   {
@@ -387,7 +395,7 @@ Empirically, smooth activations train a bit faster and reach slightly better fin
 Every block uses the residual stream pattern: its output is ADDED to the input, not replaced. This means early features survive all the way to the top, and gradients can flow straight from the final loss back to block 0 without getting attenuated through many multiplications.
 
 Each block asks "given what I just read, what's a better representation?" and nudges the running vector in that direction. Stacking more blocks = more nudges = more complex reasoning.`,
-    render: () => <SceneStack />,
+    render: () => <PanelStack />,
   },
   {
     id: 'sample',
@@ -459,7 +467,7 @@ This is the single biggest optimization behind fast generation. It's also why co
 Equivalently: loss measures how many bits of surprise the true token carried given the model's distribution. We want to minimize that surprise.
 
 This scalar is the only number backprop cares about. Every weight in the model gets nudged based on its contribution to this one number.`,
-    render: () => <SceneCrossEntropy />,
+    render: () => <PanelLoss />,
   },
   {
     id: 'loss-seq',
@@ -515,7 +523,7 @@ Batch size matters: bigger batches give less noisy gradients but each step costs
 By the end, you have ∂loss/∂w for every weight w. Gradient descent then nudges each w in the opposite direction of its gradient.
 
 Modern autodiff libraries (PyTorch, JAX) build this graph automatically from the forward pass. You write numpy-like code, they track it, and backprop "just works".`,
-    render: () => <SceneBackprop />,
+    render: () => <PanelBackprop />,
   },
   {
     id: 'bp-jacobian',
@@ -645,7 +653,7 @@ Modern variants: AdamW (decouples weight decay), Lion (uses sign only, cheaper m
 The key property: the dot product between Q at position i and K at position j depends only on their RELATIVE position (j − i), not their absolute positions. That's exactly what attention wants — "how far apart are we?" not "where am I on the number line?"
 
 RoPE also extrapolates better to longer sequences than training length, which matters for long-context models (100k–1M tokens).`,
-    render: () => <SceneRoPE />,
+    render: () => <PanelRope />,
   },
   {
     id: 'modern',
@@ -667,7 +675,7 @@ SwiGLU: replace FFN's single activation with a gated pair (two linear projection
 GQA (grouped-query attention): instead of N Q/K/V heads, use N Q heads and a smaller number G of shared K/V heads. Slashes the KV cache by a factor of N/G. Used by LLaMA-2 and most frontier open models.
 
 Stacked together, these changes give a faster, smaller, slightly better model with no architecture change.`,
-    render: () => <SceneModern />,
+    render: () => <PanelModern />,
   },
 
   // =============== ACT VI — THE OUTPUT ===============
