@@ -569,29 +569,61 @@ export function VizTokenization() {
 
 export function VizBPE() {
   const speed = useSpeed()
+  // ViewBox is taller (1100) and the merge tree is shifted down 160px to
+  // give the pair-card's result card breathing room and prevent it from
+  // colliding with the merge tree's "FINAL TOKENS" row above the bytes.
+  const TREE_OFFSET = 160
   return (
     <div className="relative h-full w-full">
-      <svg viewBox="0 0 1400 900" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <svg viewBox="0 0 1400 1100" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        {/* Divider line between top zone (pair-card) and bottom zone (tree) */}
+        <line
+          x1={120}
+          x2={1280}
+          y1={490}
+          y2={490}
+          stroke={ACCENT.rule}
+          strokeWidth={1}
+          strokeDasharray="4 6"
+          opacity="0.5"
+        />
+        {/* "applying the learned rules" label in the gap */}
+        <text
+          x={700}
+          y={510}
+          textAnchor="middle"
+          fontSize="11"
+          fontFamily="var(--font-mono)"
+          fill={ACCENT.dim}
+          letterSpacing="0.24em"
+          opacity="0.75"
+        >
+          ▾ APPLY THE RULES TO A NEW WORD ▾
+        </text>
+
         {/* Top: pair-merge moment with rule table */}
         <BPEPairCard speed={speed} />
 
-        {/* Bottom: merge tree compressing 'unbelievably' to 'un / bel / iev / ably' */}
-        <BPEMergeTree speed={speed} />
+        {/* Bottom: merge tree compressing 'unbelievably' to 'un / bel / iev / ably',
+            shifted down so it doesn't collide with the pair card. */}
+        <g transform={`translate(0, ${TREE_OFFSET})`}>
+          <BPEMergeTree speed={speed} />
+        </g>
 
-        {/* Section labels */}
-        <text x={170} y={680} fontSize="11" fontFamily="var(--font-mono)"
+        {/* Section labels — y values follow the shifted tree */}
+        <text x={170} y={680 + TREE_OFFSET} fontSize="11" fontFamily="var(--font-mono)"
           fill={ACCENT.dim} letterSpacing="0.22em" textAnchor="end">
           BYTES ▸
         </text>
-        <text x={170} y={580} fontSize="11" fontFamily="var(--font-mono)"
+        <text x={170} y={580 + TREE_OFFSET} fontSize="11" fontFamily="var(--font-mono)"
           fill={ACCENT.dim} letterSpacing="0.22em" textAnchor="end">
           INITIAL TOKENS ▸
         </text>
-        <text x={170} y={490} fontSize="11" fontFamily="var(--font-mono)"
+        <text x={170} y={490 + TREE_OFFSET} fontSize="11" fontFamily="var(--font-mono)"
           fill={ACCENT.mint} letterSpacing="0.22em" textAnchor="end" opacity="0.85">
           MERGE STEPS ▸
         </text>
-        <text x={170} y={400} fontSize="11" fontFamily="var(--font-mono)"
+        <text x={170} y={400 + TREE_OFFSET} fontSize="11" fontFamily="var(--font-mono)"
           fill={ACCENT.violet} letterSpacing="0.22em" textAnchor="end" opacity="0.95">
           FINAL TOKENS ▸
         </text>
