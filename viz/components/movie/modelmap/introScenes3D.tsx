@@ -203,19 +203,19 @@ export function SceneAct1Intro(props: SceneProps) {
   return <SceneAct1Anatomy {...props} />
 }
 export function SceneAct2Intro(props: SceneProps) {
-  return <SceneActFraming {...props} region="middle-block" headline="one block · attention + FFN" />
+  return <SceneAct2BlockZoom {...props} />
 }
 export function SceneAct3Intro(props: SceneProps) {
   return <SceneAct3StackBuild {...props} />
 }
 export function SceneAct4Intro(props: SceneProps) {
-  return <SceneActFraming {...props} region="tower-tilt" headline="how the weights got there" />
+  return <SceneAct4LossDive {...props} />
 }
 export function SceneAct5Intro(props: SceneProps) {
-  return <SceneActFraming {...props} region="upgrade-markers" headline="what modern models changed" />
+  return <SceneAct5Hotspots {...props} />
 }
 export function SceneAct6Intro(props: SceneProps) {
-  return <SceneActFraming {...props} region="top" headline="the final pick" />
+  return <SceneAct6Apex {...props} />
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -364,6 +364,325 @@ function SceneAct3StackBuild({ t, duration }: SceneProps) {
         opacity={0.95 * bracePulse}
       >
         many repetitions
+      </Label>
+    </group>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Act 2 intro: pull-back-then-zoom-in on block 0.
+// All 6 blocks visible at first. Block 0 spotlights bright while the
+// rest dim further. Two inner sublayer cards (Attention | FFN) fade in
+// inside block 0 as the camera dollies in (CameraController routes
+// through stackPullback → block0Wide via SCENE_VIA).
+// ────────────────────────────────────────────────────────────────────────
+function SceneAct2BlockZoom({ t, duration }: SceneProps) {
+  const p = clamp01(t / Math.max(0.01, duration))
+
+  // Phase 1 (0..0.35): all blocks visible, block 0 highlights.
+  const pSpot = smoothstep(0.05, 0.35, p)
+  // Phase 2 (0.35..0.7): the inside of block 0 fades in.
+  const pInside = smoothstep(0.4, 0.7, p)
+  // Phase 3 (0.7..1.0): full labels + residual arrow settle.
+  const pSettle = smoothstep(0.7, 0.95, p)
+
+  const block0Cx = blockStart(0) + BLOCK_LEN / 2
+
+  return (
+    <group>
+      {/* Spotlight glow on block 0 */}
+      <mesh position={[block0Cx, 0, 0.4]}>
+        <boxGeometry args={[BLOCK_LEN * 1.0, SLAB_H * 1.15, 0.55]} />
+        <meshBasicMaterial color={COLORS.blue} transparent opacity={0.28 * pSpot} />
+      </mesh>
+
+      {/* Inside-block content: Attention card on the left, FFN card on right.
+          They fade up after the spotlight as the camera approaches. */}
+      <group position={[block0Cx, 0, 0.5]}>
+        <mesh position={[-BLOCK_LEN * 0.22, 0, 0]}>
+          <boxGeometry args={[BLOCK_LEN * 0.38, SLAB_H * 0.85, 0.08]} />
+          <meshBasicMaterial color={COLORS.blue} transparent opacity={0.55 * pInside} />
+        </mesh>
+        <Label
+          position={[-BLOCK_LEN * 0.22, 0.05, 0.04]}
+          size={0.105}
+          color={COLORS.fg}
+          opacity={0.95 * pInside}
+        >
+          attention
+        </Label>
+        <Label
+          position={[-BLOCK_LEN * 0.22, -0.18, 0.04]}
+          size={0.07}
+          color={COLORS.dim}
+          opacity={0.9 * pInside}
+        >
+          mix tokens
+        </Label>
+
+        <mesh position={[BLOCK_LEN * 0.22, 0, 0]}>
+          <boxGeometry args={[BLOCK_LEN * 0.38, SLAB_H * 0.85, 0.08]} />
+          <meshBasicMaterial color={COLORS.mint} transparent opacity={0.55 * pInside} />
+        </mesh>
+        <Label
+          position={[BLOCK_LEN * 0.22, 0.05, 0.04]}
+          size={0.105}
+          color={COLORS.fg}
+          opacity={0.95 * pInside}
+        >
+          FFN
+        </Label>
+        <Label
+          position={[BLOCK_LEN * 0.22, -0.18, 0.04]}
+          size={0.07}
+          color={COLORS.dim}
+          opacity={0.9 * pInside}
+        >
+          per token
+        </Label>
+
+        {/* Residual stream arrow — dotted line passing through both sublayers */}
+        <mesh position={[0, -SLAB_H * 0.5, 0.05]}>
+          <planeGeometry args={[BLOCK_LEN * 0.85, 0.012]} />
+          <meshBasicMaterial color={COLORS.gold} transparent opacity={0.65 * pSettle} />
+        </mesh>
+        <Label
+          position={[0, -SLAB_H * 0.7, 0.05]}
+          size={0.075}
+          color={COLORS.gold}
+          opacity={0.9 * pSettle}
+        >
+          residual stream
+        </Label>
+      </group>
+
+      {/* "Block 0 of 6" tag overhead */}
+      <Label
+        position={[block0Cx, SLAB_H / 2 + 0.55, 0.3]}
+        size={0.13}
+        color={COLORS.blue}
+        opacity={0.95 * pSpot}
+      >
+        block 0 · of 6
+      </Label>
+    </group>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Act 4 intro: model goes dim, a loss curve appears beside it.
+// Phase 1: model dims. Phase 2: a sketched loss curve materializes
+// floating above the stack, descending from upper-left to lower-right.
+// Phase 3: caption + arrow pointing back at the model.
+// ────────────────────────────────────────────────────────────────────────
+function SceneAct4LossDive({ t, duration }: SceneProps) {
+  const p = clamp01(t / Math.max(0.01, duration))
+  const pDim = smoothstep(0.0, 0.3, p)
+  const pCurve = smoothstep(0.25, 0.7, p)
+  const pCaption = smoothstep(0.65, 0.95, p)
+
+  const cx = MID_X
+  const curveY = SLAB_H + 0.85
+  const curveW = 2.4
+  const curveH = 0.8
+
+  // Generate a fixed-shape decay curve: y = e^-3x + small noise
+  const N = 40
+  const points: [number, number][] = Array.from({ length: N }).map((_, i) => {
+    const px = i / (N - 1)
+    const py = Math.exp(-3.2 * px) + 0.04 * Math.sin(px * 18)
+    return [px, py]
+  })
+
+  return (
+    <group>
+      {/* Dim wash over the stack */}
+      <mesh position={[cx, 0, 0.3]}>
+        <planeGeometry args={[TOTAL_X, SLAB_H * 1.4]} />
+        <meshBasicMaterial color={COLORS.bg} transparent opacity={0.4 * pDim} />
+      </mesh>
+
+      {/* Loss curve — axis */}
+      <mesh position={[cx - curveW / 2, curveY, 0.4]}>
+        <planeGeometry args={[0.012, curveH]} />
+        <meshBasicMaterial color={COLORS.dim} transparent opacity={0.6 * pCurve} />
+      </mesh>
+      <mesh position={[cx, curveY - curveH / 2, 0.4]}>
+        <planeGeometry args={[curveW, 0.012]} />
+        <meshBasicMaterial color={COLORS.dim} transparent opacity={0.6 * pCurve} />
+      </mesh>
+      <Label position={[cx - curveW / 2 - 0.18, curveY, 0.4]} size={0.08} color={COLORS.dim} opacity={0.85 * pCurve}>
+        loss
+      </Label>
+      <Label position={[cx, curveY - curveH / 2 - 0.18, 0.4]} size={0.075} color={COLORS.dim} opacity={0.85 * pCurve}>
+        training steps →
+      </Label>
+
+      {/* Curve points */}
+      {points.map(([px, py], i) => {
+        const visibleP = smoothstep(i / N, (i + 1) / N, pCurve)
+        if (visibleP < 0.05) return null
+        const x = cx - curveW / 2 + px * curveW
+        const y = curveY - curveH / 2 + py * curveH
+        return (
+          <mesh key={i} position={[x, y, 0.45]}>
+            <sphereGeometry args={[0.02, 6, 6]} />
+            <meshBasicMaterial color={COLORS.red} transparent opacity={0.95 * visibleP} />
+          </mesh>
+        )
+      })}
+
+      {/* Title + caption */}
+      <Label
+        position={[cx, curveY + curveH / 2 + 0.18, 0.4]}
+        size={0.13}
+        color={COLORS.red}
+        opacity={0.95 * pCurve}
+      >
+        the loss came down
+      </Label>
+      <Label
+        position={[cx, -SLAB_H - 0.4, 0.4]}
+        size={0.085}
+        color={COLORS.dim}
+        opacity={0.9 * pCaption}
+      >
+        every weight you just saw was nudged by gradients of this number
+      </Label>
+
+      {/* Arrow from curve back to model */}
+      <mesh position={[cx + 0.6, curveY - curveH / 2 - 0.1, 0.4]} rotation={[0, 0, -Math.PI / 5]}>
+        <planeGeometry args={[0.6, 0.012]} />
+        <meshBasicMaterial color={COLORS.red} transparent opacity={0.65 * pCaption} />
+      </mesh>
+    </group>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Act 5 intro: three "upgrade" hotspots highlighted on the existing model.
+// PE region (input slab), normalization (between sublayers), FFN. Each
+// gets a label callout and a small marker dot pulses on it.
+// ────────────────────────────────────────────────────────────────────────
+function SceneAct5Hotspots({ t, duration }: SceneProps) {
+  const p = clamp01(t / Math.max(0.01, duration))
+  const p1 = smoothstep(0.05, 0.3, p)
+  const p2 = smoothstep(0.25, 0.5, p)
+  const p3 = smoothstep(0.45, 0.75, p)
+  const pAll = smoothstep(0.75, 0.95, p)
+
+  const peCx = INPUT_LEN / 2
+  const normCx = blockStart(2) + BLOCK_LEN * 0.3
+  const ffnCx = blockStart(4) + BLOCK_LEN * 0.7
+  const yLabel = SLAB_H / 2 + 0.4
+
+  const Hotspot = ({
+    cx,
+    label,
+    sub,
+    color,
+    fade,
+  }: {
+    cx: number
+    label: string
+    sub: string
+    color: string
+    fade: number
+  }) => (
+    <group position={[cx, 0, 0.45]}>
+      <mesh>
+        <sphereGeometry args={[0.12, 16, 16]} />
+        <meshBasicMaterial color={color} transparent opacity={0.85 * fade} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[0.22, 16, 16]} />
+        <meshBasicMaterial color={color} transparent opacity={0.25 * fade} />
+      </mesh>
+      <mesh position={[0, yLabel - 0.05, 0]}>
+        <planeGeometry args={[0.012, yLabel - 0.15]} />
+        <meshBasicMaterial color={color} transparent opacity={0.6 * fade} />
+      </mesh>
+      <Label position={[0, yLabel + 0.08, 0]} size={0.105} color={color} opacity={0.95 * fade}>
+        {label}
+      </Label>
+      <Label position={[0, yLabel - 0.1, 0]} size={0.075} color={COLORS.dim} opacity={0.9 * fade}>
+        {sub}
+      </Label>
+    </group>
+  )
+
+  return (
+    <group>
+      <Hotspot cx={peCx} label="RoPE" sub="pos: rotate, not add" color={COLORS.violet} fade={p1} />
+      <Hotspot cx={normCx} label="RMSNorm" sub="just divide ||x||" color={COLORS.blue} fade={p2} />
+      <Hotspot cx={ffnCx} label="SwiGLU" sub="gate, then mix" color={COLORS.mint} fade={p3} />
+
+      <Label
+        position={[MID_X, -SLAB_H - 0.45, 0.3]}
+        size={0.1}
+        color={COLORS.fg}
+        opacity={0.95 * pAll}
+      >
+        same skeleton · three surgical upgrades
+      </Label>
+    </group>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Act 6 intro: top-of-stack apex.
+// Camera goes to outputStageWide. Output slab pulses gold. A glyph "?"
+// appears above it suggesting "the model is about to choose."
+// ────────────────────────────────────────────────────────────────────────
+function SceneAct6Apex({ t, duration }: SceneProps) {
+  const p = clamp01(t / Math.max(0.01, duration))
+  const pSlab = smoothstep(0.05, 0.3, p)
+  const pGlyph = smoothstep(0.35, 0.7, p)
+  const pCaption = smoothstep(0.65, 0.95, p)
+
+  const outCx = TOTAL_X - OUTPUT_LEN / 2
+  const labelY = SLAB_H + 0.7
+
+  return (
+    <group>
+      {/* Output slab spotlight */}
+      <mesh position={[outCx, 0, 0.4]}>
+        <boxGeometry args={[OUTPUT_LEN * 0.95, SLAB_H * 1.15, 0.55]} />
+        <meshBasicMaterial color={COLORS.gold} transparent opacity={0.35 * pSlab} />
+      </mesh>
+
+      {/* Glyph appearing above the output slab */}
+      <Label
+        position={[outCx, labelY, 0.45]}
+        size={0.5 * pGlyph + 0.05}
+        color={COLORS.gold}
+        opacity={0.95 * pGlyph}
+      >
+        ?
+      </Label>
+
+      {/* Halo around the glyph */}
+      <mesh position={[outCx, labelY, 0.42]}>
+        <sphereGeometry args={[0.32, 16, 16]} />
+        <meshBasicMaterial color={COLORS.gold} transparent opacity={0.18 * pGlyph} />
+      </mesh>
+
+      {/* Captions */}
+      <Label
+        position={[outCx, -SLAB_H - 0.25, 0.4]}
+        size={0.105}
+        color={COLORS.gold}
+        opacity={0.95 * pCaption}
+      >
+        the next character
+      </Label>
+      <Label
+        position={[outCx, -SLAB_H - 0.45, 0.4]}
+        size={0.075}
+        color={COLORS.dim}
+        opacity={0.9 * pCaption}
+      >
+        one of 65 · sampled from a softmax
       </Label>
     </group>
   )
