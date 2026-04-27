@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import { useSpeed } from './speedContext'
 import { usePrompt } from './promptContext'
+import { useLiveContinuation } from '@/lib/useLiveContinuation'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -61,13 +62,15 @@ export function IntroColdOpenPanel() {
   const T_USER = T_SEND + 0.55
   const T_AI = T_USER + 0.75
   const T_DOTS = T_AI + 0.3
-  // AI reply: dots run for 1.4s, then a continuation types in.
+  // AI reply: dots run for 1.4s, then a continuation types in. Try the
+  // live ONNX model first for the user's actual prompt; fall back to a
+  // hand-tuned continuation if the model isn't ready or errored.
   const T_REPLY_START = T_DOTS + 1.4
-  // Pick a thematically-appropriate continuation for the prompt. Hardcoded
-  // per a few common openers; falls back to a generic continuation.
-  const replyText = pickReply(prompt)
+  const live = useLiveContinuation(prompt, 32)
+  const replyText =
+    live.text.length > 0 ? live.text : pickReply(prompt)
   const REPLY_CHAR_MS = 50
-  const T_REPLY_DONE = T_REPLY_START + (replyText.length * REPLY_CHAR_MS) / 1000
+  const T_REPLY_DONE = T_REPLY_START + (Math.max(replyText.length, 8) * REPLY_CHAR_MS) / 1000
   const T_HINT = T_REPLY_DONE + 0.6
 
   // Card opacity keyframes — fade in 0.5s, hold, fade out + slide up
@@ -294,39 +297,63 @@ export function IntroColdOpenPanel() {
                 ))}
               </motion.div>
 
-              {/* AI reply — types in char-by-char where the dots were */}
-              <div className="-mt-3 text-[13px] leading-5">
-                {replyText.split('').map((ch, i) => (
-                  <motion.span
-                    key={i}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{
-                      delay: (T_REPLY_START + (i * REPLY_CHAR_MS) / 1000) / speed,
-                      duration: 0.04 / speed,
-                    }}
-                    style={{
-                      color: i < (prompt.trim().length > 0 ? 32 : 0) ? FG : FG,
-                      fontStyle: 'italic',
-                    }}
-                  >
-                    {ch}
-                  </motion.span>
-                ))}
-                {/* Blinking caret while reply types */}
-                <motion.span
-                  className="inline-block align-middle"
-                  style={{ width: 2, height: 14, marginLeft: 2, background: ACCENT.blue }}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: [0, 1, 1, 0] }}
-                  transition={{
-                    delay: T_REPLY_START / speed,
-                    duration: (T_REPLY_DONE - T_REPLY_START + 0.5) / speed,
-                    times: [0, 0.05, 0.95, 1],
-                    repeat: 0,
-                  }}
-                />
-              </div>
+              {/* AI reply — live ONNX model streams real tokens for the
+                  user's prompt; falls back to a hand-tuned continuation
+                  if the model isn't ready in time. */}
+              <motion.div
+                className="-mt-3 text-[13px] leading-5"
+                style={{ fontStyle: 'italic', color: FG }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{
+                  delay: T_REPLY_START / speed,
+                  duration: 0.4 / speed,
+                  ease: 'easeOut',
+                }}
+              >
+                {live.text.length > 0 ? (
+                  <>
+                    {live.text}
+                    {!live.done && (
+                      <motion.span
+                        className="inline-block align-middle"
+                        style={{ width: 2, height: 14, marginLeft: 2, background: ACCENT.blue }}
+                        animate={{ opacity: [0, 1, 1, 0] }}
+                        transition={{ duration: 1.0, repeat: Infinity, times: [0, 0.1, 0.9, 1] }}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* Fallback: hand-tuned reply types in char-by-char */}
+                    {replyText.split('').map((ch, i) => (
+                      <motion.span
+                        key={i}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{
+                          delay: (T_REPLY_START + (i * REPLY_CHAR_MS) / 1000) / speed,
+                          duration: 0.04 / speed,
+                        }}
+                      >
+                        {ch}
+                      </motion.span>
+                    ))}
+                    <motion.span
+                      className="inline-block align-middle"
+                      style={{ width: 2, height: 14, marginLeft: 2, background: ACCENT.blue }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: [0, 1, 1, 0] }}
+                      transition={{
+                        delay: T_REPLY_START / speed,
+                        duration: (T_REPLY_DONE - T_REPLY_START + 0.5) / speed,
+                        times: [0, 0.05, 0.95, 1],
+                        repeat: 0,
+                      }}
+                    />
+                  </>
+                )}
+              </motion.div>
             </motion.div>
           </div>
         </div>

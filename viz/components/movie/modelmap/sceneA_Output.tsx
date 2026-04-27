@@ -14,8 +14,9 @@ import {
 import { clamp01, smoothstep } from './shared/easing'
 import { Label } from './shared/Label'
 import { usePrompt } from '../promptContext'
+import { useLiveContinuation } from '@/lib/useLiveContinuation'
 
-const GENERATED = ' on the mat'
+const GENERATED_FALLBACK = '...'
 
 /**
  * Output — the full forward pass replay.
@@ -28,6 +29,11 @@ const GENERATED = ' on the mat'
  */
 export default function SceneOutput({ t, duration }: SceneProps) {
   const { prompt } = usePrompt()
+  // Real model continuation for the actual user prompt — this is the
+  // payoff: the same prompt that drove the cold-open chat shows up here
+  // with the model's real generated tokens.
+  const live = useLiveContinuation(prompt, 32)
+  const generated = live.text.length > 0 ? live.text : GENERATED_FALLBACK
   const p = clamp01(t / Math.max(0.01, duration))
   const pEst = smoothstep(0, 0.1, p)
 
@@ -52,10 +58,10 @@ export default function SceneOutput({ t, duration }: SceneProps) {
   })()
 
   // The particle "lands" at the end of each cycle → char appears.
-  const totalChars = GENERATED.length
+  const totalChars = generated.length
   // Reveal more chars on each successive cycle.
   const charsThisRun = Math.floor(((cycleIdx + cycleP) / cycles) * totalChars)
-  const visible = GENERATED.slice(0, Math.min(totalChars, charsThisRun))
+  const visible = generated.slice(0, Math.min(totalChars, charsThisRun))
 
   // Pulse the output slab when the particle reaches it.
   const arrived = cycleP > 0.92
