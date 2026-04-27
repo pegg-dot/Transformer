@@ -251,6 +251,29 @@ export function VizActIIntro() {
             repeat: Infinity,
           }}
         />
+
+        {/* ────── Edge shimmer — light particle traversing the front edge ────── */}
+        {Array.from({ length: 3 }).map((_, i) => (
+          <motion.circle
+            key={`shimmer-${i}`}
+            r={3}
+            fill={ACCENT.violet}
+            filter="url(#slab-bloom)"
+            cy={sb.frontY}
+            initial={{ cx: CX - sb.frontHalf, opacity: 0 }}
+            animate={{
+              cx: [CX - sb.frontHalf, CX + sb.frontHalf],
+              opacity: [0, 0.95, 0.95, 0],
+            }}
+            transition={{
+              duration: 4 / speed,
+              ease: 'linear',
+              repeat: Infinity,
+              delay: 2 / speed + (i * 1.3) / speed,
+              times: [0, 0.1, 0.9, 1],
+            }}
+          />
+        ))}
       </svg>
     </div>
   )
@@ -449,6 +472,93 @@ export function VizTokenization() {
         >
           char-level vocab · 65 entries · IDs in [0, 65)
         </motion.text>
+
+        {/* Looping scanner — after the initial reveal, a violet bar sweeps
+            left→right repeatedly, briefly pulsing each token+ID column it
+            passes. Keeps the scene visually alive for its full duration. */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: PHASE_ID + chars.length * STAGGER + 1.2 / speed }}
+        >
+          <motion.rect
+            x={startX - cellW / 2}
+            y={400}
+            width={cellW * 0.9}
+            height={210}
+            rx={6}
+            fill="rgba(167,139,250,0.06)"
+            stroke={ACCENT.violet}
+            strokeOpacity={0.55}
+            strokeWidth={1.5}
+            filter="url(#tok-glow)"
+            animate={{
+              x: [
+                startX - cellW / 2,
+                startX + (chars.length - 1) * cellW - cellW / 2,
+                startX - cellW / 2,
+              ],
+            }}
+            transition={{
+              duration: (chars.length * 0.55) / speed,
+              ease: 'linear',
+              repeat: Infinity,
+              delay: PHASE_ID + chars.length * STAGGER + 1.6 / speed,
+            }}
+          />
+        </motion.g>
+
+        {/* Math callout for the focused token — shows charCode → mod 65 → ID
+            so the viewer sees how IDs are computed. Uses the first non-space
+            character of the prompt. */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{
+            delay: PHASE_ID + chars.length * STAGGER + 2.4 / speed,
+            duration: 0.6 / speed,
+          }}
+        >
+          <line
+            x1={startX}
+            y1={605}
+            x2={startX - 80}
+            y2={680}
+            stroke={ACCENT.violet}
+            strokeOpacity={0.4}
+            strokeWidth={1}
+          />
+          <rect
+            x={startX - 280}
+            y={682}
+            width={260}
+            height={56}
+            rx={4}
+            fill="rgba(7,7,9,0.7)"
+            stroke={ACCENT.rule}
+            strokeWidth={1}
+          />
+          <text
+            x={startX - 270}
+            y={702}
+            fontSize="10"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.dim}
+            letterSpacing="0.18em"
+          >
+            HOW THE ID IS COMPUTED
+          </text>
+          <text
+            x={startX - 270}
+            y={726}
+            fontSize="14"
+            fontFamily="var(--font-mono)"
+            fill="rgba(255,255,255,0.92)"
+          >
+            ‘{chars[0] === ' ' ? '·' : chars[0]}’.charCode % 65 ={' '}
+            <tspan fill={ACCENT.violet}>{idFor(chars[0])}</tspan>
+          </text>
+        </motion.g>
       </svg>
     </div>
   )
@@ -500,11 +610,18 @@ function BPEPairCard({ speed }: { speed: number }) {
     [],
   )
   const [step, setStep] = useState(0)
+  // Loop the merge sequence — after the 4th merge, hold for one beat and
+  // restart from #1. Keeps the rule table animating throughout.
   useEffect(() => {
-    const id = setInterval(() => setStep((s) => Math.min(merges.length - 1, s + 1)), 2200 / speed)
+    const id = setInterval(
+      () => setStep((s) => (s + 1) % (merges.length + 1)),
+      2200 / speed,
+    )
     return () => clearInterval(id)
   }, [speed, merges.length])
-  const m = merges[step]
+  // When step === merges.length, we're in the "hold full table" beat.
+  const showStep = Math.min(step, merges.length - 1)
+  const m = merges[showStep]
   return (
     <g>
       {/* Two source cards */}
@@ -550,24 +667,33 @@ function BPEPairCard({ speed }: { speed: number }) {
           letterSpacing="0.24em">LEARNED MERGE RULES</text>
         <rect x={-10} y={20} width={400} height={240} rx={4}
           fill="rgba(255,255,255,0.02)" stroke={ACCENT.rule} />
-        {merges.slice(0, step + 1).map((r, i) => (
-          <motion.g key={i} transform={`translate(10, ${44 + i * 48})`}
-            initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.1 / speed }}>
-            <text x={0} y={20} fontSize="11" fontFamily="var(--font-mono)"
-              fill={ACCENT.dim} letterSpacing="0.1em">#{i + 1}</text>
-            <text x={56} y={22} fontSize="22" fontFamily="var(--font-display)"
-              fontStyle="italic" fill="rgba(255,255,255,0.92)">{r.a}</text>
-            <text x={108} y={22} fontSize="14" fontFamily="var(--font-mono)" fill={ACCENT.dim}>+</text>
-            <text x={140} y={22} fontSize="22" fontFamily="var(--font-display)"
-              fontStyle="italic" fill="rgba(255,255,255,0.92)">{r.b}</text>
-            <text x={210} y={22} fontSize="14" fontFamily="var(--font-mono)" fill={ACCENT.dim}>→</text>
-            <text x={250} y={22} fontSize="22" fontFamily="var(--font-display)"
-              fontStyle="italic" fill={ACCENT.mint}>{r.merged}</text>
-          </motion.g>
-        ))}
-        {step < merges.length - 1 && (
-          <text x={185} y={44 + (step + 1) * 48 + 14} textAnchor="middle"
+        {merges.slice(0, showStep + 1).map((r, i) => {
+          const isCurrent = i === showStep
+          return (
+            <motion.g key={i} transform={`translate(10, ${44 + i * 48})`}
+              initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.1 / speed }}>
+              {isCurrent && (
+                <motion.rect x={-12} y={2} width={400} height={36} rx={3}
+                  fill="rgba(167,139,250,0.10)"
+                  animate={{ opacity: [0.4, 1, 0.4] }}
+                  transition={{ duration: 1.6 / speed, repeat: Infinity }} />
+              )}
+              <text x={0} y={20} fontSize="11" fontFamily="var(--font-mono)"
+                fill={ACCENT.dim} letterSpacing="0.1em">#{i + 1}</text>
+              <text x={56} y={22} fontSize="22" fontFamily="var(--font-display)"
+                fontStyle="italic" fill="rgba(255,255,255,0.92)">{r.a}</text>
+              <text x={108} y={22} fontSize="14" fontFamily="var(--font-mono)" fill={ACCENT.dim}>+</text>
+              <text x={140} y={22} fontSize="22" fontFamily="var(--font-display)"
+                fontStyle="italic" fill="rgba(255,255,255,0.92)">{r.b}</text>
+              <text x={210} y={22} fontSize="14" fontFamily="var(--font-mono)" fill={ACCENT.dim}>→</text>
+              <text x={250} y={22} fontSize="22" fontFamily="var(--font-display)"
+                fontStyle="italic" fill={ACCENT.mint}>{r.merged}</text>
+            </motion.g>
+          )
+        })}
+        {showStep < merges.length - 1 && (
+          <text x={185} y={44 + (showStep + 1) * 48 + 14} textAnchor="middle"
             fontSize="14" fill={ACCENT.dim}>⋮</text>
         )}
       </g>
@@ -629,13 +755,30 @@ function BPEMergeTree({ speed }: { speed: number }) {
         </motion.g>
       ))}
 
-      {/* Final tokens */}
+      {/* Final tokens — initial spring-in, then continuous breathing pulse
+          so the bottom of the scene stays alive throughout. */}
       {finals.map((f, i) => (
         <motion.g key={`final-${i}`} initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: 'spring', stiffness: 180, damping: 20, delay: 2.6 / speed + i * 0.15 / speed }}>
-          <rect x={f.x - 60} y={360} width={120} height={56} rx={5}
-            fill="rgba(167,139,250,0.16)" stroke={ACCENT.violet} strokeWidth={2.2} />
+          <motion.rect x={f.x - 60} y={360} width={120} height={56} rx={5}
+            fill="rgba(167,139,250,0.16)"
+            stroke={ACCENT.violet}
+            strokeWidth={2.2}
+            animate={{
+              filter: [
+                'drop-shadow(0 0 0 rgba(167,139,250,0))',
+                `drop-shadow(0 0 12px ${ACCENT.violet})`,
+                'drop-shadow(0 0 0 rgba(167,139,250,0))',
+              ],
+            }}
+            transition={{
+              duration: 2.4 / speed,
+              repeat: Infinity,
+              delay: 4 / speed + i * 0.4 / speed,
+              ease: 'easeInOut',
+            }}
+          />
           <text x={f.x} y={400} textAnchor="middle" fontSize="26"
             fontFamily="var(--font-display)" fontStyle="italic" fill={ACCENT.violet}>{f.label}</text>
         </motion.g>
@@ -1093,6 +1236,38 @@ export function VizPositional() {
             <tspan fontSize="20"> + PE(i)</tspan>
           </text>
         </motion.g>
+
+        {/* Continuous position scrubber — after waves draw + columns appear,
+            a glowing vertical highlight slides across position-by-position
+            so the viewer keeps seeing motion through the long static phase. */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 5.6 / speed, duration: 0.4 / speed }}
+        >
+          <motion.rect
+            y={88}
+            width={POS_DX * 0.78}
+            height={690}
+            rx={6}
+            fill="rgba(167,139,250,0.06)"
+            stroke={ACCENT.violet}
+            strokeOpacity={0.65}
+            strokeWidth={1.5}
+            animate={{
+              x: Array.from({ length: POSITIONS + 1 }).map(
+                (_, i) =>
+                  POS_X_START + ((i % POSITIONS) * POS_DX) - POS_DX * 0.39,
+              ),
+            }}
+            transition={{
+              duration: (POSITIONS * 1.1) / speed,
+              ease: 'linear',
+              repeat: Infinity,
+              delay: 6 / speed,
+            }}
+          />
+        </motion.g>
       </svg>
     </div>
   )
@@ -1235,22 +1410,56 @@ export function VizReadyForBlock0() {
             transition={{ delay: 2.0 / speed, duration: 0.5 / speed }} />
         </motion.g>
 
-        {/* Streaks underneath — implies motion */}
-        {Array.from({ length: 5 }).map((_, i) => (
+        {/* Streaks underneath — implies motion (looping) */}
+        {Array.from({ length: 6 }).map((_, i) => (
           <motion.line
             key={i}
-            x1={-50}
-            x2={250}
-            y1={650 + i * 12}
-            y2={650 + i * 12}
+            y1={648 + i * 11}
+            y2={648 + i * 11}
+            x1={0}
+            x2={180}
             stroke={ACCENT.violet}
-            strokeOpacity={0.18 - i * 0.025}
+            strokeOpacity={0.22 - i * 0.025}
             strokeWidth={1}
-            initial={{ x: -200 }}
-            animate={{ x: 0 }}
-            transition={{ delay: 0.8 / speed + i * 0.06 / speed, duration: 0.8 / speed }}
+            animate={{ x: [-180, 1400] }}
+            transition={{
+              duration: 2.6 / speed,
+              ease: 'linear',
+              repeat: Infinity,
+              delay: i * 0.18 / speed,
+            }}
           />
         ))}
+
+        {/* Token particles flowing along the slab into Block 0 — looping */}
+        {Array.from({ length: 18 }).map((_, i) => {
+          const lane = i % 6
+          const colors = [
+            ACCENT.violet, ACCENT.blue, ACCENT.cyan,
+            ACCENT.mint, ACCENT.amber, ACCENT.pink,
+          ]
+          const yLane = 410 + lane * 32
+          return (
+            <motion.circle
+              key={`flow-${i}`}
+              r={2.6}
+              cy={yLane}
+              fill={colors[lane]}
+              opacity={0.85}
+              animate={{
+                cx: [80, 920],
+                opacity: [0, 0.85, 0.85, 0],
+              }}
+              transition={{
+                duration: 2.4 / speed,
+                ease: 'easeOut',
+                repeat: Infinity,
+                delay: 1.2 / speed + (i * 0.13) / speed,
+                times: [0, 0.15, 0.85, 1],
+              }}
+            />
+          )
+        })}
 
         {/* Caption */}
         <motion.text
