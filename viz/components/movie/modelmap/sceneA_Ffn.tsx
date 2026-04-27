@@ -1,87 +1,145 @@
 'use client'
 
+import { useMemo } from 'react'
 import type { SceneProps } from './shared/types'
 import { COLORS, blockStart, BLOCK_LEN } from './shared/constants'
 import { clamp01, smoothstep } from './shared/easing'
-import { Slab } from './shared/Slab'
-import { DenseMesh } from './shared/DenseMesh'
 import { Label } from './shared/Label'
+import { VectorGrid, syntheticVector } from './shared/VectorGrid'
 
+const D = 12      // input/output rows
+const D4 = 24     // expanded rows (4× wider in the real model; visually 2×)
+
+/**
+ * FFN — expand · fire · compress.
+ *
+ * 3B1B beat: a vector enters from the left, gets MULTIPLIED by W1 into a
+ * wider hidden layer (4d), passes through a non-linear activation that
+ * "fires" certain rows, then gets compressed back through W2 to the
+ * original width. The viewer watches the same vector's identity persist
+ * even as its dimensionality bulges in the middle.
+ *
+ * Timeline:
+ *   0.00–0.20  input vector grid fades in
+ *   0.20–0.50  W1 matrix → expanded hidden vector (taller grid) fades in
+ *   0.50–0.75  GELU "fires": some hidden rows brighten, others dim
+ *   0.75–1.00  W2 matrix → output vector grid materializes
+ */
 export default function SceneFfn({ t, duration }: SceneProps) {
-  const p = clamp01(t / Math.max(0.01, duration * 0.75))
-  const pEst = smoothstep(0, 0.18, p)
-  const pExpand = smoothstep(0.2, 0.55, p)
-  const pActivate = smoothstep(0.55, 0.8, p)
-  const pCompress = smoothstep(0.8, 1.0, p)
+  const p = clamp01(t / Math.max(0.01, duration * 0.85))
+  const pInput = smoothstep(0.0, 0.2, p)
+  const pExpand = smoothstep(0.2, 0.5, p)
+  const pFire = smoothstep(0.5, 0.75, p)
+  const pCompress = smoothstep(0.75, 1.0, p)
 
   const cx = blockStart(0) + BLOCK_LEN * 0.75
 
+  // Input is the focused token's residual. Hidden = some non-linear mash of
+  // it (deterministic, not real). Output = compressed back to D rows.
+  const inputVec = useMemo(() => syntheticVector(307, D), [])
+  const hiddenRaw = useMemo(() => syntheticVector(811, D4), [])
+  // GELU-like firing: about 60% of rows light up strongly, others stay near zero.
+  const hiddenFired = useMemo(
+    () =>
+      hiddenRaw.map((v, i) => {
+        const fire = (i * 7919) % 5 < 3 // deterministic ~60% mask
+        return fire ? v : v * 0.15
+      }),
+    [hiddenRaw]
+  )
+  const outputVec = useMemo(() => syntheticVector(919, D), [])
+
+  const xIn = -2.2
+  const xHidden = 0
+  const xOut = 2.2
+
   return (
     <group position={[cx, 0, 0]}>
-      <Label position={[0, 0.9, 0.2]} size={0.2} opacity={0.9 * pEst}>
-        Multilayer Perceptron
+      <Label position={[0, 1.55, 0.2]} size={0.18} color={COLORS.fg} opacity={0.95 * pInput}>
+        FFN — expand · fire · compress
       </Label>
 
-      <group position={[-1.5, 0, 0]}>
+      {/* Input vector */}
+      <VectorGrid
+        position={[xIn, 0, 0.1]}
+        values={inputVec}
+        cellWidth={0.16}
+        cellHeight={0.07}
+        cellGap={0.008}
+        label="x"
+        fade={pInput}
+      />
+
+      {/* W1 expansion arrow + matrix */}
+      <group position={[(xIn + xHidden) / 2, 0, 0]}>
         <mesh>
-          <boxGeometry args={[0.08, 0.4, 0.04]} />
-          <meshBasicMaterial color={COLORS.fg} transparent opacity={0.85 * pEst} />
+          <planeGeometry args={[Math.abs(xHidden - xIn) - 0.7, 0.012]} />
+          <meshBasicMaterial color={COLORS.blue} transparent opacity={0.6 * pExpand} />
         </mesh>
-        <Label position={[0, 0.3, 0]} size={0.08} opacity={0.8 * pEst}>d</Label>
-      </group>
-
-      <mesh position={[-0.9, 0, 0]}>
-        <boxGeometry args={[0.06, 0.5, 0.6]} />
-        <meshBasicMaterial color={COLORS.blue} transparent opacity={0.4 * pExpand} />
-      </mesh>
-
-      <group position={[0, 0, 0]}>
-        <Slab
-          width={1.2}
-          height={0.9}
-          color={COLORS.slabTint}
-          opacity={0.08 * pActivate}
-          showCornerTicks
-          tickLength={0.1}
-        />
-        <DenseMesh
-          extent={[0.55, 0.4, 0.25]}
-          nodeCount={80}
-          connectionCount={180}
-          seed={42}
-          opacity={0.5 * pActivate}
-        />
-        <Label position={[0, 0.55, 0]} size={0.09} color={COLORS.dim} opacity={0.85 * pActivate}>
-          4d (expanded)
+        <mesh position={[0, 0.18, 0]}>
+          <boxGeometry args={[0.42, 0.16, 0.04]} />
+          <meshBasicMaterial color={COLORS.blue} transparent opacity={0.4 * pExpand} />
+        </mesh>
+        <Label position={[0, 0.18, 0.05]} size={0.085} color={COLORS.fg} opacity={0.95 * pExpand}>
+          W1 · 4d
         </Label>
       </group>
 
-      <group position={[0, 1.05, 0]}>
+      {/* Hidden 4d vector — taller grid */}
+      <VectorGrid
+        position={[xHidden, 0, 0.1]}
+        values={pFire > 0.05 ? hiddenFired : hiddenRaw}
+        cellWidth={0.18}
+        cellHeight={0.06}
+        cellGap={0.005}
+        label="hidden · 4d"
+        fade={pExpand}
+        pulseRow={Math.floor((p * 7) % D4)}
+        pulseStrength={0.4 * pFire}
+      />
+
+      {/* GELU activation curve floats above the hidden grid */}
+      <group position={[xHidden + 0.6, 0.95, 0]}>
         {Array.from({ length: 20 }).map((_, i) => {
-          const x = (i / 19) * 0.8 - 0.4
+          const x = (i / 19) * 0.7 - 0.35
           const y = 0.5 * x * (1 + Math.tanh(Math.sqrt(2 / Math.PI) * (x + 0.044715 * x ** 3)))
           return (
-            <mesh key={i} position={[x, y * 0.3 + 0.1, 0]}>
-              <sphereGeometry args={[0.015]} />
-              <meshBasicMaterial color={COLORS.gold} transparent opacity={0.85 * pActivate} />
+            <mesh key={i} position={[x, y * 0.5 + 0.05, 0]}>
+              <sphereGeometry args={[0.014]} />
+              <meshBasicMaterial color={COLORS.gold} transparent opacity={0.9 * pFire} />
             </mesh>
           )
         })}
-        <Label position={[0.5, 0.15, 0]} size={0.07} color={COLORS.gold} opacity={0.85 * pActivate}>GELU</Label>
+        <Label position={[0, 0.27, 0]} size={0.07} color={COLORS.gold} opacity={0.9 * pFire}>
+          GELU
+        </Label>
       </group>
 
-      <mesh position={[0.9, 0, 0]}>
-        <boxGeometry args={[0.06, 0.5, 0.6]} />
-        <meshBasicMaterial color={COLORS.mint} transparent opacity={0.4 * pCompress} />
-      </mesh>
-
-      <group position={[1.5, 0, 0]}>
+      {/* W2 compression arrow + matrix */}
+      <group position={[(xHidden + xOut) / 2, 0, 0]}>
         <mesh>
-          <boxGeometry args={[0.08, 0.4, 0.04]} />
-          <meshBasicMaterial color={COLORS.fg} transparent opacity={0.85 * pCompress} />
+          <planeGeometry args={[Math.abs(xOut - xHidden) - 0.7, 0.012]} />
+          <meshBasicMaterial color={COLORS.mint} transparent opacity={0.6 * pCompress} />
         </mesh>
-        <Label position={[0, 0.3, 0]} size={0.08} opacity={0.8 * pCompress}>d</Label>
+        <mesh position={[0, 0.18, 0]}>
+          <boxGeometry args={[0.42, 0.16, 0.04]} />
+          <meshBasicMaterial color={COLORS.mint} transparent opacity={0.4 * pCompress} />
+        </mesh>
+        <Label position={[0, 0.18, 0.05]} size={0.085} color={COLORS.fg} opacity={0.95 * pCompress}>
+          W2 · d
+        </Label>
       </group>
+
+      {/* Output vector */}
+      <VectorGrid
+        position={[xOut, 0, 0.1]}
+        values={outputVec}
+        cellWidth={0.16}
+        cellHeight={0.07}
+        cellGap={0.008}
+        label="y"
+        fade={pCompress}
+      />
     </group>
   )
 }
