@@ -1,7 +1,7 @@
 'use client'
 
-import { motion } from 'framer-motion'
-import type { ReactNode } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useSpeed } from './speedContext'
 
 /**
@@ -200,6 +200,80 @@ export function Numbers({
         </div>
       ))}
     </motion.div>
+  )
+}
+
+/**
+ * Show a portrait commentary panel for `panelMs`, then crossfade into
+ * the original scene animation. The viewer gets time to read the math
+ * + insights first, then watches the rich SVG/canvas visualization.
+ *
+ * Speed-aware: at 2× the panel auto-advances at 2.5s, etc.
+ */
+export function PanelThenScene({
+  panel,
+  scene,
+  panelMs = 5000,
+}: {
+  panel: ReactNode
+  scene: ReactNode
+  panelMs?: number
+}) {
+  const speed = useSpeed()
+  const [phase, setPhase] = useState<'panel' | 'scene'>('panel')
+
+  useEffect(() => {
+    setPhase('panel')
+    const timer = setTimeout(() => setPhase('scene'), panelMs / speed)
+    return () => clearTimeout(timer)
+  }, [panelMs, speed])
+
+  return (
+    <div className="relative h-full w-full">
+      <AnimatePresence mode="sync" initial={false}>
+        {phase === 'panel' ? (
+          <motion.div
+            key="panel"
+            className="absolute inset-0"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.4 / speed, ease: 'easeOut' }}
+          >
+            {panel}
+          </motion.div>
+        ) : (
+          <motion.div
+            key="scene"
+            className="absolute inset-0"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.4 / speed, ease: 'easeOut' }}
+          >
+            {scene}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Tiny progress dots showing which phase we're in */}
+      <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 gap-1.5">
+        <span
+          className="inline-block h-1 w-6 rounded-full transition-colors"
+          style={{
+            background:
+              phase === 'panel' ? 'var(--accent)' : 'rgba(255,255,255,0.18)',
+          }}
+        />
+        <span
+          className="inline-block h-1 w-6 rounded-full transition-colors"
+          style={{
+            background:
+              phase === 'scene' ? 'var(--accent)' : 'rgba(255,255,255,0.18)',
+          }}
+        />
+      </div>
+    </div>
   )
 }
 
