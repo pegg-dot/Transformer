@@ -35,6 +35,15 @@ import {
   Act4LossOverlay,
   Act6LogitOverlay,
 } from './introScenes'
+import {
+  PanelQKV,
+  PanelFFN,
+  PanelLayerNorm,
+  PanelPositional,
+  PanelSample,
+  PanelKvCache,
+  PanelOutput,
+} from './scenePanels'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -170,7 +179,7 @@ This is where the network first starts to encode meaning. Tokens that behave sim
 The original paper used fixed sinusoidal patterns — different frequencies per dimension, so the model can learn to read absolute and relative position from the pattern. Because it's deterministic, you can extrapolate to positions never seen during training.
 
 Modern models (LLaMA, GPT-NeoX) replaced this with RoPE — rotary position embeddings — which is scene 24. The motivation is the same: let attention know which token came first.`,
-    render: () => <ScenePositional />,
+    render: () => <PanelPositional />,
   },
 
   // =============== ACT II — INSIDE A BLOCK ===============
@@ -211,7 +220,7 @@ Modern models (LLaMA, GPT-NeoX) replaced this with RoPE — rotary position embe
 Key detail: LayerNorm runs per-token-vector — it normalizes across the 384 dimensions of ONE token, not across tokens or across batch. This is different from BatchNorm (which averages across the batch) and is why LayerNorm works in models with variable sequence length.
 
 Modern models (LLaMA, PaLM) switched to RMSNorm, which drops the mean-subtraction step for a small speedup with no quality loss.`,
-    render: () => <SceneLayerNorm />,
+    render: () => <PanelLayerNorm />,
   },
   {
     id: 'qkv',
@@ -231,7 +240,7 @@ Modern models (LLaMA, PaLM) switched to RMSNorm, which drops the mean-subtractio
 Why three? Because you want to ask a different question than you want to broadcast. Q and K must match in dimension (they're compared via dot product), but V can be totally different — it's just what the token offers once someone has decided to listen to it.
 
 All three are learned. Nothing special about the split — they start as random matrices and the network figures out what each should encode during training.`,
-    render: () => <SceneQKV />,
+    render: () => <PanelQKV />,
   },
   {
     id: 'attn',
@@ -296,7 +305,7 @@ Empirically, the heads DO specialize. Different heads attend to different kinds 
 Most of the model's parameters live here. A GPT-2 XL block has ~25M params in FFN versus ~6M in attention. If you want a model to know more facts, make the FFN wider.
 
 Attention moves information BETWEEN tokens. FFN processes information WITHIN a single token. Both are needed.`,
-    render: () => <SceneFFN />,
+    render: () => <PanelFFN />,
   },
   {
     id: 'ffn-feature',
@@ -398,7 +407,7 @@ Each block asks "given what I just read, what's a better representation?" and nu
 Temperature scales the logits before softmax. T=0 means greedy; T=1 means "trust the distribution"; T>1 flattens probabilities and makes output more random; T<1 sharpens them.
 
 The sampled token is then APPENDED to the input sequence and fed back into the model for the next step.`,
-    render: () => <SceneSample />,
+    render: () => <PanelSample />,
   },
   {
     id: 'kvcache',
@@ -418,7 +427,7 @@ The sampled token is then APPENDED to the input sequence and fed back into the m
 Only the NEW token's Q, K, V get computed each step. The old K and V columns stay in the cache. Attention attends from the new Q to the full (cached + new) K and V.
 
 This is the single biggest optimization behind fast generation. It's also why context length costs so much memory — the cache grows linearly with sequence length.`,
-    render: () => <SceneKVCache />,
+    render: () => <PanelKvCache />,
   },
 
   // =============== ACT IV — TRAINING (LOSS → BACKPROP → GD) ===============
@@ -693,6 +702,6 @@ Append the sampled token to the prompt, run again. Repeat until a stop condition
 With KV caching, the second pass is MUCH cheaper than the first: only the new token's work is done from scratch; everything else is cached.
 
 This loop is how ChatGPT, Claude, and every other LLM generates text. Scale up the model, train longer, and the same loop produces surprisingly coherent long-form output.`,
-    render: () => <SceneOutput />,
+    render: () => <PanelOutput />,
   },
 ]
