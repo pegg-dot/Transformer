@@ -5,6 +5,16 @@ import type { ReactNode } from 'react'
 import { useSpeed } from './speedContext'
 
 /**
+ * One live numeric chip on the right pane. `value` is rendered as text;
+ * if it changes, the chip pulses briefly to draw the eye.
+ */
+export interface SceneStat {
+  label: string
+  value: ReactNode
+  color?: string
+}
+
+/**
  * Scene-level split-pane layout for educational scenes.
  *
  * Left pane = visualization. Right pane = persistent commentary.
@@ -24,6 +34,22 @@ export interface SceneTextPaneData {
   subtitle: ReactNode
   /** Optional equation card under the subtitle (LOOKUP RULE etc). */
   equation?: { label: string; body: ReactNode }
+  /**
+   * Optional small "phase X / Y" pill that sits next to the kicker.
+   * Useful when the left pane has a multi-phase animation (BPE merges,
+   * embedding cursor, etc.) — the chip's value updates in sync.
+   */
+  phase?: ReactNode
+  /**
+   * Optional live stat chips rendered between subtitle and equation.
+   * Changing values pulse briefly to flag updates.
+   */
+  stats?: SceneStat[]
+  /**
+   * Optional free-form ReactNode rendered between stats and equation —
+   * for scene-specific live readouts that don't fit the chip shape.
+   */
+  body?: ReactNode
   /** Optional small ⓘ callout at the bottom. */
   infoCallout?: ReactNode
   /** Color of the underline + kicker accent. */
@@ -79,22 +105,58 @@ export function SplitPaneScene({
 export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
   const speed = useSpeed()
   return (
-    <div className="flex h-full w-full flex-col justify-center px-8 py-8 lg:px-10">
+    <div className="relative flex h-full w-full flex-col justify-center overflow-hidden px-8 py-8 lg:px-10">
+      {/* Ambient scanner — a faint horizontal violet line that sweeps top→
+          bottom every ~9s, picking each text element out as it passes. */}
       <motion.div
-        className="flex flex-col gap-7"
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 z-0 h-[40%]"
+        style={{
+          background: `linear-gradient(180deg, transparent 0%, ${data.accent}10 50%, transparent 100%)`,
+          mixBlendMode: 'screen',
+        }}
+        animate={{ y: ['-40%', '140%'] }}
+        transition={{
+          duration: 9 / speed,
+          ease: 'linear',
+          repeat: Infinity,
+          repeatDelay: 2 / speed,
+        }}
+      />
+
+      {/* Active "live" indicator — small breathing dot in the corner of the
+          kicker line so it's clear something is animating, not a static page. */}
+
+      <motion.div
+        className="relative z-10 flex flex-col gap-6"
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 / speed, ease: 'easeOut' }}
       >
-        {/* Kicker */}
-        <div
-          className="mono text-[11px] tracking-[0.32em] uppercase"
-          style={{ color: data.accent, opacity: 0.95 }}
-        >
-          {data.kicker}
+        {/* Kicker line — kicker + live dot + optional phase pill */}
+        <div className="flex items-center gap-3">
+          <div
+            className="mono text-[11px] tracking-[0.32em] uppercase"
+            style={{ color: data.accent, opacity: 0.95 }}
+          >
+            {data.kicker}
+          </div>
+          <motion.span
+            className="inline-block h-1.5 w-1.5 rounded-full"
+            style={{ background: data.accent }}
+            animate={{ opacity: [0.35, 1, 0.35], scale: [0.85, 1.15, 0.85] }}
+            transition={{
+              duration: 1.6 / speed,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+          {data.phase && (
+            <div className="ml-auto">{data.phase}</div>
+          )}
         </div>
 
-        {/* Big italic serif headline with violet underline */}
+        {/* Big italic serif headline with breathing violet underline */}
         <div className="flex flex-col gap-3">
           <h2
             className="display text-[clamp(30px,3.4vw,48px)] font-light leading-[1.05]"
@@ -109,9 +171,32 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
           <motion.div
             className="h-px"
             style={{ background: data.accent }}
-            initial={{ width: 0 }}
-            animate={{ width: '78%' }}
-            transition={{ duration: 0.7 / speed, delay: 0.2 / speed, ease: 'easeOut' }}
+            initial={{ width: 0, opacity: 0.7 }}
+            animate={{
+              width: ['0%', '78%', '78%', '78%'],
+              opacity: [0.7, 1, 0.55, 1],
+              boxShadow: [
+                `0 0 0 ${data.accent}00`,
+                `0 0 8px ${data.accent}aa`,
+                `0 0 2px ${data.accent}33`,
+                `0 0 8px ${data.accent}aa`,
+              ],
+            }}
+            transition={{
+              width: { duration: 0.7 / speed, delay: 0.2 / speed, ease: 'easeOut' },
+              opacity: {
+                duration: 4 / speed,
+                delay: 1.0 / speed,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              },
+              boxShadow: {
+                duration: 4 / speed,
+                delay: 1.0 / speed,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              },
+            }}
           />
         </div>
 
@@ -128,6 +213,22 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
         >
           {data.subtitle}
         </motion.p>
+
+        {/* Live stat strip — chips that pulse when their value changes */}
+        {data.stats && data.stats.length > 0 && (
+          <StatStrip stats={data.stats} accent={data.accent} />
+        )}
+
+        {/* Free-form body slot — used for scene-specific live readouts */}
+        {data.body && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 / speed, delay: 0.55 / speed }}
+          >
+            {data.body}
+          </motion.div>
+        )}
 
         {/* Optional equation card */}
         {data.equation && (
@@ -158,12 +259,12 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
       </motion.div>
 
       {/* Spacer pushes info callout to bottom */}
-      <div className="flex-1" />
+      <div className="relative z-10 flex-1" />
 
       {/* Info callout footer */}
       {data.infoCallout && (
         <motion.div
-          className="border-t border-[var(--rule)] pt-5"
+          className="relative z-10 border-t border-[var(--rule)] pt-5"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 / speed, delay: 0.8 / speed }}
@@ -183,5 +284,107 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
         </motion.div>
       )}
     </div>
+  )
+}
+
+/** Stat chip strip rendered between subtitle and equation. Cells pulse
+ *  briefly when their `value` text changes (keyed re-mount + flash). */
+function StatStrip({ stats, accent }: { stats: SceneStat[]; accent: string }) {
+  const speed = useSpeed()
+  return (
+    <motion.div
+      className="flex flex-wrap gap-2"
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45 / speed, delay: 0.5 / speed }}
+    >
+      {stats.map((s, i) => (
+        <Stat key={i} stat={s} accent={accent} />
+      ))}
+    </motion.div>
+  )
+}
+
+function Stat({ stat, accent }: { stat: SceneStat; accent: string }) {
+  // Re-key on value change so the chip flashes when the value updates.
+  const valueKey = String(stat.value)
+  return (
+    <div
+      className="flex flex-col rounded-[3px] border px-2.5 py-1.5"
+      style={{
+        borderColor: 'var(--rule)',
+        background: 'rgba(255,255,255,0.02)',
+        minWidth: 78,
+      }}
+    >
+      <div
+        className="mono text-[8.5px] tracking-[0.22em] uppercase"
+        style={{ color: 'var(--fg-dim)' }}
+      >
+        {stat.label}
+      </div>
+      <motion.div
+        key={valueKey}
+        className="mono mt-0.5 tabular text-[14px]"
+        style={{ color: stat.color ?? accent }}
+        initial={{
+          backgroundColor: `${stat.color ?? accent}33`,
+          paddingLeft: 4,
+          paddingRight: 4,
+          marginLeft: -4,
+          marginRight: -4,
+          borderRadius: 2,
+        }}
+        animate={{
+          backgroundColor: 'rgba(0,0,0,0)',
+          paddingLeft: 0,
+          paddingRight: 0,
+          marginLeft: 0,
+          marginRight: 0,
+        }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
+      >
+        {stat.value}
+      </motion.div>
+    </div>
+  )
+}
+
+/** Small mono pill used as the `phase` slot. Renders "X / Y · label". */
+export function PhaseChip({
+  current,
+  total,
+  label,
+  accent,
+}: {
+  current: number
+  total: number
+  label?: string
+  accent: string
+}) {
+  const key = `${current}-${total}-${label ?? ''}`
+  return (
+    <motion.div
+      key={key}
+      className="mono inline-flex items-center gap-2 rounded-full border px-2.5 py-0.5 text-[10px] tracking-wider"
+      style={{
+        borderColor: accent,
+        color: accent,
+        background: `${accent}15`,
+      }}
+      initial={{ scale: 1.06, backgroundColor: `${accent}33` }}
+      animate={{ scale: 1, backgroundColor: `${accent}15` }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+    >
+      <span className="tabular">
+        {current} / {total}
+      </span>
+      {label && (
+        <>
+          <span className="opacity-50">·</span>
+          <span>{label}</span>
+        </>
+      )}
+    </motion.div>
   )
 }

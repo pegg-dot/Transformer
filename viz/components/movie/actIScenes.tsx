@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useSpeed } from './speedContext'
 import { usePrompt } from './promptContext'
+import { SplitPaneScene, PhaseChip } from './splitPane'
 
 /* =========================================================================
  * ACT I VIZ — left-pane visualizations for the new split-pane Act I scenes.
@@ -1473,5 +1474,333 @@ export function VizReadyForBlock0() {
         </motion.text>
       </svg>
     </div>
+  )
+}
+
+/* =========================================================================
+ * SCENE WRAPPERS — connect live data (prompt, cycling state) to the
+ * SplitPaneScene's right-pane. Each wrapper uses hooks to compute live
+ * stats / phase / equation values and forwards them as plain ReactNode.
+ *
+ * Why wrappers and not data objects: the right pane needs values that
+ * change during the scene (current merge index, current cursor row,
+ * current position), which means hooks. Hooks must live inside
+ * components, so we put each scene's text-pane data inside a small
+ * dedicated component.
+ * ====================================================================== */
+
+const ACT_KICKER = 'ACT I · INPUT'
+
+/* ─────────── Scene 2 · Act I Intro ─────────── */
+export function Act1IntroSplitPane() {
+  const { prompt } = usePrompt()
+  const T = (prompt || '').length
+  return (
+    <SplitPaneScene
+      viz={<VizActIIntro />}
+      text={{
+        kicker: ACT_KICKER,
+        title: 'First — text becomes numbers.',
+        subtitle: 'the input slab, before any block.',
+        accent: ACCENT.violet,
+        stats: [
+          { label: 'T (live)', value: T, color: ACCENT.violet },
+          { label: 'd_model', value: '384' },
+          { label: 'shape', value: `[${T}, 384]`, color: ACCENT.violet },
+        ],
+        infoCallout:
+          'Your prompt has to be turned into integers before the network can do math on it.',
+      }}
+    />
+  )
+}
+
+/* ─────────── Scene 3 · Tokenization ─────────── */
+export function TokensSplitPane() {
+  const { prompt } = usePrompt()
+  const text = prompt || 'The cat sat on the mat.'
+  const chars = text.split('').slice(0, 14)
+  const speed = useSpeed()
+
+  // Cycle a "currently scanning" index in time with the left-pane scanner
+  const [cursor, setCursor] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setCursor((c) => (c + 1) % chars.length),
+      550 / speed,
+    )
+    return () => clearInterval(id)
+  }, [chars.length, speed])
+
+  const ch = chars[cursor] ?? '?'
+  const id = ch.charCodeAt(0) % 65
+
+  return (
+    <SplitPaneScene
+      viz={<VizTokenization />}
+      text={{
+        kicker: ACT_KICKER,
+        title: 'Text becomes tokens.',
+        subtitle: (
+          <>
+            The raw text is split into discrete input units before the model
+            can process it.
+          </>
+        ),
+        accent: ACCENT.violet,
+        phase: (
+          <PhaseChip
+            current={cursor + 1}
+            total={chars.length}
+            label="scanning"
+            accent={ACCENT.violet}
+          />
+        ),
+        stats: [
+          { label: 'T', value: chars.length, color: ACCENT.violet },
+          { label: 'vocab', value: '65' },
+          { label: 'IDs', value: '[0, 65)' },
+        ],
+        equation: {
+          label: 'live tokenization',
+          body: (
+            <>
+              ‘{ch === ' ' ? '·' : ch}’ → ID{' '}
+              <span style={{ color: ACCENT.violet }}>{id}</span>
+            </>
+          ),
+        },
+        infoCallout:
+          'This model uses character tokens — one visible character maps to one vocabulary ID in [0, 65).',
+      }}
+    />
+  )
+}
+
+/* ─────────── Scene 4 · BPE ─────────── */
+export function BPESplitPane() {
+  const speed = useSpeed()
+  const merges = ['e + r → er', 't + h → th', 'i + n → in', 'er + s → ers']
+  const [step, setStep] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setStep((s) => (s + 1) % (merges.length + 1)),
+      2200 / speed,
+    )
+    return () => clearInterval(id)
+  }, [merges.length, speed])
+  const showStep = Math.min(step, merges.length - 1)
+  const vocabSize = 256 + showStep + 1
+
+  return (
+    <SplitPaneScene
+      viz={<VizBPE />}
+      text={{
+        kicker: ACT_KICKER,
+        title: 'Real models use BPE.',
+        subtitle: (
+          <>
+            Start from bytes. Count how often adjacent pairs appear. Merge the
+            most frequent pair into a new token. <strong>Repeat.</strong>
+          </>
+        ),
+        accent: ACCENT.violet,
+        phase: (
+          <PhaseChip
+            current={showStep + 1}
+            total={merges.length}
+            label="merging"
+            accent={ACCENT.violet}
+          />
+        ),
+        stats: [
+          { label: 'starting vocab', value: '256' },
+          { label: 'after merges', value: vocabSize, color: ACCENT.mint },
+          { label: 'real LLMs', value: '~50K+' },
+        ],
+        equation: {
+          label: 'rule learned',
+          body: <>{merges[showStep]}</>,
+        },
+        infoCallout:
+          'These merge rules are model-specific and learned during pretraining — they compress text into far fewer tokens than character-level.',
+      }}
+    />
+  )
+}
+
+/* ─────────── Scene 5 · Embedding ─────────── */
+export function EmbeddingSplitPane() {
+  const speed = useSpeed()
+  const { prompt } = usePrompt()
+  const promptChars = (prompt || 'The cat sat').split('').slice(0, 8)
+  const ids = promptChars.map((c) => c.charCodeAt(0) % 65)
+
+  // Match the cursor cycle inside VizEmbedding (2200ms)
+  const [cursor, setCursor] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setCursor((c) => (c + 1) % Math.max(ids.length, 1)),
+      2200 / speed,
+    )
+    return () => clearInterval(id)
+  }, [ids.length, speed])
+
+  const currentId = ids[cursor] ?? 0
+  const currentCh = promptChars[cursor] ?? '?'
+
+  // Synthetic vector preview — first 4 dims of a deterministic vector for the ID
+  const previewDims = Array.from({ length: 4 }).map((_, i) => {
+    const v = Math.sin(currentId * 0.7 + i * 1.3) * 0.6
+    return v.toFixed(2)
+  })
+
+  return (
+    <SplitPaneScene
+      viz={<VizEmbedding />}
+      text={{
+        kicker: ACT_KICKER,
+        title: 'Each token becomes a vector.',
+        subtitle: (
+          <>
+            A token ID indexes into a <em>learned</em> embedding table and
+            returns one row — a dense, <em>learned</em> vector the model
+            can read.
+          </>
+        ),
+        accent: ACCENT.violet,
+        phase: (
+          <PhaseChip
+            current={cursor + 1}
+            total={Math.max(ids.length, 1)}
+            label={`token ‘${currentCh === ' ' ? '·' : currentCh}’`}
+            accent={ACCENT.violet}
+          />
+        ),
+        stats: [
+          { label: 'V', value: '65' },
+          { label: 'd_model', value: '384' },
+          { label: 'params', value: '24,960' },
+        ],
+        equation: {
+          label: 'live lookup',
+          body: (
+            <>
+              embed({currentId}) ={' '}
+              <span style={{ color: ACCENT.violet }}>
+                [{previewDims.join(', ')}, …]
+              </span>
+            </>
+          ),
+        },
+        infoCallout:
+          'E is learned during training and shared across all positions — the same row is returned every time that token appears.',
+      }}
+    />
+  )
+}
+
+/* ─────────── Scene 6 · Positional ─────────── */
+export function PositionalSplitPane() {
+  const speed = useSpeed()
+  const POSITIONS = 8
+
+  const [pos, setPos] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPos((p) => (p + 1) % POSITIONS),
+      1100 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // Compute one PE sample at this position for the lowest frequency
+  const peSample = Math.sin(pos * 1.0).toFixed(2)
+
+  return (
+    <SplitPaneScene
+      viz={<VizPositional />}
+      text={{
+        kicker: ACT_KICKER,
+        title: 'Position gets baked in.',
+        subtitle: (
+          <>
+            A unique sinusoidal pattern for each position is added directly
+            to the token embedding so the model knows order.
+          </>
+        ),
+        accent: ACCENT.violet,
+        phase: (
+          <PhaseChip
+            current={pos + 1}
+            total={POSITIONS}
+            label="position"
+            accent={ACCENT.violet}
+          />
+        ),
+        stats: [
+          { label: 'pos i (live)', value: pos, color: ACCENT.violet },
+          { label: 'd_model', value: '384' },
+          { label: 'sin(i·ω₀)', value: peSample, color: ACCENT.cyan },
+        ],
+        equation: {
+          label: 'how position joins the vector',
+          body: (
+            <>
+              x<sub>{pos}</sub>
+              <sup style={{ fontSize: '0.7em' }}>input</sup>
+              {' = '}x<sub>{pos}</sub>
+              <sup style={{ fontSize: '0.7em' }}>embed</sup>
+              {' + PE('}
+              <span style={{ color: ACCENT.violet }}>{pos}</span>
+              {')'}
+            </>
+          ),
+        },
+        infoCallout:
+          'These patterns are fixed (not learned) and work across any sequence length — every position gets a distinct fingerprint.',
+      }}
+    />
+  )
+}
+
+/* ─────────── Scene 7 · Ready for Block 0 ─────────── */
+export function ReadyForBlock0SplitPane() {
+  const { prompt } = usePrompt()
+  const T = (prompt || '').length || 14
+  const totalFloats = (T * 384).toLocaleString()
+
+  return (
+    <SplitPaneScene
+      viz={<VizReadyForBlock0 />}
+      text={{
+        kicker: ACT_KICKER,
+        title: 'Ready for Block 0.',
+        subtitle: (
+          <>
+            After tokenization, embedding lookup, and positional encoding,
+            the model now has a T-by-d<sub>model</sub> input slab. It can
+            finally begin transformer computation.
+          </>
+        ),
+        accent: ACCENT.violet,
+        stats: [
+          { label: 'T (live)', value: T, color: ACCENT.violet },
+          { label: 'd_model', value: '384' },
+          { label: 'total floats', value: totalFloats, color: ACCENT.mint },
+        ],
+        equation: {
+          label: 'input slab shape',
+          body: (
+            <>
+              [<span style={{ color: ACCENT.violet }}>{T}</span>
+              {', 384] → Block 0'}
+            </>
+          ),
+        },
+        infoCallout:
+          'This slab is the residual stream — the running representation that flows through every block, accumulating each block’s contribution.',
+      }}
+    />
   )
 }
