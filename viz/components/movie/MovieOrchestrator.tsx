@@ -960,27 +960,39 @@ function TokenStripOverlay({
         {chars.map((ch, i) => {
           const isFocused = focusedToken === i
           return (
-            <div
+            <motion.div
               key={i}
-              className="mono flex h-5 min-w-[14px] items-center justify-center rounded-[2px] border px-1 text-[10px] leading-none transition-colors"
-              style={
+              className="mono flex h-5 min-w-[14px] items-center justify-center rounded-[2px] border px-1 text-[10px] leading-none"
+              animate={
                 isFocused
                   ? {
                       borderColor: accent,
                       color: accent,
-                      background: 'rgba(96,165,250,0.18)',
-                      boxShadow: `0 0 12px ${accent}55`,
+                      backgroundColor: ['rgba(96,165,250,0.18)', 'rgba(96,165,250,0.32)', 'rgba(96,165,250,0.18)'],
+                      boxShadow: [
+                        `0 0 8px ${accent}40`,
+                        `0 0 18px ${accent}88`,
+                        `0 0 8px ${accent}40`,
+                      ],
+                      scale: [1, 1.1, 1],
                     }
                   : {
                       borderColor: 'rgba(255,255,255,0.12)',
                       color: 'var(--fg-muted)',
-                      background: 'rgba(255,255,255,0.02)',
+                      backgroundColor: 'rgba(255,255,255,0.02)',
+                      boxShadow: '0 0 0 rgba(0,0,0,0)',
+                      scale: 1,
                     }
+              }
+              transition={
+                isFocused
+                  ? { duration: 1.6, repeat: Infinity, ease: 'easeInOut' }
+                  : { duration: 0.3 }
               }
               title={`token ${i}${isFocused ? ' · focused' : ''}`}
             >
               {ch === ' ' ? '·' : ch}
-            </div>
+            </motion.div>
           )
         })}
         <div

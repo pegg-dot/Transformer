@@ -69,7 +69,7 @@ export const SCENES: MovieScene[] = [
     title: 'This is what happens inside.',
     caption: 'A full transformer, from prompt to next token. Every layer, every head.',
     accent: ACCENT.blue,
-    durationMs: 16000,
+    durationMs: 22000,
     details: `Every time you send a prompt to an AI, it runs through a stack like this. We're going to walk through it end-to-end — starting with the raw text, ending with the next character it picks.`,
     render: () => <IntroColdOpenPanel />,
     // Phase 1: cold open is a fullscreen chat UI — no 3D underneath yet.

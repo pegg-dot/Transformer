@@ -10,8 +10,10 @@ import { createContext, useContext, useState } from 'react'
  * ignore this so they stay pedagogically stable.
  */
 
-const DEFAULT_PROMPT = 'To be, or no'
-const MAX_LEN = 12
+const DEFAULT_PROMPT = 'To be, or not to be'
+// Char-level model has block_size 256; we cap UX at 64 so the cold-open
+// chat typing animation stays under ~5s and the token strip stays legible.
+const MAX_LEN = 64
 
 interface Ctx {
   prompt: string

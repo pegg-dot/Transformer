@@ -18,6 +18,24 @@ const DIM = '#737373'
 
 const PROMPT_PREFIX = 'What if I asked my AI to finish this sentence: '
 
+/**
+ * Pick a hand-tuned continuation that completes the user's prompt in
+ * Shakespearean style. The model is char-level trained on tinyshakespeare,
+ * so this matches what you'd actually expect to come out of it.
+ */
+function pickReply(prompt: string): string {
+  const p = prompt.trim().toLowerCase()
+  if (p.startsWith('to be, or not')) return ', that is the question.'
+  if (p.startsWith('to be, or')) return ' not to be, that is the question.'
+  if (p.startsWith('to be')) return ', or not to be — that is the question.'
+  if (p.startsWith('hark') || p.startsWith('hark!')) return ', what light through yonder window breaks!'
+  if (p.startsWith('romeo')) return ', wherefore art thou, Romeo?'
+  if (p.startsWith('hamlet')) return ', dread sovereign of the night!'
+  if (p.startsWith('enter')) return ' a player, with a torch held high.'
+  if (p.startsWith('o ') || p.startsWith('oh')) return ' that this too too solid flesh would melt.'
+  return '… and the model would continue, one character at a time, until satisfied.'
+}
+
 export function IntroColdOpenPanel() {
   const speed = useSpeed()
   const { prompt } = usePrompt()
@@ -35,7 +53,7 @@ export function IntroColdOpenPanel() {
   // PHASE 2 — small header + empty chat input
   const T_HEADER = 2.7
   const T_INPUT = 3.0
-  // PHASE 3 — typing → send → user message → assistant thinking
+  // PHASE 3 — typing → send → user message → assistant thinking → AI reply
   const T_TYPE = 3.6
   const T_TYPING_DONE = T_TYPE + (chars.length * CHAR_MS) / 1000
   const T_SEND = T_TYPING_DONE + 0.4
@@ -43,7 +61,14 @@ export function IntroColdOpenPanel() {
   const T_USER = T_SEND + 0.55
   const T_AI = T_USER + 0.75
   const T_DOTS = T_AI + 0.3
-  const T_HINT = T_DOTS + 2.5
+  // AI reply: dots run for 1.4s, then a continuation types in.
+  const T_REPLY_START = T_DOTS + 1.4
+  // Pick a thematically-appropriate continuation for the prompt. Hardcoded
+  // per a few common openers; falls back to a generic continuation.
+  const replyText = pickReply(prompt)
+  const REPLY_CHAR_MS = 50
+  const T_REPLY_DONE = T_REPLY_START + (replyText.length * REPLY_CHAR_MS) / 1000
+  const T_HINT = T_REPLY_DONE + 0.6
 
   // Card opacity keyframes — fade in 0.5s, hold, fade out + slide up
   const CARD_DUR = T_CARD_OUT - T_CARD + 0.45
@@ -236,7 +261,18 @@ export function IntroColdOpenPanel() {
               >
                 assistant
               </div>
-              <div className="flex items-end gap-2 h-3">
+              {/* Dots fade out as the AI begins typing its reply */}
+              <motion.div
+                className="flex items-end gap-2 h-3"
+                initial={{ opacity: 1 }}
+                animate={{ opacity: [1, 1, 0] }}
+                transition={{
+                  delay: T_DOTS / speed,
+                  duration: (T_REPLY_START - T_DOTS) / speed,
+                  times: [0, 0.85, 1],
+                  ease: 'easeIn',
+                }}
+              >
                 {[0, 1, 2].map((i) => (
                   <motion.span
                     key={i}
@@ -256,6 +292,40 @@ export function IntroColdOpenPanel() {
                     }}
                   />
                 ))}
+              </motion.div>
+
+              {/* AI reply — types in char-by-char where the dots were */}
+              <div className="-mt-3 text-[13px] leading-5">
+                {replyText.split('').map((ch, i) => (
+                  <motion.span
+                    key={i}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{
+                      delay: (T_REPLY_START + (i * REPLY_CHAR_MS) / 1000) / speed,
+                      duration: 0.04 / speed,
+                    }}
+                    style={{
+                      color: i < (prompt.trim().length > 0 ? 32 : 0) ? FG : FG,
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    {ch}
+                  </motion.span>
+                ))}
+                {/* Blinking caret while reply types */}
+                <motion.span
+                  className="inline-block align-middle"
+                  style={{ width: 2, height: 14, marginLeft: 2, background: ACCENT.blue }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: [0, 1, 1, 0] }}
+                  transition={{
+                    delay: T_REPLY_START / speed,
+                    duration: (T_REPLY_DONE - T_REPLY_START + 0.5) / speed,
+                    times: [0, 0.05, 0.95, 1],
+                    repeat: 0,
+                  }}
+                />
               </div>
             </motion.div>
           </div>
