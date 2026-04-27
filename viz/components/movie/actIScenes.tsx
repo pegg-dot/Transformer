@@ -708,294 +708,611 @@ export function VizTokenization() {
 
 /* ─────────────────── Scene C · BPE ─────────────────── */
 
+/**
+ * BPE walkthrough — single unified merge tree for the word "unbelievably".
+ *
+ *   1. BYTES         12 hex codes (the starting vocab is 256 bytes)
+ *   2. INITIAL TOKENS each byte rendered as its character
+ *   3. MERGE STEPS    multi-level binary tree of merges (numbered 1..7)
+ *   4. FINAL TOKENS   the eventual subword tokenization (un / believ / ably)
+ *
+ * Phase cycles through the 7 numbered merges. The active merge is highlighted
+ * with a dashed violet stroke + glow; previously-completed merges stay
+ * visible in mint/violet; future merges are dimmer.
+ */
 export function VizBPE() {
   const speed = useSpeed()
-  // ViewBox is taller (1100) and the merge tree is shifted down 160px to
-  // give the pair-card's result card breathing room and prevent it from
-  // colliding with the merge tree's "FINAL TOKENS" row above the bytes.
-  const TREE_OFFSET = 160
+
+  const TOTAL_PHASES = 7
+  const [phase, setPhase] = useState(0) // 0..TOTAL_PHASES-1, then re-cycles
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % TOTAL_PHASES),
+      2400 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // ── Geometry ──────────────────────────────────────────────────────────
+  // Word: u n b e l i e v a b l y (12 chars)
+  const word = 'unbelievably'.split('')
+  const CELL_W = 56
+  const CELL_GAP = 8
+  const STEP = CELL_W + CELL_GAP // 64 per byte/initial cell
+  const FIRST_X = 240 // x of the first byte cell's left edge
+  const cellCenter = (i: number) => FIRST_X + i * STEP + CELL_W / 2
+
+  // Y rows
+  const Y_BYTES_BOX_TOP = 160
+  const Y_BYTES_BOX_BOT = 200
+  const Y_INIT_BOX_TOP = 270
+  const Y_INIT_BOX_BOT = 320
+  const Y_LVL1_TOP = 410
+  const Y_LVL1_BOT = 470
+  const Y_LVL2_TOP = 540
+  const Y_LVL2_BOT = 600
+  const Y_LVL3_TOP = 670
+  const Y_LVL3_BOT = 740
+  const Y_FINAL_TOP = 820
+  const Y_FINAL_BOT = 890
+
+  // Merge tree — 7 numbered merges in a binary tree
+  // Levels: 1 (4 first-level), 2 (2 second-level), 3 (1 root)
+  const lvl1 = [
+    { id: 1, label: 'un',   left: cellCenter(0), right: cellCenter(1) },
+    { id: 2, label: 'be',   left: cellCenter(2), right: cellCenter(3) },
+    { id: 3, label: 'lie',  left: cellCenter(4), right: cellCenter(5) },
+    { id: 4, label: 'ably', left: cellCenter(8), right: cellCenter(9) },
+  ].map((m) => ({ ...m, cx: (m.left + m.right) / 2 }))
+
+  const lvl2 = [
+    { id: 5, label: 'unbe',     leftMerge: 1, rightMerge: 2 },
+    { id: 6, label: 'lievably', leftMerge: 3, rightMerge: 4 },
+  ].map((m) => {
+    const l = lvl1.find((x) => x.id === m.leftMerge)!
+    const r = lvl1.find((x) => x.id === m.rightMerge)!
+    return { ...m, left: l.cx, right: r.cx, cx: (l.cx + r.cx) / 2 }
+  })
+
+  const lvl3 = (() => {
+    const l = lvl2.find((x) => x.id === 5)!
+    const r = lvl2.find((x) => x.id === 6)!
+    return [
+      { id: 7, label: 'unbelievably', left: l.cx, right: r.cx, cx: (l.cx + r.cx) / 2 },
+    ]
+  })()
+
+  // Final-token row at the bottom
+  const finals = [
+    { label: 'un',     cx: cellCenter(0.5) }, // sits over u, n
+    { label: 'believ', cx: cellCenter(4.5) }, // over b, e, l, i, e, v
+    { label: 'ably',   cx: cellCenter(9.5) }, // over a, b, l, y
+  ]
+
+  // Helpers
+  const isActive = (id: number) => phase === id - 1
+  const isComplete = (id: number) => phase >= id
+  const allMerges: { id: number; label: string }[] = [
+    ...lvl1.map((m) => ({ id: m.id, label: m.label })),
+    ...lvl2.map((m) => ({ id: m.id, label: m.label })),
+    ...lvl3.map((m) => ({ id: m.id, label: m.label })),
+  ]
+
+  // Pretty rule strings for the rules table
+  const ruleFor = (id: number): string => {
+    switch (id) {
+      case 1: return 'u + n → un'
+      case 2: return 'b + e → be'
+      case 3: return 'l + i → li'
+      case 4: return 'li + e → lie'
+      case 5: return 'un + be → unbe'
+      case 6: return 'lie + vably → lievably'
+      case 7: return 'unbe + lievably → unbelievably'
+      default: return ''
+    }
+  }
+
   return (
     <div className="relative h-full w-full">
       <svg viewBox="0 0 1400 1100" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
-        {/* Divider line between top zone (pair-card) and bottom zone (tree) */}
-        <line
-          x1={120}
-          x2={1280}
-          y1={490}
-          y2={490}
-          stroke={ACCENT.rule}
-          strokeWidth={1}
-          strokeDasharray="4 6"
-          opacity="0.5"
-        />
-        {/* "applying the learned rules" label in the gap */}
-        <text
-          x={700}
-          y={510}
-          textAnchor="middle"
-          fontSize="11"
-          fontFamily="var(--font-mono)"
-          fill={ACCENT.dim}
-          letterSpacing="0.24em"
-          opacity="0.75"
-        >
-          ▾ APPLY THE RULES TO A NEW WORD ▾
+        {/* ────── Top header strip ────── */}
+        <text x={20} y={70} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.violet} letterSpacing="0.32em">BPE IN ACTION</text>
+        <text x={200} y={70} fontSize="14" fontFamily="var(--font-display)"
+          fill="rgba(255,255,255,0.85)">
+          We start with bytes. Then we repeatedly merge the most frequent adjacent pairs.
         </text>
 
-        {/* Top: pair-merge moment with rule table */}
-        <BPEPairCard speed={speed} />
+        {/* ────── Left label column ────── */}
+        {/* Vertical violet rule that anchors the labels */}
+        <line x1={20} y1={140} x2={20} y2={930} stroke={ACCENT.violet}
+          strokeOpacity={0.25} strokeWidth={1} />
 
-        {/* Bottom: merge tree compressing 'unbelievably' to 'un / bel / iev / ably',
-            shifted down so it doesn't collide with the pair card. */}
-        <g transform={`translate(0, ${TREE_OFFSET})`}>
-          <BPEMergeTree speed={speed} />
+        <LayerLabel y={Y_BYTES_BOX_TOP - 5} num="1." title="BYTES"
+          sub="Every byte is a token." color={ACCENT.dim} />
+        <LayerLabel y={Y_INIT_BOX_TOP - 5} num="2." title="INITIAL TOKENS"
+          sub="Start with single characters." color={ACCENT.blue} />
+        <LayerLabel y={Y_LVL1_TOP - 5} num="3." title="MERGE STEPS"
+          sub="Learn the most frequent adjacent pairs and merge them."
+          color={ACCENT.mint} />
+        <LayerLabel y={Y_FINAL_TOP - 5} num="4." title="FINAL TOKENS"
+          sub="Fewer, larger subword units." color={ACCENT.violet} />
+
+        {/* ────── Layer 1 — bytes (hex codes + char) ────── */}
+        {word.map((ch, i) => {
+          const x = FIRST_X + i * STEP
+          return (
+            <g key={`byte-${i}`}>
+              <rect
+                x={x}
+                y={Y_BYTES_BOX_TOP}
+                width={CELL_W}
+                height={Y_BYTES_BOX_BOT - Y_BYTES_BOX_TOP}
+                rx={3}
+                fill="rgba(255,255,255,0.02)"
+                stroke="rgba(255,255,255,0.18)"
+                strokeWidth={1}
+              />
+              <text
+                x={x + CELL_W / 2}
+                y={Y_BYTES_BOX_TOP + 26}
+                textAnchor="middle"
+                fontSize="14"
+                fontFamily="var(--font-mono)"
+                fill={ACCENT.dim}
+              >
+                {ch.charCodeAt(0).toString(16).toUpperCase()}
+              </text>
+              {/* Char rendered below the byte box */}
+              <text
+                x={x + CELL_W / 2}
+                y={Y_BYTES_BOX_BOT + 22}
+                textAnchor="middle"
+                fontSize="16"
+                fontFamily="var(--font-display)"
+                fontStyle="italic"
+                fill={ACCENT.dim}
+              >
+                {ch}
+              </text>
+              {/* Dashed connector to initial tokens */}
+              <line
+                x1={x + CELL_W / 2}
+                x2={x + CELL_W / 2}
+                y1={Y_BYTES_BOX_BOT + 30}
+                y2={Y_INIT_BOX_TOP - 4}
+                stroke={ACCENT.blue}
+                strokeOpacity={0.25}
+                strokeDasharray="2 4"
+                strokeWidth={1}
+              />
+            </g>
+          )
+        })}
+
+        {/* ────── Layer 2 — initial tokens (chars in violet pills) ────── */}
+        {word.map((ch, i) => {
+          const x = FIRST_X + i * STEP
+          return (
+            <g key={`init-${i}`}>
+              <rect
+                x={x}
+                y={Y_INIT_BOX_TOP}
+                width={CELL_W}
+                height={Y_INIT_BOX_BOT - Y_INIT_BOX_TOP}
+                rx={4}
+                fill="rgba(96,165,250,0.06)"
+                stroke={ACCENT.blue}
+                strokeOpacity={0.55}
+                strokeWidth={1.2}
+              />
+              <text
+                x={x + CELL_W / 2}
+                y={Y_INIT_BOX_TOP + 36}
+                textAnchor="middle"
+                fontSize="22"
+                fontFamily="var(--font-display)"
+                fontStyle="italic"
+                fill="rgba(255,255,255,0.92)"
+              >
+                {ch}
+              </text>
+            </g>
+          )
+        })}
+
+        {/* ────── Connectors: initial tokens → level 1 merges ────── */}
+        {lvl1.map((m) => {
+          const completed = isComplete(m.id) || isActive(m.id)
+          return (
+            <g key={`l1-conn-${m.id}`} opacity={completed ? 1 : 0.25}>
+              <line
+                x1={m.left}
+                x2={m.cx}
+                y1={Y_INIT_BOX_BOT + 4}
+                y2={Y_LVL1_TOP - 4}
+                stroke={ACCENT.mint}
+                strokeOpacity={isActive(m.id) ? 0.85 : 0.5}
+                strokeWidth={isActive(m.id) ? 1.6 : 1}
+              />
+              <line
+                x1={m.right}
+                x2={m.cx}
+                y1={Y_INIT_BOX_BOT + 4}
+                y2={Y_LVL1_TOP - 4}
+                stroke={ACCENT.mint}
+                strokeOpacity={isActive(m.id) ? 0.85 : 0.5}
+                strokeWidth={isActive(m.id) ? 1.6 : 1}
+              />
+            </g>
+          )
+        })}
+
+        {/* ────── Layer 3a — Level 1 merges (numbered circles + cards) ────── */}
+        {lvl1.map((m) => (
+          <MergeCard
+            key={`l1-${m.id}`}
+            n={m.id}
+            label={m.label}
+            cx={m.cx}
+            yTop={Y_LVL1_TOP}
+            yBot={Y_LVL1_BOT}
+            active={isActive(m.id)}
+            complete={isComplete(m.id) || isActive(m.id)}
+          />
+        ))}
+
+        {/* ────── Connectors: level 1 → level 2 ────── */}
+        {lvl2.map((m) => {
+          const completed = isComplete(m.id) || isActive(m.id)
+          return (
+            <g key={`l2-conn-${m.id}`} opacity={completed ? 1 : 0.18}>
+              <line
+                x1={m.left}
+                x2={m.cx}
+                y1={Y_LVL1_BOT + 4}
+                y2={Y_LVL2_TOP - 4}
+                stroke={ACCENT.mint}
+                strokeOpacity={isActive(m.id) ? 0.85 : 0.5}
+                strokeWidth={isActive(m.id) ? 1.6 : 1}
+              />
+              <line
+                x1={m.right}
+                x2={m.cx}
+                y1={Y_LVL1_BOT + 4}
+                y2={Y_LVL2_TOP - 4}
+                stroke={ACCENT.mint}
+                strokeOpacity={isActive(m.id) ? 0.85 : 0.5}
+                strokeWidth={isActive(m.id) ? 1.6 : 1}
+              />
+            </g>
+          )
+        })}
+
+        {/* ────── Layer 3b — Level 2 merges ────── */}
+        {lvl2.map((m) => (
+          <MergeCard
+            key={`l2-${m.id}`}
+            n={m.id}
+            label={m.label}
+            cx={m.cx}
+            yTop={Y_LVL2_TOP}
+            yBot={Y_LVL2_BOT}
+            active={isActive(m.id)}
+            complete={isComplete(m.id) || isActive(m.id)}
+            wide
+          />
+        ))}
+
+        {/* ────── Connectors: level 2 → level 3 ────── */}
+        {lvl3.map((m) => {
+          const completed = isComplete(m.id) || isActive(m.id)
+          return (
+            <g key={`l3-conn-${m.id}`} opacity={completed ? 1 : 0.18}>
+              <line
+                x1={m.left}
+                x2={m.cx}
+                y1={Y_LVL2_BOT + 4}
+                y2={Y_LVL3_TOP - 4}
+                stroke={ACCENT.violet}
+                strokeOpacity={isActive(m.id) ? 0.95 : 0.55}
+                strokeWidth={isActive(m.id) ? 1.8 : 1.1}
+              />
+              <line
+                x1={m.right}
+                x2={m.cx}
+                y1={Y_LVL2_BOT + 4}
+                y2={Y_LVL3_TOP - 4}
+                stroke={ACCENT.violet}
+                strokeOpacity={isActive(m.id) ? 0.95 : 0.55}
+                strokeWidth={isActive(m.id) ? 1.8 : 1.1}
+              />
+            </g>
+          )
+        })}
+
+        {/* ────── Layer 3c — Level 3 (root merge) ────── */}
+        {lvl3.map((m) => (
+          <MergeCard
+            key={`l3-${m.id}`}
+            n={m.id}
+            label={m.label}
+            cx={m.cx}
+            yTop={Y_LVL3_TOP}
+            yBot={Y_LVL3_BOT}
+            active={isActive(m.id)}
+            complete={isComplete(m.id) || isActive(m.id)}
+            isRoot
+          />
+        ))}
+
+        {/* ────── Connectors: level 3 root → final tokens ────── */}
+        {(() => {
+          const root = lvl3[0]
+          return (
+            <g opacity={phase >= 6 ? 1 : 0.3}>
+              {finals.map((f, i) => (
+                <line
+                  key={`final-conn-${i}`}
+                  x1={root.cx}
+                  y1={Y_LVL3_BOT + 4}
+                  x2={f.cx}
+                  y2={Y_FINAL_TOP - 4}
+                  stroke={ACCENT.violet}
+                  strokeOpacity={0.55}
+                  strokeWidth={1.2}
+                />
+              ))}
+            </g>
+          )
+        })()}
+
+        {/* ────── Layer 4 — final tokens (the payoff) ────── */}
+        {finals.map((f, i) => {
+          const isHero = phase >= 6
+          return (
+            <motion.g
+              key={`final-${i}`}
+              initial={{ opacity: 0.35 }}
+              animate={{ opacity: isHero ? 1 : 0.45 }}
+              transition={{ duration: 0.5 / speed, ease: 'easeOut' }}
+            >
+              {/* Halo glow when active */}
+              {isHero && (
+                <motion.rect
+                  x={f.cx - 90}
+                  y={Y_FINAL_TOP - 6}
+                  width={180}
+                  height={Y_FINAL_BOT - Y_FINAL_TOP + 12}
+                  rx={9}
+                  fill="rgba(167,139,250,0.06)"
+                  animate={{ opacity: [0.4, 0.85, 0.4] }}
+                  transition={{
+                    duration: 2.4 / speed,
+                    repeat: Infinity,
+                    delay: i * 0.3 / speed,
+                    ease: 'easeInOut',
+                  }}
+                />
+              )}
+              <rect
+                x={f.cx - 76}
+                y={Y_FINAL_TOP}
+                width={152}
+                height={Y_FINAL_BOT - Y_FINAL_TOP}
+                rx={6}
+                fill="rgba(167,139,250,0.18)"
+                stroke={ACCENT.violet}
+                strokeWidth={2.4}
+              />
+              <text
+                x={f.cx}
+                y={(Y_FINAL_TOP + Y_FINAL_BOT) / 2 + 12}
+                textAnchor="middle"
+                fontSize="32"
+                fontFamily="var(--font-display)"
+                fontStyle="italic"
+                fill={ACCENT.violet}
+              >
+                {f.label}
+              </text>
+            </motion.g>
+          )
+        })}
+
+        {/* ────── Right-side rules table inside the left pane ────── */}
+        <g transform="translate(1040, 160)">
+          <text fontSize="11" fontFamily="var(--font-mono)"
+            fill="rgba(255,255,255,0.85)" letterSpacing="0.22em">
+            LEARNED MERGE RULES
+            <tspan fill={ACCENT.dim} letterSpacing="0.04em" dx="6">(so far)</tspan>
+          </text>
+          <rect x={-12} y={20} width={330} height={420} rx={6}
+            fill="rgba(255,255,255,0.02)" stroke="rgba(167,139,250,0.18)" />
+          {allMerges.map((m, i) => {
+            const visible = phase >= i
+            const active = phase === i
+            return (
+              <g key={`rule-${m.id}`}
+                opacity={visible ? 1 : 0.18}
+                transform={`translate(0, ${36 + i * 56})`}>
+                {active && (
+                  <motion.rect
+                    x={-8} y={-4} width={322} height={48} rx={4}
+                    fill="rgba(167,139,250,0.14)"
+                    stroke={ACCENT.violet}
+                    strokeWidth={1}
+                    strokeDasharray="3 4"
+                    animate={{ opacity: [0.55, 1, 0.55] }}
+                    transition={{
+                      duration: 2 / speed,
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                    }}
+                  />
+                )}
+                <text x={6} y={22} fontSize="12"
+                  fontFamily="var(--font-mono)"
+                  fill={active ? ACCENT.violet : ACCENT.dim}>
+                  #{m.id}
+                </text>
+                <text x={42} y={26} fontSize="18"
+                  fontFamily="var(--font-display)"
+                  fontStyle="italic"
+                  fill={active ? '#fff' : 'rgba(255,255,255,0.78)'}>
+                  {ruleFor(m.id)}
+                </text>
+              </g>
+            )
+          })}
         </g>
 
-        {/* Section labels — y values follow the shifted tree */}
-        <text x={170} y={680 + TREE_OFFSET} fontSize="11" fontFamily="var(--font-mono)"
-          fill={ACCENT.dim} letterSpacing="0.22em" textAnchor="end">
-          BYTES ▸
-        </text>
-        <text x={170} y={580 + TREE_OFFSET} fontSize="11" fontFamily="var(--font-mono)"
-          fill={ACCENT.dim} letterSpacing="0.22em" textAnchor="end">
-          INITIAL TOKENS ▸
-        </text>
-        <text x={170} y={490 + TREE_OFFSET} fontSize="11" fontFamily="var(--font-mono)"
-          fill={ACCENT.mint} letterSpacing="0.22em" textAnchor="end" opacity="0.85">
-          MERGE STEPS ▸
-        </text>
-        <text x={170} y={400 + TREE_OFFSET} fontSize="11" fontFamily="var(--font-mono)"
-          fill={ACCENT.violet} letterSpacing="0.22em" textAnchor="end" opacity="0.95">
-          FINAL TOKENS ▸
+        {/* ────── Bottom caption strip ────── */}
+        <text x={700} y={1010} textAnchor="middle"
+          fontSize="14" fontFamily="var(--font-display)"
+          fontStyle="italic" fill={ACCENT.dim} opacity="0.85">
+          BPE turns a long sequence of bytes into a shorter sequence of meaningful subword tokens.
         </text>
       </svg>
     </div>
   )
 }
 
-function BPEPairCard({ speed }: { speed: number }) {
-  const merges = useMemo(
-    () => [
-      { a: 'e', b: 'r', merged: 'er', count: 843 },
-      { a: 't', b: 'h', merged: 'th', count: 672 },
-      { a: 'i', b: 'n', merged: 'in', count: 588 },
-      { a: 'er', b: 's', merged: 'ers', count: 410 },
-    ],
-    [],
-  )
-  const [step, setStep] = useState(0)
-  // Loop the merge sequence — after the 4th merge, hold for one beat and
-  // restart from #1. Keeps the rule table animating throughout.
-  useEffect(() => {
-    const id = setInterval(
-      () => setStep((s) => (s + 1) % (merges.length + 1)),
-      2200 / speed,
-    )
-    return () => clearInterval(id)
-  }, [speed, merges.length])
-  // When step === merges.length, we're in the "hold full table" beat.
-  const showStep = Math.min(step, merges.length - 1)
-  const m = merges[showStep]
+/** Layer-label block in the left margin (number + title + sub-description). */
+function LayerLabel({
+  y,
+  num,
+  title,
+  sub,
+  color,
+}: {
+  y: number
+  num: string
+  title: string
+  sub: string
+  color: string
+}) {
   return (
-    <g>
-      {/* Two source cards */}
-      <motion.g key={`pair-${step}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <rect x={310} y={120} width={130} height={130} rx={6}
-          fill="rgba(167,139,250,0.10)" stroke={ACCENT.violet} strokeWidth={2} />
-        <text x={375} y={210} textAnchor="middle" fontSize="64"
-          fontFamily="var(--font-display)" fontStyle="italic" fill="rgba(255,255,255,0.95)">{m.a}</text>
-
-        <motion.text x={490} y={195} textAnchor="middle" fontSize="40"
-          fontFamily="var(--font-display)" fill={ACCENT.amber}
-          animate={{ scale: [1, 1.18, 1] }}
-          transition={{ duration: 0.9 / speed, repeat: Infinity }}>+</motion.text>
-
-        <rect x={540} y={120} width={130} height={130} rx={6}
-          fill="rgba(167,139,250,0.10)" stroke={ACCENT.violet} strokeWidth={2} />
-        <text x={605} y={210} textAnchor="middle" fontSize="64"
-          fontFamily="var(--font-display)" fontStyle="italic" fill="rgba(255,255,255,0.95)">{m.b}</text>
-
-        <text x={490} y={285} textAnchor="middle" fontSize="13"
-          fontFamily="var(--font-mono)" fill={ACCENT.amber}>frequency = {m.count}</text>
-
-        {/* Down arrow */}
-        <motion.path d="M 490 305 L 490 340 M 482 332 L 490 340 L 498 332"
-          stroke={ACCENT.mint} strokeWidth={1.8} fill="none"
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }}
-          transition={{ duration: 0.4 / speed, delay: 0.6 / speed }} />
-
-        {/* Result card */}
-        <motion.g
-          initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: 'spring', stiffness: 220, damping: 22, delay: 0.8 / speed }}>
-          <rect x={380} y={355} width={220} height={100} rx={6}
-            fill="rgba(52,211,153,0.16)" stroke={ACCENT.mint} strokeWidth={2.2} />
-          <text x={490} y={420} textAnchor="middle" fontSize="56"
-            fontFamily="var(--font-display)" fontStyle="italic" fill={ACCENT.mint}>{m.merged}</text>
-        </motion.g>
-      </motion.g>
-
-      {/* Right side — merge rules table */}
-      <g transform="translate(820, 130)">
-        <text fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}
-          letterSpacing="0.24em">LEARNED MERGE RULES</text>
-        <rect x={-10} y={20} width={400} height={240} rx={4}
-          fill="rgba(255,255,255,0.02)" stroke={ACCENT.rule} />
-        {merges.slice(0, showStep + 1).map((r, i) => {
-          const isCurrent = i === showStep
-          return (
-            <motion.g key={i} transform={`translate(10, ${44 + i * 48})`}
-              initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.1 / speed }}>
-              {isCurrent && (
-                <motion.rect x={-12} y={2} width={400} height={36} rx={3}
-                  fill="rgba(167,139,250,0.10)"
-                  animate={{ opacity: [0.4, 1, 0.4] }}
-                  transition={{ duration: 1.6 / speed, repeat: Infinity }} />
-              )}
-              <text x={0} y={20} fontSize="11" fontFamily="var(--font-mono)"
-                fill={ACCENT.dim} letterSpacing="0.1em">#{i + 1}</text>
-              <text x={56} y={22} fontSize="22" fontFamily="var(--font-display)"
-                fontStyle="italic" fill="rgba(255,255,255,0.92)">{r.a}</text>
-              <text x={108} y={22} fontSize="14" fontFamily="var(--font-mono)" fill={ACCENT.dim}>+</text>
-              <text x={140} y={22} fontSize="22" fontFamily="var(--font-display)"
-                fontStyle="italic" fill="rgba(255,255,255,0.92)">{r.b}</text>
-              <text x={210} y={22} fontSize="14" fontFamily="var(--font-mono)" fill={ACCENT.dim}>→</text>
-              <text x={250} y={22} fontSize="22" fontFamily="var(--font-display)"
-                fontStyle="italic" fill={ACCENT.mint}>{r.merged}</text>
-            </motion.g>
-          )
-        })}
-        {showStep < merges.length - 1 && (
-          <text x={185} y={44 + (showStep + 1) * 48 + 14} textAnchor="middle"
-            fontSize="14" fill={ACCENT.dim}>⋮</text>
-        )}
-      </g>
+    <g transform={`translate(40, ${y})`}>
+      <text fontSize="11" fontFamily="var(--font-mono)"
+        fill={color} letterSpacing="0.22em" opacity="0.85">
+        {num} {title}
+      </text>
+      <text y={20} fontSize="11" fontFamily="var(--font-display)"
+        fontStyle="italic" fill={ACCENT.dim} opacity="0.65">
+        {sub}
+      </text>
     </g>
   )
 }
 
-function BPEMergeTree({ speed }: { speed: number }) {
-  // Word laid out at x = 228 + i*80 (cell centers).
-  //   u(0)=228 n(1)=308 b(2)=388 e(3)=468 l(4)=548 i(5)=628
-  //   e(6)=708 v(7)=788 a(8)=868 b(9)=948 l(10)=1028 y(11)=1108
-  // Finals → constituent merges + bytes:
-  //   un   = u(0) + n(1)              [no mid]
-  //   bel  = be(2,3) + l(4)           [be mid]
-  //   iev  = i(5)   + ev(6,7)         [ev mid]
-  //   ably = ab(8,9) + ly(10,11)      [both ab and ly mids]
-  const word = 'unbelievably'.split('')
-  const cellCenter = (i: number) => 228 + i * 80
-  const mids = [
-    { from: [2, 3], cx: cellCenter(2.5), label: 'be' }, // 428
-    { from: [6, 7], cx: cellCenter(6.5), label: 'ev' }, // 748
-    { from: [8, 9], cx: cellCenter(8.5), label: 'ab' }, // 908
-    { from: [10, 11], cx: cellCenter(10.5), label: 'ly' }, // 1068
-  ]
-  // Final positions sit centered over their constituents
-  const finals = [
-    { x: 268, label: 'un', // midpoint of u, n
-      sources: [{ x: cellCenter(0), y: 550 }, { x: cellCenter(1), y: 550 }] },
-    { x: 488, label: 'bel', // midpoint of be-mid, l-byte
-      sources: [{ x: 428, y: 460 }, { x: cellCenter(4), y: 550 }] },
-    { x: 688, label: 'iev', // midpoint of i-byte, ev-mid
-      sources: [{ x: cellCenter(5), y: 550 }, { x: 748, y: 460 }] },
-    { x: 988, label: 'ably', // midpoint of ab-mid, ly-mid
-      sources: [{ x: 908, y: 460 }, { x: 1068, y: 460 }] },
-  ]
+/** A merge card in the tree. Numbered circle to the left, label inside.
+ *  Active merges get a dashed violet stroke + breathing pulse. */
+function MergeCard({
+  n,
+  label,
+  cx,
+  yTop,
+  yBot,
+  active,
+  complete,
+  wide,
+  isRoot,
+}: {
+  n: number
+  label: string
+  cx: number
+  yTop: number
+  yBot: number
+  active: boolean
+  complete: boolean
+  wide?: boolean
+  isRoot?: boolean
+}) {
+  const w = isRoot ? 280 : wide ? 160 : 96
+  const x = cx - w / 2
+  const h = yBot - yTop
+  const cy = (yTop + yBot) / 2
+  const numColor = isRoot ? ACCENT.violet : ACCENT.mint
+  const strokeColor = isRoot ? ACCENT.violet : ACCENT.mint
+  const fillBg = isRoot
+    ? 'rgba(167,139,250,0.18)'
+    : complete
+    ? 'rgba(52,211,153,0.12)'
+    : 'rgba(52,211,153,0.04)'
+
   return (
-    <g>
-      {/* Bottom — bytes */}
-      {word.map((ch, i) => (
-        <motion.g key={`byte-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          transition={{ delay: 0.05 * i / speed }}>
-          <rect x={200 + i * 80} y={650} width={56} height={42} rx={3}
-            fill="rgba(96,165,250,0.05)" stroke={ACCENT.blue} strokeOpacity={0.4} />
-          <text x={228 + i * 80} y={680} textAnchor="middle" fontSize="14"
-            fontFamily="var(--font-mono)" fill={ACCENT.dim}>
-            {ch.charCodeAt(0).toString(16).toUpperCase()}
-          </text>
-        </motion.g>
-      ))}
+    <g opacity={complete || active ? 1 : 0.35}>
+      {/* Numbered circle to the upper-left of the card */}
+      <circle
+        cx={x - 14}
+        cy={yTop + 6}
+        r={11}
+        fill="rgba(8,8,11,0.95)"
+        stroke={numColor}
+        strokeWidth={1.2}
+      />
+      <text
+        x={x - 14}
+        y={yTop + 10}
+        textAnchor="middle"
+        fontSize="10"
+        fontFamily="var(--font-mono)"
+        fill={numColor}
+      >
+        {n}
+      </text>
 
-      {/* Initial char tokens */}
-      {word.map((ch, i) => (
-        <motion.g key={`tok-${i}`} initial={{ opacity: 0, y: 580 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 / speed + 0.05 * i / speed }}>
-          <rect x={200 + i * 80} y={550} width={56} height={48} rx={3}
-            fill="rgba(96,165,250,0.10)" stroke={ACCENT.blue} strokeOpacity={0.65} />
-          <text x={228 + i * 80} y={584} textAnchor="middle" fontSize="22"
-            fontFamily="var(--font-display)" fontStyle="italic" fill="rgba(255,255,255,0.92)">{ch}</text>
-        </motion.g>
-      ))}
-
-      {/* Mid merges — only the 4 that actually feed the finals. */}
-      {mids.map((m, i) => (
-        <motion.g key={`mid-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          transition={{ delay: 1.6 / speed + i * 0.15 / speed }}>
-          <path d={`M ${cellCenter(m.from[0])} 550 L ${m.cx} 510 L ${cellCenter(m.from[1])} 550`}
-            fill="none" stroke={ACCENT.mint} strokeOpacity={0.45} strokeWidth={1.2} />
-          <rect x={m.cx - 32} y={460} width={64} height={44} rx={3}
-            fill="rgba(52,211,153,0.10)" stroke={ACCENT.mint} strokeOpacity={0.7} />
-          <text x={m.cx} y={490} textAnchor="middle" fontSize="20"
-            fontFamily="var(--font-display)" fontStyle="italic" fill={ACCENT.mint}>{m.label}</text>
-        </motion.g>
-      ))}
-
-      {/* Final → source connector lines (drawn before the final cards so the
-          cards sit on top of the line ends). */}
-      {finals.map((f, i) =>
-        f.sources.map((s, j) => (
-          <motion.path
-            key={`final-conn-${i}-${j}`}
-            d={`M ${s.x} ${s.y - 10} L ${f.x} 416`}
-            fill="none"
-            stroke={ACCENT.violet}
-            strokeOpacity={0.35}
-            strokeWidth={1}
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{
-              duration: 0.6 / speed,
-              delay: 2.6 / speed + i * 0.15 / speed + j * 0.05 / speed,
-            }}
-          />
-        )),
+      {/* Card body — dashed stroke when active */}
+      {active ? (
+        <motion.rect
+          x={x}
+          y={yTop}
+          width={w}
+          height={h}
+          rx={5}
+          fill={fillBg}
+          stroke={ACCENT.violet}
+          strokeWidth={2}
+          strokeDasharray="6 4"
+          animate={{
+            filter: [
+              `drop-shadow(0 0 0 ${ACCENT.violet}00)`,
+              `drop-shadow(0 0 14px ${ACCENT.violet})`,
+              `drop-shadow(0 0 0 ${ACCENT.violet}00)`,
+            ],
+          }}
+          transition={{
+            duration: 2 / 1,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        />
+      ) : (
+        <rect
+          x={x}
+          y={yTop}
+          width={w}
+          height={h}
+          rx={5}
+          fill={fillBg}
+          stroke={strokeColor}
+          strokeWidth={isRoot ? 2.2 : 1.4}
+          strokeOpacity={complete ? 0.85 : 0.5}
+        />
       )}
 
-      {/* Final tokens — initial spring-in, then continuous breathing pulse
-          so the bottom of the scene stays alive throughout. */}
-      {finals.map((f, i) => (
-        <motion.g key={`final-${i}`} initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: 'spring', stiffness: 180, damping: 20, delay: 2.6 / speed + i * 0.15 / speed }}>
-          <motion.rect x={f.x - 60} y={360} width={120} height={56} rx={5}
-            fill="rgba(167,139,250,0.16)"
-            stroke={ACCENT.violet}
-            strokeWidth={2.2}
-            animate={{
-              filter: [
-                'drop-shadow(0 0 0 rgba(167,139,250,0))',
-                `drop-shadow(0 0 12px ${ACCENT.violet})`,
-                'drop-shadow(0 0 0 rgba(167,139,250,0))',
-              ],
-            }}
-            transition={{
-              duration: 2.4 / speed,
-              repeat: Infinity,
-              delay: 4 / speed + i * 0.4 / speed,
-              ease: 'easeInOut',
-            }}
-          />
-          <text x={f.x} y={400} textAnchor="middle" fontSize="26"
-            fontFamily="var(--font-display)" fontStyle="italic" fill={ACCENT.violet}>{f.label}</text>
-        </motion.g>
-      ))}
-
-      {/* Trailing ellipsis */}
-      <text x={1100} y={400} fontSize="22" fontFamily="var(--font-display)"
-        fill={ACCENT.dim}>· · ·</text>
+      <text
+        x={cx}
+        y={cy + (isRoot ? 12 : 8)}
+        textAnchor="middle"
+        fontSize={isRoot ? 30 : wide ? 22 : 22}
+        fontFamily="var(--font-display)"
+        fontStyle="italic"
+        fill={isRoot ? ACCENT.violet : complete ? ACCENT.mint : 'rgba(255,255,255,0.45)'}
+      >
+        {label}
+      </text>
     </g>
   )
 }
@@ -2009,17 +2326,30 @@ export function TokensSplitPane() {
 /* ─────────── Scene 4 · BPE ─────────── */
 export function BPESplitPane() {
   const speed = useSpeed()
-  const merges = ['e + r → er', 't + h → th', 'i + n → in', 'er + s → ers']
+  // Same 7-merge sequence as the VizBPE tree, in order. Phase chip,
+  // stats, and "rule learned this step" all stay synchronized with the
+  // tree's currently-active merge highlight.
+  const rules = [
+    'u + n → un',
+    'b + e → be',
+    'l + i → li',
+    'li + e → lie',
+    'un + be → unbe',
+    'lie + vably → lievably',
+    'unbe + lievably → unbelievably',
+  ]
+  const TOTAL = rules.length // 7
+
   const [step, setStep] = useState(0)
   useEffect(() => {
     const id = setInterval(
-      () => setStep((s) => (s + 1) % (merges.length + 1)),
-      2200 / speed,
+      () => setStep((s) => (s + 1) % TOTAL),
+      2400 / speed,
     )
     return () => clearInterval(id)
-  }, [merges.length, speed])
-  const showStep = Math.min(step, merges.length - 1)
-  const vocabSize = 256 + showStep + 1
+  }, [TOTAL, speed])
+
+  const vocabAfter = 256 + step + 1
 
   return (
     <SplitPaneScene
@@ -2036,20 +2366,20 @@ export function BPESplitPane() {
         accent: ACCENT.violet,
         phase: (
           <PhaseChip
-            current={showStep + 1}
-            total={merges.length}
+            current={step + 1}
+            total={TOTAL}
             label="merging"
             accent={ACCENT.violet}
           />
         ),
         stats: [
           { label: 'starting vocab', value: '256' },
-          { label: 'after merges', value: vocabSize, color: ACCENT.mint },
+          { label: 'after merges', value: vocabAfter, color: ACCENT.mint },
           { label: 'real LLMs', value: '~50K+' },
         ],
         equation: {
-          label: 'rule learned',
-          body: <>{merges[showStep]}</>,
+          label: 'rule learned this step',
+          body: <>{rules[step]}</>,
         },
         infoCallout:
           'These merge rules are model-specific and learned during pretraining — they compress text into far fewer tokens than character-level.',
