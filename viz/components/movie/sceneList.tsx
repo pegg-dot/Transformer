@@ -3,14 +3,12 @@
 import { type MovieScene } from './MovieOrchestrator'
 import {
   SceneAttention,
-  SceneBPE,
   SceneBackprop,
   SceneBackpropAccumulation,
   SceneBackpropJacobian,
   SceneCELossBatch,
   SceneCELossSeqParallel,
   SceneCrossEntropy,
-  SceneEmbedding,
   SceneFFN,
   SceneFFNFeature,
   SceneFFNGelu,
@@ -21,12 +19,10 @@ import {
   SceneModern,
   SceneMultiHead,
   SceneOutput,
-  ScenePositional,
   SceneQKV,
   SceneRoPE,
   SceneSample,
   SceneStack,
-  SceneTokenization,
   SceneTraining,
 } from './scenes'
 import {
@@ -39,20 +35,27 @@ import {
   PanelQKV,
   PanelFFN,
   PanelLayerNorm,
-  PanelPositional,
   PanelSample,
   PanelKvCache,
   PanelOutput,
   PanelAttention,
   PanelMulti,
   PanelStack,
-  PanelEmbed,
   PanelLoss,
   PanelBackprop,
   PanelRope,
   PanelModern,
 } from './scenePanels'
 import { PanelThenScene } from './panelKit'
+import { SplitPaneScene } from './splitPane'
+import {
+  VizActIIntro,
+  VizTokenization,
+  VizBPE,
+  VizEmbedding,
+  VizPositional,
+  VizReadyForBlock0,
+} from './actIScenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -105,90 +108,217 @@ export const SCENES: MovieScene[] = [
     title: 'First: text becomes numbers.',
     caption: 'Your prompt has to be turned into integers before the network can do math on it.',
     accent: ACCENT.violet,
-    durationMs: 10000,
+    durationMs: 12000,
+    panelAnchor: 'fullscreen',
     details: `The input stage. Three small steps: split the string into tokens, look up each token's vector in an embedding table, and add a position encoding so the network can tell what came first.`,
     render: () => (
-      <ActFramingPanel
-        actLabel={ACT_I}
-        headline="First — text becomes numbers."
-        accent={ACCENT.violet}
-        teaser="the input slab, before any block"
+      <SplitPaneScene
+        viz={<VizActIIntro />}
+        text={{
+          kicker: 'ACT I · INPUT',
+          title: 'First — text becomes numbers.',
+          subtitle: 'the input slab, before any block.',
+          accent: ACCENT.violet,
+          infoCallout:
+            'Your prompt has to be turned into integers before the network can do math on it.',
+        }}
       />
     ),
   },
   {
     id: 'tokens',
     section: ACT_I,
-    breadcrumb: ['Input', 'Tokens'],
+    breadcrumb: ['Input', 'Tokenization'],
     kicker: 'tokenization',
-    title: 'Text becomes numbers.',
+    title: 'Text becomes tokens.',
     caption:
       'Each character of your prompt gets mapped to an integer ID from a 65-entry vocabulary.',
     accent: ACCENT.violet,
-    durationMs: 21000,
+    durationMs: 18000,
     promptAware: true,
     part: 'tokenize',
+    panelAnchor: 'fullscreen',
     details: `The tokenizer is a pure lookup — it turns every raw character into a fixed integer using a vocabulary table built once, before training. In our tiny model the vocab has exactly 65 entries (52 letters, 10 digits, plus a handful of punctuation marks from the Shakespeare corpus), so every ID lives in [0, 65).
 
 Real models never do character-level. They use subword tokens (BPE, Unigram, SentencePiece) with vocabularies of 32k–256k. But the lookup is identical: take the string, look up each token, emit the integer ID. That's the whole "tokenization" step.
 
 Nothing about the model cares what the original characters looked like after this point. It only sees integers.`,
-    render: () => <SceneTokenization />,
+    render: () => (
+      <SplitPaneScene
+        viz={<VizTokenization />}
+        text={{
+          kicker: 'ACT I · INPUT',
+          title: 'Text becomes tokens.',
+          subtitle: (
+            <>
+              The raw text is split into discrete input units before the model
+              can process it.
+            </>
+          ),
+          accent: ACCENT.violet,
+          infoCallout:
+            'This model uses character tokens — one visible character maps to one vocabulary ID in [0, 65).',
+        }}
+      />
+    ),
   },
   {
     id: 'bpe',
     section: ACT_I,
     breadcrumb: ['Input', 'BPE'],
     kicker: 'real tokenization',
-    title: 'Real models use BPE — 3 phases.',
+    title: 'Real models use BPE.',
     caption:
-      '(A) Byte vocabulary of 256. (B) Count pairs, merge the most frequent, repeat. (C) Apply learned merge rules to new words.',
+      'Start from bytes. Count adjacent pairs. Merge the most frequent. Repeat — thousands of times.',
     accent: ACCENT.violet,
-    durationMs: 35000,  // 3 × 10.67s
+    durationMs: 22000,
     part: 'tokenize',
+    panelAnchor: 'fullscreen',
     details: `BPE ("byte-pair encoding") is how modern tokenizers are built. Start with a vocabulary of all 256 bytes. Count every adjacent-pair of tokens in the training corpus. Merge the most frequent pair into one new token. Repeat thousands of times.
 
 After training, you're left with a merge table. At inference time, apply the same merges greedily to any input string. Common English words become one token ("the"), rare words split into multiple subwords ("arborescent" → "ar" + "bor" + "escent").
 
 The reason to use BPE instead of characters: way shorter sequences (fewer positions for attention to chew through) without needing a fixed English word list. The reason to use it instead of fixed words: handles arbitrary text, including typos, code, and non-English.`,
-    render: () => <SceneBPE />,
+    render: () => (
+      <SplitPaneScene
+        viz={<VizBPE />}
+        text={{
+          kicker: 'ACT I · INPUT',
+          title: 'Real models use BPE.',
+          subtitle: (
+            <>
+              Start from bytes. Count how often adjacent pairs appear. Merge the
+              most frequent pair into a new token. <strong>Repeat.</strong>
+              <br />
+              <br />
+              The merge rules you learn on your training data are reused
+              everywhere afterward.
+            </>
+          ),
+          accent: ACCENT.violet,
+          infoCallout:
+            'These merge rules are model-specific and learned during pretraining — they compress text into far fewer tokens than character-level.',
+        }}
+      />
+    ),
   },
   {
     id: 'embed',
     section: ACT_I,
-    breadcrumb: ['Input', 'Embedding'],
+    breadcrumb: ['Input', 'Embedding lookup'],
     focusedToken: 3,
     kicker: 'embeddings',
-    title: 'Every token becomes a vector.',
-    caption: 'One row of 384 real numbers per vocab entry. The cursor walks through rows — that row IS the token.',
+    title: 'Each token becomes a vector.',
+    caption:
+      'A token ID indexes into a learned embedding table. The matching row IS the model’s view of that token.',
     accent: ACCENT.violet,
-    durationMs: 21000,
+    durationMs: 20000,
     part: 'embed',
+    panelAnchor: 'fullscreen',
     details: `The embedding matrix is a learned parameter table: shape [vocab_size, d_model]. In our tiny model that's [65, 384]. For every token ID, look up row ID, get back a 384-dimensional vector.
 
 Every downstream layer reads the embedding vector, not the ID. The ID itself has no numerical meaning (ID 47 isn't "47 times bigger" than ID 1). The embedding converts the discrete ID into a dense vector the network can do math on.
 
 This is where the network first starts to encode meaning. Tokens that behave similarly (e.g. "king" and "queen") drift toward similar embedding vectors during training, because they produce similar gradient signals.`,
-    render: () => <PanelThenScene panel={<PanelEmbed />} scene={<SceneEmbedding />} />,
+    render: () => (
+      <SplitPaneScene
+        viz={<VizEmbedding />}
+        text={{
+          kicker: 'ACT I · INPUT',
+          title: 'Each token becomes a vector.',
+          subtitle: (
+            <>
+              A token ID indexes into a <em>learned</em> embedding table and
+              returns one row — a dense, <em>learned</em> vector the model
+              can read.
+            </>
+          ),
+          accent: ACCENT.violet,
+          equation: {
+            label: 'lookup rule',
+            body: (
+              <>
+                embed(t) = E[t, :]
+              </>
+            ),
+          },
+          infoCallout:
+            'E is learned during training and shared across all positions — the same row is returned every time that token appears.',
+        }}
+      />
+    ),
   },
   {
     id: 'positional',
     section: ACT_I,
-    breadcrumb: ['Input', 'Positional'],
+    breadcrumb: ['Input', 'Positional encoding'],
     focusedToken: 3,
     kicker: 'positional encoding',
     title: 'Position gets baked in.',
     caption:
-      'Sinusoidal waves at six frequencies — unique pattern per position, added to the embedding.',
-    accent: ACCENT.cyan,
-    durationMs: 19000,
+      'A unique sinusoidal pattern for each position is added directly to the token embedding.',
+    accent: ACCENT.violet,
+    durationMs: 22000,
     part: 'positional',
+    panelAnchor: 'fullscreen',
     details: `Attention on its own has no notion of order — "cat sat" and "sat cat" would produce identical attention outputs. Positional encoding fixes this by adding a position-dependent pattern to every embedding, so position 0 looks different from position 5 even for the same token.
 
 The original paper used fixed sinusoidal patterns — different frequencies per dimension, so the model can learn to read absolute and relative position from the pattern. Because it's deterministic, you can extrapolate to positions never seen during training.
 
 Modern models (LLaMA, GPT-NeoX) replaced this with RoPE — rotary position embeddings — which is scene 24. The motivation is the same: let attention know which token came first.`,
-    render: () => <PanelThenScene panel={<PanelPositional />} scene={<ScenePositional />} />,
+    render: () => (
+      <SplitPaneScene
+        viz={<VizPositional />}
+        text={{
+          kicker: 'ACT I · INPUT',
+          title: 'Position gets baked in.',
+          subtitle: (
+            <>
+              A unique sinusoidal pattern for each position is added directly
+              to the token embedding so the model knows order.
+            </>
+          ),
+          accent: ACCENT.violet,
+          infoCallout:
+            'These patterns are fixed (not learned) and work across any sequence length — every position gets a distinct fingerprint.',
+        }}
+      />
+    ),
+  },
+
+  {
+    id: 'ready-for-block-0',
+    section: ACT_I,
+    breadcrumb: ['Input', 'Input slab'],
+    kicker: 'input slab',
+    title: 'Ready for Block 0.',
+    caption:
+      'After tokenization, embedding lookup, and positional encoding, the model has a T × d_model input slab.',
+    accent: ACCENT.violet,
+    durationMs: 12000,
+    panelAnchor: 'fullscreen',
+    details: `The output of Act I is a matrix: one row per token position, one column per hidden dimension. This object is the residual stream — the running representation that flows through every transformer block, with each block adding (not replacing) its own contribution.
+
+Nothing in the model has done attention yet. Tokens have not "talked" to each other yet. That happens for the first time in Block 0, which we walk through next.`,
+    render: () => (
+      <SplitPaneScene
+        viz={<VizReadyForBlock0 />}
+        text={{
+          kicker: 'ACT I · INPUT',
+          title: 'Ready for Block 0.',
+          subtitle: (
+            <>
+              After tokenization, embedding lookup, and positional encoding,
+              the model now has a T-by-d<sub>model</sub> input slab. It can
+              finally begin transformer computation.
+            </>
+          ),
+          accent: ACCENT.violet,
+          infoCallout:
+            'This slab is the residual stream — the running representation that flows through every block, accumulating each block’s contribution.',
+        }}
+      />
+    ),
   },
 
   // =============== ACT II — INSIDE A BLOCK ===============
