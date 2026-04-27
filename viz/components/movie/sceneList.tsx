@@ -3,12 +3,14 @@
 import { type MovieScene } from './MovieOrchestrator'
 import {
   SceneAttention,
+  SceneBPE,
   SceneBackprop,
   SceneBackpropAccumulation,
   SceneBackpropJacobian,
   SceneCELossBatch,
   SceneCELossSeqParallel,
   SceneCrossEntropy,
+  SceneEmbedding,
   SceneFFN,
   SceneFFNFeature,
   SceneFFNGelu,
@@ -19,10 +21,12 @@ import {
   SceneModern,
   SceneMultiHead,
   SceneOutput,
+  ScenePositional,
   SceneQKV,
   SceneRoPE,
   SceneSample,
   SceneStack,
+  SceneTokenization,
   SceneTraining,
 } from './scenes'
 import {
@@ -48,14 +52,7 @@ import {
 } from './scenePanels'
 import { PanelThenScene } from './panelKit'
 import { SplitPaneScene } from './splitPane'
-import {
-  VizActIIntro,
-  VizTokenization,
-  VizBPE,
-  VizEmbedding,
-  VizPositional,
-  VizReadyForBlock0,
-} from './actIScenes'
+import { VizActIIntro, VizReadyForBlock0 } from './actIScenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -145,7 +142,7 @@ Real models never do character-level. They use subword tokens (BPE, Unigram, Sen
 Nothing about the model cares what the original characters looked like after this point. It only sees integers.`,
     render: () => (
       <SplitPaneScene
-        viz={<VizTokenization />}
+        viz={<SceneTokenization />}
         text={{
           kicker: 'ACT I · INPUT',
           title: 'Text becomes tokens.',
@@ -181,7 +178,7 @@ After training, you're left with a merge table. At inference time, apply the sam
 The reason to use BPE instead of characters: way shorter sequences (fewer positions for attention to chew through) without needing a fixed English word list. The reason to use it instead of fixed words: handles arbitrary text, including typos, code, and non-English.`,
     render: () => (
       <SplitPaneScene
-        viz={<VizBPE />}
+        viz={<SceneBPE />}
         text={{
           kicker: 'ACT I · INPUT',
           title: 'Real models use BPE.',
@@ -222,7 +219,7 @@ Every downstream layer reads the embedding vector, not the ID. The ID itself has
 This is where the network first starts to encode meaning. Tokens that behave similarly (e.g. "king" and "queen") drift toward similar embedding vectors during training, because they produce similar gradient signals.`,
     render: () => (
       <SplitPaneScene
-        viz={<VizEmbedding />}
+        viz={<SceneEmbedding />}
         text={{
           kicker: 'ACT I · INPUT',
           title: 'Each token becomes a vector.',
@@ -268,7 +265,7 @@ The original paper used fixed sinusoidal patterns — different frequencies per 
 Modern models (LLaMA, GPT-NeoX) replaced this with RoPE — rotary position embeddings — which is scene 24. The motivation is the same: let attention know which token came first.`,
     render: () => (
       <SplitPaneScene
-        viz={<VizPositional />}
+        viz={<ScenePositional />}
         text={{
           kicker: 'ACT I · INPUT',
           title: 'Position gets baked in.',
