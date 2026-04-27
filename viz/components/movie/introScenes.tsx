@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { useSpeed } from './speedContext'
 import { usePrompt } from './promptContext'
@@ -72,11 +73,30 @@ export function IntroColdOpenPanel() {
   const REPLY_CHAR_MS = 50
   const T_REPLY_DONE = T_REPLY_START + (Math.max(replyText.length, 8) * REPLY_CHAR_MS) / 1000
   const T_HINT = T_REPLY_DONE + 0.6
-  // Final beat: the entire chat morphs down-and-left toward where the
-  // model's input slab will appear in the next scene's 3D view. Triggers
-  // near the end of the 22s scene so the act-change banner overlays a
-  // panel that's already shrinking "into the model."
-  const T_MORPH = T_HINT + 3.0
+  // PHASE 4 — translation pipeline. After the AI replies and the hint pulses
+  // once, the prompt visibly "translates" into what enters the model:
+  //   prompt text  →  token pills  →  integer IDs  →  small input matrix
+  // Each row drops in with a 0.8s stagger. Layered above the chat so the
+  // viewer can still see what was typed.
+  const T_PIPELINE_START = T_HINT + 1.5
+  const T_TOKENS_BEAT = T_PIPELINE_START + 0.8
+  const T_IDS_BEAT = T_TOKENS_BEAT + 0.8
+  const T_MATRIX_BEAT = T_IDS_BEAT + 0.9
+  const T_MATRIX_HOLD = T_MATRIX_BEAT + 1.5
+  // Final beat: the chat + pipeline panel morphs down-and-left toward where
+  // the model's input slab will appear in the next scene. Triggers after
+  // the matrix has been visible long enough to read.
+  const T_MORPH = T_MATRIX_HOLD + 0.5
+
+  // Pipeline data — first 14 chars of the prompt + integer IDs (charCode % 65)
+  const pipelineChars = (prompt || 'To be, or no').split('').slice(0, 14)
+  const idForCh = (ch: string) => ch.charCodeAt(0) % 65
+  const PIPELINE_COLORS = [
+    ACCENT.violet, ACCENT.blue, ACCENT.mint,
+    ACCENT.amber, ACCENT.red, '#22d3ee', // cyan
+  ]
+  const colorForIdx = (i: number) =>
+    PIPELINE_COLORS[i % PIPELINE_COLORS.length]
 
   // Card opacity keyframes — fade in 0.5s, hold, fade out + slide up
   const CARD_DUR = T_CARD_OUT - T_CARD + 0.45
@@ -395,6 +415,261 @@ export function IntroColdOpenPanel() {
         >
           let&apos;s go inside ↓
         </motion.div>
+      </div>
+
+      {/* ───────── PHASE 4 — translation pipeline ─────────
+          Layered above the chat, anchored to the lower portion of the panel.
+          Drops in row-by-row to show: prompt → tokens → IDs → input matrix.
+          Total ~4s. After this the existing morph carries the panel away. */}
+      <motion.div
+        className="pointer-events-none absolute inset-x-0 z-30 flex justify-center"
+        style={{ top: '54%' }}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{
+          delay: T_PIPELINE_START / speed,
+          duration: 0.5 / speed,
+          ease: 'easeOut',
+        }}
+      >
+        <div
+          className="flex flex-col items-stretch gap-2 rounded-[12px] border-2 px-7 py-5"
+          style={{
+            background: 'rgba(8,8,11,0.86)',
+            borderColor: 'rgba(167,139,250,0.42)',
+            boxShadow: '0 14px 56px rgba(167,139,250,0.22)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            minWidth: 580,
+          }}
+        >
+          {/* Row 1: YOUR PROMPT */}
+          <PipelineRow
+            label="YOUR PROMPT"
+            labelColor={ACCENT.violet}
+            delay={T_PIPELINE_START + 0.05}
+            speed={speed}
+          >
+            <div
+              className="font-serif italic text-[20px] leading-tight"
+              style={{ color: FG }}
+            >
+              {prompt || 'To be, or no'}
+            </div>
+          </PipelineRow>
+
+          <PipelineArrow delay={T_TOKENS_BEAT - 0.25} speed={speed} />
+
+          {/* Row 2: TOKENS */}
+          <PipelineRow
+            label="TOKENS"
+            labelColor={ACCENT.violet}
+            delay={T_TOKENS_BEAT}
+            speed={speed}
+          >
+            <div className="flex gap-1.5">
+              {pipelineChars.map((ch, i) => (
+                <motion.div
+                  key={`tok-${i}`}
+                  className="font-serif italic flex h-[34px] w-[28px] items-center justify-center rounded-[4px] border text-[18px]"
+                  style={{
+                    color: FG,
+                    borderColor: `${colorForIdx(i)}77`,
+                    background: `${colorForIdx(i)}14`,
+                  }}
+                  initial={{ opacity: 0, y: -6, scale: 0.9 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{
+                    delay: (T_TOKENS_BEAT + 0.1 + i * 0.04) / speed,
+                    duration: 0.32 / speed,
+                    ease: [0.22, 1.2, 0.36, 1],
+                  }}
+                >
+                  {ch === ' ' ? '·' : ch}
+                </motion.div>
+              ))}
+            </div>
+          </PipelineRow>
+
+          <PipelineArrow delay={T_IDS_BEAT - 0.25} speed={speed} />
+
+          {/* Row 3: IDS */}
+          <PipelineRow
+            label="IDS"
+            labelColor={ACCENT.violet}
+            delay={T_IDS_BEAT}
+            speed={speed}
+          >
+            <div className="flex gap-1.5">
+              {pipelineChars.map((ch, i) => (
+                <motion.div
+                  key={`id-${i}`}
+                  className="font-mono flex h-[34px] w-[28px] items-center justify-center rounded-[4px] border text-[12px] tabular-nums"
+                  style={{
+                    color: colorForIdx(i),
+                    borderColor: `${colorForIdx(i)}55`,
+                    background: 'rgba(255,255,255,0.02)',
+                  }}
+                  initial={{ opacity: 0, rotateX: -90 }}
+                  animate={{ opacity: 1, rotateX: 0 }}
+                  transition={{
+                    delay: (T_IDS_BEAT + 0.1 + i * 0.04) / speed,
+                    duration: 0.32 / speed,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                >
+                  {idForCh(ch)}
+                </motion.div>
+              ))}
+            </div>
+          </PipelineRow>
+
+          <PipelineArrow delay={T_MATRIX_BEAT - 0.25} speed={speed} />
+
+          {/* Row 4: INPUT MATRIX */}
+          <PipelineRow
+            label="INPUT MATRIX"
+            labelColor={ACCENT.violet}
+            delay={T_MATRIX_BEAT}
+            speed={speed}
+          >
+            <div className="flex items-center gap-3">
+              <motion.svg
+                width={pipelineChars.length * 30}
+                height={56}
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{
+                  delay: (T_MATRIX_BEAT + 0.1) / speed,
+                  duration: 0.5 / speed,
+                  ease: [0.22, 1.1, 0.36, 1],
+                }}
+              >
+                {/* Border */}
+                <rect
+                  x={0.5}
+                  y={0.5}
+                  width={pipelineChars.length * 30 - 1}
+                  height={55}
+                  rx={4}
+                  fill="rgba(167,139,250,0.06)"
+                  stroke={ACCENT.violet}
+                  strokeWidth={1.4}
+                  strokeOpacity={0.85}
+                />
+                {/* Cells: T columns × 7 d_model rows */}
+                {pipelineChars.map((_, t) =>
+                  Array.from({ length: 7 }).map((_, d) => {
+                    const v = (Math.sin(t * 0.7 + d * 1.5) + 1) / 2
+                    return (
+                      <motion.rect
+                        key={`mc-${t}-${d}`}
+                        x={4 + t * 30}
+                        y={4 + d * 7.5}
+                        width={22}
+                        height={6.5}
+                        fill={colorForIdx(t)}
+                        opacity={0}
+                        animate={{ opacity: 0.18 + v * 0.55 }}
+                        transition={{
+                          delay:
+                            (T_MATRIX_BEAT +
+                              0.25 +
+                              t * 0.02 +
+                              d * 0.015) /
+                            speed,
+                          duration: 0.3 / speed,
+                        }}
+                      />
+                    )
+                  }),
+                )}
+              </motion.svg>
+              <motion.div
+                className="font-mono text-[10px] tracking-[0.2em] uppercase whitespace-nowrap"
+                style={{ color: ACCENT.violet, opacity: 0.85 }}
+                initial={{ opacity: 0, x: -4 }}
+                animate={{ opacity: 0.85, x: 0 }}
+                transition={{
+                  delay: (T_MATRIX_BEAT + 0.55) / speed,
+                  duration: 0.4 / speed,
+                }}
+              >
+                [<span style={{ color: ACCENT.violet }}>{pipelineChars.length}</span>
+                {', 384]'}
+                <br />
+                <span style={{ opacity: 0.6 }}>
+                  this enters Block 0 →
+                </span>
+              </motion.div>
+            </div>
+          </PipelineRow>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+/** Single row of the translation pipeline — left-side label + right content. */
+function PipelineRow({
+  label,
+  labelColor,
+  delay,
+  speed,
+  children,
+}: {
+  label: string
+  labelColor: string
+  delay: number
+  speed: number
+  children: ReactNode
+}) {
+  return (
+    <motion.div
+      className="flex items-center gap-4"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        delay: delay / speed,
+        duration: 0.4 / speed,
+        ease: 'easeOut',
+      }}
+    >
+      <div
+        className="font-mono shrink-0 w-[120px] text-right text-[10px] tracking-[0.22em] uppercase"
+        style={{ color: labelColor, opacity: 0.85 }}
+      >
+        {label}
+      </div>
+      <div className="flex-1">{children}</div>
+    </motion.div>
+  )
+}
+
+/** Small downward arrow between pipeline rows — fades in then stays. */
+function PipelineArrow({
+  delay,
+  speed,
+}: {
+  delay: number
+  speed: number
+}) {
+  return (
+    <motion.div
+      className="flex items-center gap-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 0.6 }}
+      transition={{
+        delay: delay / speed,
+        duration: 0.3 / speed,
+      }}
+    >
+      <div className="w-[120px]" />
+      <div
+        className="font-mono text-[16px] leading-none"
+        style={{ color: ACCENT.violet, opacity: 0.55 }}
+      >
+        ↓
       </div>
     </motion.div>
   )
