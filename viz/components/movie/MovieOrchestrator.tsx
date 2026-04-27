@@ -597,7 +597,8 @@ function Inner({ scenes }: Props) {
           )}
         </AnimatePresence>
 
-        {/* End-card — overlays whole row */}
+        {/* End-card — overlays whole row. Now an interactive outro:
+            change the prompt, replay the whole tour with it. */}
         <AnimatePresence>
           {finished && isLastScene && (
             <motion.div
@@ -605,19 +606,61 @@ function Inner({ scenes }: Props) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
-              className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
+              className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[rgba(7,7,9,0.7)] backdrop-blur-md"
             >
-              <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-[3px] border border-[var(--rule-strong)] bg-[rgba(7,7,9,0.85)] px-6 py-5 backdrop-blur-md">
-                <div className="small-caps text-[var(--fg-dim)]">end of the tour</div>
-                <div className="display text-[22px] text-[var(--fg)]">that&apos;s the whole machine.</div>
-                <div className="flex items-center gap-2 mono text-[11px]">
-                  <button
-                    type="button"
-                    onClick={restart}
-                    className="rounded-full border border-[var(--accent)] bg-[rgba(96,165,250,0.1)] px-4 py-1.5 text-[var(--accent)] hover:bg-[rgba(96,165,250,0.2)]"
+              <div className="pointer-events-auto flex w-[min(560px,90%)] flex-col items-center gap-5 rounded-[6px] border-2 border-[var(--rule-strong)] bg-[rgba(7,7,9,0.92)] px-8 py-7 shadow-2xl">
+                <div
+                  className="small-caps text-[10px] tracking-[0.28em]"
+                  style={{ color: ACCENT_BLUE }}
+                >
+                  end of the tour
+                </div>
+                <div className="display text-center text-[26px] leading-tight text-[var(--fg)]">
+                  that&apos;s the whole machine.
+                </div>
+                <div className="text-center text-[13px] leading-6 text-[var(--fg-muted)]">
+                  Now try your own prompt — type anything below and watch
+                  the whole tour run again with your text.
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    restart()
+                  }}
+                  className="flex w-full items-center gap-2"
+                >
+                  <div
+                    className="mono shrink-0 text-[10px] tracking-wider text-[var(--fg-dim)]"
                   >
-                    ↺ replay
+                    prompt
+                  </div>
+                  <input
+                    type="text"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    maxLength={MAX_LEN}
+                    placeholder="To be, or no"
+                    autoFocus
+                    className="mono flex-1 rounded-[3px] border border-[var(--rule-strong)] bg-[var(--bg)] px-3 py-2 text-[13px] text-[var(--fg)] outline-none placeholder:text-[var(--fg-dim)] focus:border-[var(--accent)]"
+                  />
+                  <button
+                    type="submit"
+                    className="display shrink-0 rounded-[3px] border-2 px-4 py-2 text-[13px] leading-none transition-colors"
+                    style={{
+                      borderColor: ACCENT_BLUE,
+                      color: ACCENT_BLUE,
+                      background: 'rgba(96,165,250,0.12)',
+                    }}
+                  >
+                    ▶ run again
                   </button>
+                </form>
+
+                <div className="flex items-center gap-2 mono text-[10px] tracking-wider text-[var(--fg-dim)]">
+                  <span>{`${prompt.length} / ${MAX_LEN} chars`}</span>
+                  <span className="opacity-60">·</span>
+                  <span>char-level model · any printable text</span>
                 </div>
               </div>
             </motion.div>

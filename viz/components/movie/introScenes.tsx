@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { useSpeed } from './speedContext'
+import { usePrompt } from './promptContext'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -15,12 +16,17 @@ const DIM = '#737373'
 
 /** --- Cold open (Prologue) --- */
 
-const PROMPT_TEXT = 'What if I asked my AI to finish this sentence: to be, or no'
+const PROMPT_PREFIX = 'What if I asked my AI to finish this sentence: '
 
 export function IntroColdOpenPanel() {
   const speed = useSpeed()
+  const { prompt } = usePrompt()
   const CHAR_MS = 80
-  const chars = PROMPT_TEXT.split('')
+  // Type out the prompt the viewer chose (defaults to "To be, or no").
+  // The wrapper sentence ("What if I asked my AI…") fades in pre-typed,
+  // and only the user's prompt itself is character-typed for emphasis.
+  const promptText = `${PROMPT_PREFIX}${prompt}`
+  const chars = promptText.split('')
 
   // ─── Timeline (seconds, at speed 1×) ─────────────────────────────
   // PHASE 1 — title card alone, centered
@@ -206,7 +212,7 @@ export function IntroColdOpenPanel() {
                 ease: [0.22, 1.2, 0.36, 1],
               }}
             >
-              <div className="text-[13px] leading-5">{PROMPT_TEXT}</div>
+              <div className="text-[13px] leading-5">{promptText}</div>
             </motion.div>
 
             {/* AI message — thinking dots */}
