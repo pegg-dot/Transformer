@@ -1319,223 +1319,457 @@ function MergeCard({
 
 /* ─────────────────── Scene D · Embedding Lookup (3D-feel matrix) ─────────────────── */
 
+/**
+ * Embedding lookup walkthrough.
+ *
+ * Visual story (per design feedback):
+ *   1. Active token ID bright, inactive IDs dim
+ *   2. Curved arrow from active ID to its row in the matrix
+ *   3. The selected row visibly "lifts" out of the matrix and slides over
+ *      to the right side, where it un-skews and becomes the flat extracted
+ *      vector. The vector's cell values match the row's cells exactly —
+ *      this is a lookup, not a fresh generation.
+ *   4. Diverging color encoding: positive values violet, negative values
+ *      muted red, near-zero dark. Same scheme for matrix row + vector.
+ *   5. Operation readout below: "token ID N → row N → vector ∈ ℝ³⁸⁴"
+ *   6. If the same ID appears twice in the prompt, both instances get a
+ *      faint dashed connector to the same row.
+ */
 export function VizEmbedding() {
   const speed = useSpeed()
   const { prompt } = usePrompt()
   const promptChars = (prompt || 'The cat sat').split('').slice(0, 8)
-
-  // Char-level: ID = charCode % 65
   const ids = promptChars.map((ch) => ch.charCodeAt(0) % 65)
 
-  // Cycle through the prompt, lighting up rows in turn
   const [cursor, setCursor] = useState(0)
   useEffect(() => {
+    if (ids.length === 0) return
     const id = setInterval(
       () => setCursor((c) => (c + 1) % ids.length),
-      2200 / speed,
+      2400 / speed,
     )
     return () => clearInterval(id)
   }, [ids.length, speed])
 
-  // 3D-feel matrix: parallelogram with cells, viewing slightly from above-left
+  // Matrix geometry
   const ROWS = 14
   const COLS = 24
   const CELL_W = 18
   const CELL_H = 20
-  const SKEW_X = 0.18 // top edge shifts right relative to bottom
+  const SKEW_X = 0.18
   const matrixX = 470
   const matrixY = 240
   const matrixW = COLS * CELL_W
+  const matrixH = ROWS * CELL_H
 
-  // Map "active" row in the visible matrix to the prompt's current ID
-  // (clamped — we have 14 visible rows but real V=65)
-  const activeRow = ids[cursor] % ROWS
+  const activeId = ids[cursor] ?? 0
+  const activeRow = activeId % ROWS
+
+  // Detect repeated IDs in the visible prompt — for the "shared row" hint
+  const visibleIds = ids.slice(0, 6)
+  const idCounts = visibleIds.reduce<Record<number, number[]>>(
+    (acc, id, i) => {
+      acc[id] = acc[id] ? [...acc[id], i] : [i]
+      return acc
+    },
+    {},
+  )
+
+  // Deterministic signed embedding values in [-1, 1]
+  const valueFor = (row: number, col: number): number => {
+    const a = Math.sin(row * 1.31 + col * 0.73 + 1.7)
+    const b = Math.cos(row * 0.47 + col * 0.51)
+    return Math.max(-1, Math.min(1, a * 0.7 + b * 0.4))
+  }
+
+  // Diverging color — positive violet, negative muted red, near-zero dark
+  const colorFor = (v: number): string => {
+    if (v >= 0) {
+      const a = 0.08 + Math.min(1, v) * 0.62
+      return `rgba(167,139,250,${a})`
+    } else {
+      const a = 0.08 + Math.min(1, -v) * 0.55
+      return `rgba(248,113,113,${a})`
+    }
+  }
+
+  // Pre-compute the active row's values (also used by the extracted vector)
+  const activeRowValues = Array.from({ length: COLS }).map((_, c) =>
+    valueFor(activeRow, c),
+  )
+
+  // Vector display geometry (extracted-row destination on the right)
+  const vecX = matrixX + matrixW + 100
+  const vecY = 280
+  const vecCellW = 16 // 24 cells × 16 = 384 wide
 
   return (
     <div className="relative h-full w-full">
       <svg viewBox="0 0 1400 900" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
         <defs>
           <filter id="emb-glow"><feGaussianBlur stdDeviation="3.5" /></filter>
-          <linearGradient id="vec-grad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#a78bfa" />
-            <stop offset="0.35" stopColor="#60a5fa" />
-            <stop offset="0.65" stopColor="#22d3ee" />
-            <stop offset="1" stopColor="#34d399" />
-          </linearGradient>
+          <filter id="emb-row-bloom" x="-15%" y="-50%" width="130%" height="200%">
+            <feGaussianBlur stdDeviation="3" />
+          </filter>
         </defs>
 
         {/* Header */}
         <text x={matrixX + matrixW / 2} y={matrixY - 60} textAnchor="middle"
-          fontSize="13" fontFamily="var(--font-mono)" fill={ACCENT.dim}
-          letterSpacing="0.24em">EMBEDDING MATRIX</text>
-        <text x={matrixX + matrixW / 2} y={matrixY - 38} textAnchor="middle"
-          fontSize="22" fontFamily="var(--font-display)" fontStyle="italic"
-          fill={ACCENT.dim}>V × d
-          <tspan fontSize="12" dy="3">model</tspan>
+          fontSize="13" fontFamily="var(--font-mono)" fill="rgba(255,255,255,0.85)"
+          letterSpacing="0.24em">EMBEDDING MATRIX E</text>
+        <text x={matrixX + matrixW / 2} y={matrixY - 36} textAnchor="middle"
+          fontSize="20" fontFamily="var(--font-display)" fontStyle="italic"
+          fill={ACCENT.dim}>
+          ∈ ℝ
+          <tspan fontSize="12" dy="-6">V × d</tspan>
+          <tspan fontSize="9" dy="3">model</tspan>
         </text>
 
-        {/* Left — token IDs column with arrows pointing into matrix */}
+        {/* ────── Left — token IDs column ────── */}
         <g>
           <text x={130} y={matrixY - 18} fontSize="10" fontFamily="var(--font-mono)"
             fill={ACCENT.dim} letterSpacing="0.22em">TOKEN IDs</text>
-          {ids.slice(0, 6).map((id, i) => {
+          {visibleIds.map((id, i) => {
             const isActive = i === cursor
+            const isDuplicate =
+              idCounts[id] && idCounts[id].length > 1 && !isActive
             return (
               <g key={i}>
-                <motion.rect x={100} y={matrixY + i * 50} width={70} height={36} rx={3}
-                  animate={{
-                    fill: isActive ? 'rgba(167,139,250,0.22)' : 'rgba(255,255,255,0.02)',
-                    stroke: isActive ? ACCENT.violet : 'rgba(255,255,255,0.18)',
-                  }}
-                  transition={{ duration: 0.3 }} strokeWidth={1.5} />
-                <motion.text x={135} y={matrixY + i * 50 + 24} textAnchor="middle"
-                  fontSize="16" fontFamily="var(--font-mono)"
-                  animate={{ fill: isActive ? '#fff' : ACCENT.dim }}
-                  transition={{ duration: 0.3 }}>{id}</motion.text>
-                {/* Arrow into matrix when active */}
+                {/* Active gets a glow halo */}
                 {isActive && (
+                  <motion.rect
+                    x={92} y={matrixY + i * 50 - 6} width={86} height={48} rx={5}
+                    fill="rgba(167,139,250,0.10)"
+                    animate={{ opacity: [0.45, 0.95, 0.45] }}
+                    transition={{
+                      duration: 2 / speed,
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                    }}
+                  />
+                )}
+                <motion.rect
+                  x={100} y={matrixY + i * 50}
+                  width={70} height={36} rx={3}
+                  animate={{
+                    fill: isActive
+                      ? 'rgba(167,139,250,0.28)'
+                      : 'rgba(255,255,255,0.015)',
+                    stroke: isActive ? ACCENT.violet : 'rgba(255,255,255,0.10)',
+                    opacity: isActive ? 1 : 0.42,
+                  }}
+                  transition={{ duration: 0.3 }}
+                  strokeWidth={isActive ? 1.8 : 1}
+                />
+                <motion.text
+                  x={135} y={matrixY + i * 50 + 24}
+                  textAnchor="middle"
+                  fontSize={isActive ? 17 : 14}
+                  fontFamily="var(--font-mono)"
+                  animate={{
+                    fill: isActive ? '#fff' : 'rgba(255,255,255,0.45)',
+                    opacity: isActive ? 1 : 0.55,
+                  }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {id}
+                </motion.text>
+
+                {/* Curved connector — solid for active, dashed for duplicate */}
+                {(isActive || isDuplicate) && (
                   <motion.path
                     d={`M 175 ${matrixY + i * 50 + 18} Q 320 ${matrixY + i * 50 + 18}, ${matrixX - 6} ${matrixY + activeRow * CELL_H + CELL_H / 2}`}
-                    stroke={ACCENT.violet} strokeWidth={1.5} fill="none"
+                    stroke={ACCENT.violet}
+                    strokeWidth={isActive ? 1.8 : 1}
+                    strokeOpacity={isActive ? 0.9 : 0.4}
+                    strokeDasharray={isActive ? undefined : '3 4'}
+                    fill="none"
                     initial={{ pathLength: 0, opacity: 0 }}
-                    animate={{ pathLength: 1, opacity: 0.85 }}
-                    transition={{ duration: 0.5 / speed }} />
+                    animate={{ pathLength: 1, opacity: isActive ? 0.9 : 0.4 }}
+                    transition={{ duration: 0.5 / speed }}
+                  />
                 )}
               </g>
             )
           })}
         </g>
 
-        {/* Matrix — parallelogram (top edge shifted right by SKEW_X for fake-3D) */}
+        {/* ────── Matrix — parallelogram with diverging-color cells ────── */}
         <g transform={`translate(${matrixX}, ${matrixY})`}>
           {/* Body grid — render rows from back to front */}
           {Array.from({ length: ROWS }).map((_, r) => (
             <g key={r} transform={`translate(${(ROWS - r) * SKEW_X * CELL_H}, ${r * CELL_H})`}>
               {Array.from({ length: COLS }).map((_, c) => {
-                const seed = (r * 73 + c * 19) % 100
-                const opacity = 0.05 + (seed % 40) / 200
+                const v = valueFor(r, c)
                 const isActiveRow = r === activeRow
+                const baseOpacity = isActiveRow ? 1 : 0.35
                 return (
                   <rect
                     key={c}
                     x={c * CELL_W}
                     width={CELL_W - 1}
                     height={CELL_H - 1}
-                    fill={
-                      isActiveRow
-                        ? `rgba(167,139,250,${0.55 + (seed % 30) / 100})`
-                        : `rgba(167,139,250,${opacity})`
-                    }
+                    fill={colorFor(v)}
+                    opacity={baseOpacity}
                   />
                 )
               })}
             </g>
           ))}
 
-          {/* Active row highlight stripe (over top) */}
+          {/* Active row glow halo (drawn over the row) */}
           <motion.rect
             animate={{
-              y: activeRow * CELL_H - 2,
-              x: (ROWS - activeRow) * SKEW_X * CELL_H - 2,
+              y: activeRow * CELL_H - 3,
+              x: (ROWS - activeRow) * SKEW_X * CELL_H - 3,
             }}
             transition={{ type: 'spring', stiffness: 240, damping: 24 }}
-            width={matrixW + 4}
-            height={CELL_H + 2}
+            width={matrixW + 6}
+            height={CELL_H + 6}
             fill="none"
             stroke={ACCENT.violet}
-            strokeWidth={2}
+            strokeWidth={2.4}
             filter="url(#emb-glow)"
           />
 
-          {/* Edge outline (parallelogram) — front face */}
+          {/* Edge outline */}
           <path
-            d={`M 0 ${ROWS * CELL_H} L ${matrixW} ${ROWS * CELL_H} L ${matrixW + ROWS * SKEW_X * CELL_H} 0 L ${ROWS * SKEW_X * CELL_H} 0 Z`}
+            d={`M 0 ${matrixH} L ${matrixW} ${matrixH} L ${matrixW + ROWS * SKEW_X * CELL_H} 0 L ${ROWS * SKEW_X * CELL_H} 0 Z`}
             fill="none"
             stroke={ACCENT.violet}
             strokeOpacity={0.55}
             strokeWidth={1.4}
           />
 
-          {/* V brace */}
-          <line x1={-14} y1={0} x2={-14} y2={ROWS * CELL_H} stroke={ACCENT.dim} strokeWidth={1} />
-          <text x={-26} y={ROWS * CELL_H / 2 + 4} textAnchor="middle" fontSize="14"
-            fontFamily="var(--font-display)" fontStyle="italic" fill={ACCENT.dim}>V</text>
+          {/* V brace — labeled "vocab rows" */}
+          <line x1={-14} y1={0} x2={-14} y2={matrixH}
+            stroke={ACCENT.dim} strokeWidth={1} />
+          <line x1={-18} y1={0} x2={-10} y2={0}
+            stroke={ACCENT.dim} strokeWidth={1} />
+          <line x1={-18} y1={matrixH} x2={-10} y2={matrixH}
+            stroke={ACCENT.dim} strokeWidth={1} />
+          <text
+            x={-26}
+            y={matrixH / 2}
+            textAnchor="middle"
+            fontSize="14"
+            fontFamily="var(--font-display)"
+            fontStyle="italic"
+            fill={ACCENT.dim}
+            transform={`rotate(-90, -26, ${matrixH / 2})`}
+          >
+            V · vocab rows
+          </text>
 
-          {/* d_model brace */}
+          {/* d_model brace — labeled "hidden dimensions" */}
           <line
             x1={ROWS * SKEW_X * CELL_H}
-            y1={ROWS * CELL_H + 14}
+            y1={matrixH + 14}
             x2={ROWS * SKEW_X * CELL_H + matrixW}
-            y2={ROWS * CELL_H + 14}
+            y2={matrixH + 14}
             stroke={ACCENT.dim}
             strokeWidth={1}
           />
-          <text x={ROWS * SKEW_X * CELL_H + matrixW / 2} y={ROWS * CELL_H + 32}
-            textAnchor="middle" fontSize="14" fontFamily="var(--font-display)"
-            fontStyle="italic" fill={ACCENT.dim}>
-            d
-            <tspan fontSize="11" dy="3">model</tspan>
+          <line
+            x1={ROWS * SKEW_X * CELL_H}
+            y1={matrixH + 10}
+            x2={ROWS * SKEW_X * CELL_H}
+            y2={matrixH + 18}
+            stroke={ACCENT.dim}
+            strokeWidth={1}
+          />
+          <line
+            x1={ROWS * SKEW_X * CELL_H + matrixW}
+            y1={matrixH + 10}
+            x2={ROWS * SKEW_X * CELL_H + matrixW}
+            y2={matrixH + 18}
+            stroke={ACCENT.dim}
+            strokeWidth={1}
+          />
+          <text
+            x={ROWS * SKEW_X * CELL_H + matrixW / 2}
+            y={matrixH + 32}
+            textAnchor="middle"
+            fontSize="13"
+            fontFamily="var(--font-display)"
+            fontStyle="italic"
+            fill={ACCENT.dim}
+          >
+            d_model · hidden dimensions
           </text>
         </g>
 
-        {/* Extracted vector on the right */}
-        <g transform={`translate(${matrixX + matrixW + 100}, 280)`}>
+        {/* ────── Pull-out animation ──────
+            A "ghost row" with the active row's cells. Its own key=cursor so
+            it remounts each cycle, animating from the matrix's row position
+            (skewed) to the vector's slot on the right (flat). Same cell
+            values as the matrix row → the "extraction" reads as physical. */}
+        <motion.g
+          key={`ghost-${cursor}`}
+          initial={{
+            x:
+              matrixX + (ROWS - activeRow) * SKEW_X * CELL_H,
+            y: matrixY + activeRow * CELL_H,
+            opacity: 0,
+          }}
+          animate={{
+            x: [
+              matrixX + (ROWS - activeRow) * SKEW_X * CELL_H,
+              matrixX + (ROWS - activeRow) * SKEW_X * CELL_H + 30,
+              vecX,
+            ],
+            y: [
+              matrixY + activeRow * CELL_H,
+              matrixY + activeRow * CELL_H,
+              vecY,
+            ],
+            opacity: [0, 1, 1],
+          }}
+          transition={{
+            duration: 0.9 / speed,
+            delay: 0.25 / speed,
+            times: [0, 0.4, 1],
+            ease: [0.6, 0.05, 0.3, 1],
+          }}
+          filter="url(#emb-row-bloom)"
+        >
+          {activeRowValues.map((v, c) => (
+            <rect
+              key={c}
+              x={c * vecCellW}
+              y={0}
+              width={vecCellW - 0.5}
+              height={CELL_H - 1}
+              fill={colorFor(v)}
+            />
+          ))}
+        </motion.g>
+
+        {/* ────── Extracted vector — same row values, flat, on the right ────── */}
+        <g transform={`translate(${vecX}, ${vecY})`}>
           <text x={0} y={-30} fontSize="12" fontFamily="var(--font-mono)"
             fill={ACCENT.violet} letterSpacing="0.22em">
-            VECTOR FOR TOKEN {ids[cursor]}
+            VECTOR FOR TOKEN {activeId}
           </text>
           <text x={0} y={-12} fontSize="14" fontFamily="var(--font-display)"
-            fontStyle="italic" fill={ACCENT.dim}>ℝ
+            fontStyle="italic" fill={ACCENT.dim}>
+            ∈ ℝ
             <tspan fontSize="10" dy="-4">384</tspan>
           </text>
 
-          {/* Vector cells animated as gradient */}
-          <motion.g key={`vec-${cursor}`}
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 / speed, delay: 0.3 / speed }}>
-            <rect x={0} y={0} width={400} height={36} fill="url(#vec-grad)" rx={2}
-              opacity={0.9} />
-            {/* Discrete cells overlay */}
-            {Array.from({ length: 32 }).map((_, c) => (
-              <rect key={c} x={c * 12.5} y={0} width={12} height={36}
-                fill="none" stroke="rgba(0,0,0,0.4)" strokeWidth={0.5} />
+          {/* Final settled vector — cells with the same diverging values.
+              Keyed on cursor so it remounts with the new row each cycle. */}
+          <motion.g
+            key={`vec-${cursor}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4 / speed, delay: 1.05 / speed }}
+          >
+            <rect x={-2} y={-2}
+              width={COLS * vecCellW + 4}
+              height={CELL_H + 3}
+              rx={3}
+              fill="none"
+              stroke={ACCENT.violet}
+              strokeOpacity={0.55}
+              strokeWidth={1.2}
+            />
+            {activeRowValues.map((v, c) => (
+              <rect
+                key={c}
+                x={c * vecCellW}
+                y={0}
+                width={vecCellW - 0.5}
+                height={CELL_H - 1}
+                fill={colorFor(v)}
+              />
             ))}
-            <text x={0} y={56} fontSize="10" fontFamily="var(--font-mono)"
+            <text x={0} y={CELL_H + 18} fontSize="10" fontFamily="var(--font-mono)"
               fill={ACCENT.dim}>1</text>
-            <text x={200} y={56} textAnchor="middle" fontSize="10"
-              fontFamily="var(--font-mono)" fill={ACCENT.dim}>· · ·</text>
-            <text x={400} y={56} textAnchor="end" fontSize="10"
-              fontFamily="var(--font-mono)" fill={ACCENT.dim}>384</text>
+            <text x={(COLS * vecCellW) / 2} y={CELL_H + 18} textAnchor="middle"
+              fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+              · · ·
+            </text>
+            <text x={COLS * vecCellW} y={CELL_H + 18} textAnchor="end"
+              fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+              384
+            </text>
           </motion.g>
 
-          {/* Stub rows for other tokens (dimmed) */}
-          <g transform="translate(0, 100)">
-            <text x={0} y={-12} fontSize="11" fontFamily="var(--font-mono)"
-              fill={ACCENT.dim} letterSpacing="0.22em">
-              VECTOR FOR TOKEN {ids[(cursor + 1) % ids.length]}
+          {/* Stub rows for upcoming/previous tokens — much dimmer */}
+          <g transform="translate(0, 80)">
+            <text x={0} y={-12} fontSize="10" fontFamily="var(--font-mono)"
+              fill="rgba(255,255,255,0.32)" letterSpacing="0.22em">
+              VECTOR FOR TOKEN {ids[(cursor + 1) % Math.max(ids.length, 1)] ?? 0}
             </text>
-            <rect x={0} y={0} width={400} height={28} rx={2}
-              fill="rgba(255,255,255,0.04)" stroke={ACCENT.rule} />
-            {Array.from({ length: 32 }).map((_, c) => (
-              <rect key={c} x={c * 12.5 + 0.5} y={0.5}
-                width={11.5} height={27} fill="rgba(167,139,250,0.05)" />
-            ))}
+            <rect x={0} y={0} width={COLS * vecCellW} height={CELL_H - 1} rx={2}
+              fill="rgba(255,255,255,0.025)" stroke="rgba(167,139,250,0.18)" />
           </g>
-          <g transform="translate(0, 160)">
-            <text x={0} y={-12} fontSize="11" fontFamily="var(--font-mono)"
-              fill={ACCENT.dim} letterSpacing="0.22em">
-              VECTOR FOR TOKEN {ids[(cursor + 2) % ids.length]}
+          <g transform="translate(0, 130)">
+            <text x={0} y={-12} fontSize="10" fontFamily="var(--font-mono)"
+              fill="rgba(255,255,255,0.22)" letterSpacing="0.22em">
+              VECTOR FOR TOKEN {ids[(cursor + 2) % Math.max(ids.length, 1)] ?? 0}
             </text>
-            <rect x={0} y={0} width={400} height={28} rx={2}
-              fill="rgba(255,255,255,0.04)" stroke={ACCENT.rule} />
-            {Array.from({ length: 32 }).map((_, c) => (
-              <rect key={c} x={c * 12.5 + 0.5} y={0.5}
-                width={11.5} height={27} fill="rgba(167,139,250,0.05)" />
-            ))}
+            <rect x={0} y={0} width={COLS * vecCellW} height={CELL_H - 1} rx={2}
+              fill="rgba(255,255,255,0.018)" stroke="rgba(167,139,250,0.12)" />
           </g>
-          <text x={200} y={220} textAnchor="middle" fontSize="14"
-            fontFamily="var(--font-mono)" fill={ACCENT.dim}>⋮</text>
+          <text x={(COLS * vecCellW) / 2} y={185} textAnchor="middle"
+            fontSize="14" fontFamily="var(--font-mono)" fill={ACCENT.dim}>⋮</text>
+        </g>
+
+        {/* ────── Operation readout — bottom of the canvas ────── */}
+        <motion.g
+          key={`readout-${cursor}`}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{
+            duration: 0.4 / speed,
+            delay: 1.2 / speed,
+            ease: 'easeOut',
+          }}
+        >
+          <rect
+            x={350}
+            y={780}
+            width={700}
+            height={56}
+            rx={6}
+            fill="rgba(8,8,11,0.7)"
+            stroke="rgba(167,139,250,0.32)"
+            strokeWidth={1.2}
+          />
+          <text
+            x={700}
+            y={815}
+            textAnchor="middle"
+            fontSize="18"
+            fontFamily="var(--font-mono)"
+            fill="rgba(255,255,255,0.92)"
+          >
+            token ID{' '}
+            <tspan fill={ACCENT.violet} fontWeight={500}>{activeId}</tspan>
+            {'  →  '}
+            row{' '}
+            <tspan fill={ACCENT.violet} fontWeight={500}>{activeId}</tspan>
+            {'  →  '}
+            vector ∈ ℝ
+            <tspan fontSize="13" dy="-6">384</tspan>
+          </text>
+        </motion.g>
+
+        {/* Legend for the diverging color scale (bottom-right) */}
+        <g transform="translate(1180, 780)">
+          <text x={0} y={0} fontSize="9" fontFamily="var(--font-mono)"
+            fill={ACCENT.dim} letterSpacing="0.18em">VALUES</text>
+          <rect x={0} y={8} width={16} height={10} fill="rgba(248,113,113,0.55)" />
+          <text x={22} y={17} fontSize="10" fontFamily="var(--font-mono)"
+            fill={ACCENT.dim}>−</text>
+          <rect x={36} y={8} width={16} height={10} fill="rgba(167,139,250,0.18)" />
+          <text x={58} y={17} fontSize="10" fontFamily="var(--font-mono)"
+            fill={ACCENT.dim}>0</text>
+          <rect x={72} y={8} width={16} height={10} fill="rgba(167,139,250,0.62)" />
+          <text x={94} y={17} fontSize="10" fontFamily="var(--font-mono)"
+            fill={ACCENT.dim}>+</text>
         </g>
       </svg>
     </div>
