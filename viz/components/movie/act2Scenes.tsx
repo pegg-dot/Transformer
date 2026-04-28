@@ -6480,3 +6480,662 @@ export function MultiHeadSplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 14 — ffn-feature: "One hidden neuron, one (illustrative) feature."
+ *
+ * Three persistent zones, all running continuously:
+ *   LEFT   — Hidden bank (1536-d, sampled). One cell highlighted = "dim #147".
+ *   CENTER — Token stream sliding through a viewing window (current = focus).
+ *   RIGHT  — Activation profile bar chart. Bars pulse when stream matches.
+ *
+ * Honest framing: the feature label ("code-like tokens") is illustrative,
+ * not factual. Real learned features are messy / distributed / polysemantic.
+ * ====================================================================== */
+
+const COL_FF_NEURON = ACCENT.amber
+
+interface FFActProfile {
+  token: string
+  activation: number
+}
+
+const FF_TOKEN_STREAM: string[] = [
+  'function', 'the', 'import', 'cat', 'return', 'pretty',
+  'def', 'sky', 'class', 'run', 'code', 'water',
+  'var', 'apple', 'await', 'tree', 'export', 'red',
+]
+
+const FF_PROFILE: FFActProfile[] = [
+  { token: 'function', activation: 0.94 },
+  { token: 'import',   activation: 0.91 },
+  { token: 'return',   activation: 0.86 },
+  { token: 'class',    activation: 0.82 },
+  { token: 'export',   activation: 0.79 },
+  { token: 'code',     activation: 0.76 },
+  { token: 'def',      activation: 0.72 },
+  { token: 'var',      activation: 0.65 },
+  { token: 'await',    activation: 0.58 },
+  { token: 'the',      activation: 0.10 },
+  { token: 'cat',      activation: 0.08 },
+  { token: 'sky',      activation: 0.12 },
+  { token: 'run',      activation: 0.16 },
+  { token: 'pretty',   activation: 0.09 },
+  { token: 'water',    activation: 0.11 },
+  { token: 'apple',    activation: 0.13 },
+  { token: 'tree',     activation: 0.15 },
+  { token: 'red',      activation: 0.07 },
+]
+
+function ffActivationFor(tok: string): number {
+  return FF_PROFILE.find((p) => p.token === tok)?.activation ?? 0
+}
+
+export function VizFFNFeature() {
+  const speed = useSpeed()
+
+  // 3 phases, ~7s each
+  const PHASES = 3
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      7000 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // Token stream cursor — monotonically increasing for stable React keys
+  const [streamIdx, setStreamIdx] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setStreamIdx((i) => i + 1),
+      950 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const currentToken = FF_TOKEN_STREAM[streamIdx % FF_TOKEN_STREAM.length]
+  const currentActivation = ffActivationFor(currentToken)
+  const isFiring = currentActivation > 0.5
+
+  return (
+    <div className="relative h-full w-full">
+      <svg viewBox="0 0 1400 1000" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="ff-glow"><feGaussianBlur stdDeviation="2.5" /></filter>
+          <filter id="ff-bloom" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
+          <clipPath id="ff-stream-clip">
+            <rect x={460} y={372} width={460} height={88} rx={6} />
+          </clipPath>
+        </defs>
+
+        {/* Top kicker */}
+        <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.32em">
+          BLOCK 0 · FFN · ZOOM INTO ONE HIDDEN DIMENSION
+        </text>
+
+        {/* Big title */}
+        <text x={700} y={92} textAnchor="middle"
+          fontSize="22" fontFamily="var(--font-display)"
+          fontStyle="italic" fill="rgba(255,255,255,0.92)">
+          one hidden neuron, one (illustrative) feature
+        </text>
+        <text x={700} y={118} textAnchor="middle"
+          fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.08em">
+          1536 hidden dims · pick one · ask what it lights up on
+        </text>
+
+        {/* Hidden bank (left) */}
+        <FFFeatureHiddenBank phase={phase} firing={isFiring} speed={speed} />
+
+        {/* Connection arc: stream window → highlighted neuron */}
+        <FFFeatureConnection isFiring={isFiring} speed={speed} />
+
+        {/* Token stream (center) */}
+        <FFFeatureTokenStream
+          streamIdx={streamIdx}
+          phase={phase}
+          isFiring={isFiring}
+          speed={speed}
+        />
+
+        {/* Activation panel (right) */}
+        <FFFeatureActivationPanel
+          currentToken={currentToken}
+          phase={phase}
+          speed={speed}
+        />
+
+        {/* Honesty note */}
+        <FFFeatureHonestyNote />
+
+        {/* Phase summary */}
+        <FFFeaturePhaseSummary phase={phase} />
+      </svg>
+    </div>
+  )
+}
+
+/* ─────────── Hidden bank with hero neuron (LEFT) ─────────── */
+const FF_BANK = {
+  X: 110, Y: 230, COLS: 14, ROWS: 14, CELL_W: 14, CELL_H: 11,
+  HERO_C: 6, HERO_R: 7,
+}
+const FF_HERO_X = FF_BANK.X + FF_BANK.HERO_C * FF_BANK.CELL_W
+const FF_HERO_Y = FF_BANK.Y + FF_BANK.HERO_R * FF_BANK.CELL_H
+const FF_HERO_CX = FF_HERO_X + FF_BANK.CELL_W / 2
+const FF_HERO_CY = FF_HERO_Y + FF_BANK.CELL_H / 2
+
+function FFFeatureHiddenBank({
+  phase, firing, speed,
+}: { phase: number; firing: boolean; speed: number }) {
+  const { X, Y, COLS, ROWS, CELL_W, CELL_H, HERO_C, HERO_R } = FF_BANK
+  return (
+    <g>
+      {/* Header */}
+      <text x={X} y={Y - 28} fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
+        FFN HIDDEN LAYER
+      </text>
+      <text x={X} y={Y - 12} fontSize="9" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} fontStyle="italic">
+        showing 196 of 1536 dims
+      </text>
+
+      {/* Phase 1 highlight ring around bank */}
+      {phase === 0 && (
+        <motion.rect
+          x={X - 8} y={Y - 8}
+          width={COLS * CELL_W + 16}
+          height={ROWS * CELL_H + 16}
+          rx={6}
+          fill="none" stroke={COL_FF_NEURON} strokeWidth={1.5}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0.25, 0.7, 0.25] }}
+          transition={{ duration: 2.4 / speed, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      )}
+
+      {/* Background cells — dim */}
+      {Array.from({ length: COLS * ROWS }).map((_, idx) => {
+        const r = Math.floor(idx / COLS)
+        const c = idx % COLS
+        const isHero = r === HERO_R && c === HERO_C
+        if (isHero) return null
+        // Subtle variation for realism
+        const v = Math.abs(Math.sin(idx * 1.71))
+        return (
+          <rect
+            key={`bank-${idx}`}
+            x={X + c * CELL_W} y={Y + r * CELL_H}
+            width={CELL_W - 1} height={CELL_H - 1} rx={1}
+            fill={`rgba(245,158,11,${0.04 + v * 0.10})`}
+            stroke="rgba(245,158,11,0.10)"
+            strokeWidth={0.4}
+          />
+        )
+      })}
+
+      {/* Hero halo (always pulsing) */}
+      <motion.circle
+        cx={FF_HERO_CX} cy={FF_HERO_CY}
+        r={20}
+        fill="rgba(245,158,11,0.06)"
+        stroke={COL_FF_NEURON}
+        strokeWidth={1.5}
+        filter="url(#ff-bloom)"
+        initial={{ opacity: 0.3 }}
+        animate={{
+          opacity: firing ? [0.5, 1, 0.5] : [0.25, 0.45, 0.25],
+          r: firing ? [20, 32, 20] : [18, 22, 18],
+        }}
+        transition={{
+          duration: firing ? 0.55 / speed : 1.8 / speed,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
+      />
+
+      {/* Hero cell */}
+      <motion.rect
+        x={FF_HERO_X} y={FF_HERO_Y}
+        width={CELL_W - 1} height={CELL_H - 1} rx={1}
+        fill={COL_FF_NEURON}
+        stroke={COL_FF_NEURON}
+        strokeWidth={1.5}
+        initial={{ opacity: 0.7 }}
+        animate={{
+          opacity: firing ? [0.7, 1, 0.7] : [0.4, 0.6, 0.4],
+          scale: firing ? [1, 1.5, 1] : [1, 1.05, 1],
+        }}
+        transition={{
+          duration: firing ? 0.5 / speed : 1.6 / speed,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
+        style={{ transformOrigin: `${FF_HERO_CX}px ${FF_HERO_CY}px` }}
+      />
+
+      {/* Hero label callout */}
+      <line x1={FF_HERO_CX + 28} y1={FF_HERO_CY}
+        x2={FF_HERO_CX + 60} y2={FF_HERO_CY}
+        stroke={COL_FF_NEURON} strokeWidth={1} strokeOpacity={0.6} />
+      <text x={FF_HERO_CX + 66} y={FF_HERO_CY - 4}
+        fontSize="13" fontFamily="var(--font-display)"
+        fontStyle="italic" fill={COL_FF_NEURON}>
+        hidden dim #147
+      </text>
+      <text x={FF_HERO_CX + 66} y={FF_HERO_CY + 12}
+        fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        illustrative detector
+      </text>
+
+      {/* Bank-wide footer label */}
+      <text x={X + (COLS * CELL_W) / 2}
+        y={Y + ROWS * CELL_H + 22}
+        textAnchor="middle"
+        fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        ∈ R¹⁵³⁶ (post-GELU)
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Token stream sliding through window (CENTER) ─────────── */
+const FF_STREAM = {
+  X: 460, Y: 372, W: 460, H: 88,
+  SLOT_W: 96,
+  CENTER_CX: 460 + 230,  // X + W/2
+  CENTER_CY: 372 + 44,
+}
+
+function FFFeatureTokenStream({
+  streamIdx, phase, isFiring, speed,
+}: { streamIdx: number; phase: number; isFiring: boolean; speed: number }) {
+  const { X, Y, W, H, SLOT_W, CENTER_CX } = FF_STREAM
+  const visibleOffsets = [-2, -1, 0, 1, 2]
+
+  return (
+    <g>
+      {/* Header */}
+      <text x={X + W / 2} y={Y - 32}
+        textAnchor="middle" fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
+        INCOMING TOKENS ▸
+      </text>
+      <text x={X + W / 2} y={Y - 14}
+        textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} fontStyle="italic">
+        feeding into FFN, one at a time
+      </text>
+
+      {/* Window frame */}
+      <rect x={X} y={Y} width={W} height={H} rx={8}
+        fill="rgba(255,255,255,0.02)"
+        stroke="rgba(245,158,11,0.20)" strokeWidth={1} />
+
+      {/* Center focus indicator */}
+      <rect x={CENTER_CX - SLOT_W / 2 - 4} y={Y - 4}
+        width={SLOT_W + 8} height={H + 8} rx={6}
+        fill="none"
+        stroke={isFiring ? COL_FF_NEURON : 'rgba(245,158,11,0.30)'}
+        strokeWidth={isFiring ? 1.8 : 1}
+        strokeDasharray={isFiring ? '0' : '4,4'} />
+      <text x={CENTER_CX} y={Y + H + 22}
+        textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} fontStyle="italic">
+        ↑ current token
+      </text>
+
+      {/* Tokens — sliding left as streamIdx increments */}
+      <g clipPath="url(#ff-stream-clip)">
+        {visibleOffsets.map((offset) => {
+          const absIdx = streamIdx + offset
+          if (absIdx < 0) return null
+          const tok = FF_TOKEN_STREAM[absIdx % FF_TOKEN_STREAM.length]
+          const act = ffActivationFor(tok)
+          const isCenter = offset === 0
+          const isHigh = act > 0.5
+          const xPos = CENTER_CX + offset * SLOT_W
+          // Spawn from one slot to the right, slide to natural position
+          const initialX = xPos + SLOT_W
+          return (
+            <motion.g
+              key={`tok-${absIdx}`}
+              initial={{ x: initialX - xPos, opacity: 0 }}
+              animate={{ x: 0, opacity: isCenter ? 1 : Math.abs(offset) === 1 ? 0.6 : 0.25 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.55 / speed, ease: 'easeOut' }}
+            >
+              <rect
+                x={xPos - SLOT_W / 2 + 6} y={Y + 14}
+                width={SLOT_W - 12} height={H - 28} rx={5}
+                fill={isCenter && isHigh
+                  ? 'rgba(245,158,11,0.18)'
+                  : 'rgba(255,255,255,0.04)'}
+                stroke={isCenter
+                  ? (isHigh ? COL_FF_NEURON : 'rgba(255,255,255,0.30)')
+                  : 'rgba(255,255,255,0.10)'}
+                strokeWidth={isCenter ? 1.5 : 0.6}
+              />
+              <text x={xPos} y={Y + H / 2 + 5}
+                textAnchor="middle"
+                fontSize={isCenter ? '17' : '13'}
+                fontFamily="var(--font-mono)" fontStyle="italic"
+                fill={isCenter ? 'rgba(255,255,255,0.96)' : 'rgba(255,255,255,0.55)'}>
+                {tok}
+              </text>
+              {isCenter && (
+                <text x={xPos} y={Y + H - 6}
+                  textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)"
+                  fill={isHigh ? COL_FF_NEURON : 'rgba(255,255,255,0.4)'}>
+                  h₁₄₇ = {act.toFixed(2)}
+                </text>
+              )}
+            </motion.g>
+          )
+        })}
+      </g>
+
+      {/* Phase 2 highlight */}
+      {phase === 1 && (
+        <motion.rect
+          x={X - 8} y={Y - 44}
+          width={W + 16} height={H + 76}
+          rx={8}
+          fill="none" stroke={COL_FF_NEURON} strokeWidth={1.5}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0.3, 0.7, 0.3] }}
+          transition={{ duration: 2.4 / speed, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      )}
+    </g>
+  )
+}
+
+/* ─────────── Connection arc: stream center → hero neuron ─────────── */
+function FFFeatureConnection({ isFiring, speed }: { isFiring: boolean; speed: number }) {
+  const fromX = FF_STREAM.CENTER_CX
+  const fromY = FF_STREAM.Y + 8
+  const toX = FF_HERO_CX
+  const toY = FF_HERO_CY
+  const ctrlX = (fromX + toX) / 2
+  const ctrlY = 230
+  // Sample 8 points along the quadratic Bezier for traveling particles
+  const ts = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1]
+  const cxs = ts.map(
+    (t) => Math.pow(1 - t, 2) * fromX + 2 * (1 - t) * t * ctrlX + t * t * toX,
+  )
+  const cys = ts.map(
+    (t) => Math.pow(1 - t, 2) * fromY + 2 * (1 - t) * t * ctrlY + t * t * toY,
+  )
+  return (
+    <g opacity={isFiring ? 1 : 0.35} style={{ transition: 'opacity 0.3s' }}>
+      <path
+        d={`M ${fromX} ${fromY} Q ${ctrlX} ${ctrlY}, ${toX} ${toY}`}
+        stroke={COL_FF_NEURON}
+        strokeWidth={isFiring ? 2 : 1}
+        strokeOpacity={isFiring ? 0.7 : 0.25}
+        fill="none"
+        strokeDasharray={isFiring ? '0' : '4,4'}
+      />
+      {/* Continuously traveling particles */}
+      {Array.from({ length: 4 }).map((_, k) => (
+        <motion.circle
+          key={`ff-conn-${k}`}
+          r={3}
+          fill={COL_FF_NEURON}
+          filter="url(#ff-glow)"
+          initial={{ cx: fromX, cy: fromY, opacity: 0 }}
+          animate={{
+            cx: cxs,
+            cy: cys,
+            opacity: [0, 1, 1, 1, 1, 1, 1, 0],
+          }}
+          transition={{
+            duration: 0.95 / speed,
+            delay: (k * 0.22) / speed,
+            repeat: Infinity,
+            repeatDelay: 0.15 / speed,
+            ease: 'easeInOut',
+          }}
+        />
+      ))}
+    </g>
+  )
+}
+
+/* ─────────── Activation profile bar chart (RIGHT) ─────────── */
+const FF_PANEL = {
+  X: 970, Y: 230, W: 360, ROW_H: 32,
+}
+
+function FFFeatureActivationPanel({
+  currentToken, phase, speed,
+}: { currentToken: string; phase: number; speed: number }) {
+  const { X, Y, W, ROW_H } = FF_PANEL
+  const sorted = [...FF_PROFILE].sort((a, b) => b.activation - a.activation)
+  const TOP_N = 12  // show top 12 to keep it readable
+  const visible = sorted.slice(0, TOP_N)
+
+  return (
+    <g>
+      {/* Header */}
+      <text x={X} y={Y - 32} fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
+        ACTIVATION TEST · DIM #147 ▸
+      </text>
+      <text x={X} y={Y - 14} fontSize="12" fontFamily="var(--font-mono)"
+        fill={COL_FF_NEURON} fontStyle="italic">
+        illustrative feature: code-like tokens
+      </text>
+
+      {visible.map((p, i) => {
+        const yRow = Y + i * ROW_H
+        const isCurrent = p.token === currentToken
+        const isHigh = p.activation > 0.5
+        const labelW = 90
+        const trackX = X + labelW
+        const trackW = W - labelW - 50
+        const barW = trackW * p.activation
+
+        return (
+          <g key={`bar-${p.token}`}>
+            {/* Token name */}
+            <text x={X + labelW - 8} y={yRow + 18}
+              textAnchor="end" fontSize="13"
+              fontFamily="var(--font-mono)" fontStyle="italic"
+              fill={isCurrent ? COL_FF_NEURON : 'rgba(255,255,255,0.7)'}>
+              {p.token}
+            </text>
+            {/* Track */}
+            <rect x={trackX} y={yRow + 6} width={trackW} height={20} rx={2}
+              fill="rgba(255,255,255,0.04)"
+              stroke="rgba(255,255,255,0.12)" strokeWidth={0.5} />
+            {/* Bar */}
+            <motion.rect
+              x={trackX} y={yRow + 6}
+              width={barW} height={20} rx={2}
+              fill={isHigh ? COL_FF_NEURON : 'rgba(255,255,255,0.32)'}
+              initial={{ opacity: 0.6 }}
+              animate={
+                isCurrent
+                  ? { opacity: [0.6, 1, 0.6] }
+                  : { opacity: 0.55 }
+              }
+              transition={
+                isCurrent
+                  ? { duration: 0.55 / speed, repeat: Infinity, ease: 'easeInOut' }
+                  : { duration: 0.3 / speed }
+              }
+            />
+            {/* Numeric value */}
+            <text x={trackX + barW + 8} y={yRow + 20}
+              fontSize="10" fontFamily="var(--font-mono)"
+              fill={isCurrent ? COL_FF_NEURON : ACCENT.dim}>
+              {p.activation.toFixed(2)}
+            </text>
+            {/* Current row halo */}
+            {isCurrent && (
+              <motion.rect
+                x={X - 4} y={yRow + 2}
+                width={W + 8} height={ROW_H - 4} rx={3}
+                fill="none" stroke={COL_FF_NEURON}
+                strokeWidth={1.2}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0.3, 0.85, 0.3] }}
+                transition={{ duration: 0.6 / speed, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            )}
+          </g>
+        )
+      })}
+
+      {/* Phase 3 highlight ring */}
+      {phase === 2 && (
+        <motion.rect
+          x={X - 12} y={Y - 44}
+          width={W + 24} height={visible.length * ROW_H + 56}
+          rx={6}
+          fill="none" stroke={COL_FF_NEURON} strokeWidth={1.5}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0.3, 0.7, 0.3] }}
+          transition={{ duration: 2.4 / speed, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      )}
+    </g>
+  )
+}
+
+/* ─────────── Honesty note (bottom centered) ─────────── */
+function FFFeatureHonestyNote() {
+  return (
+    <g>
+      <rect x={250} y={870} width={900} height={40} rx={20}
+        fill="rgba(255,255,255,0.025)"
+        stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
+      <text x={700} y={895} textAnchor="middle"
+        fontSize="11" fontFamily="var(--font-mono)"
+        fill="rgba(255,255,255,0.65)" fontStyle="italic">
+        ⓘ  Real learned features are often distributed, polysemantic, and messy. This is a simplified illustrative view.
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Phase summary footer ─────────── */
+function FFFeaturePhaseSummary({ phase }: { phase: number }) {
+  const beats = ['isolate the neuron', 'tokens stream by', 'activation profile']
+  return (
+    <g transform="translate(700, 950)">
+      {beats.map((b, i) => {
+        const w = 280
+        const x = (i - beats.length / 2) * w + w / 2
+        const active = i === phase
+        const done = i < phase
+        return (
+          <g key={`ffsum-${i}`} transform={`translate(${x}, 0)`}>
+            <rect x={-w / 2 + 14} y={-14} width={w - 28} height={28} rx={14}
+              fill={active ? 'rgba(245,158,11,0.18)' : 'transparent'}
+              stroke={active ? COL_FF_NEURON : ACCENT.rule}
+              strokeWidth={active ? 1.5 : 1} />
+            <text x={0} y={4} textAnchor="middle"
+              fontSize="11" fontFamily="var(--font-mono)"
+              fill={active ? COL_FF_NEURON : done ? 'rgba(255,255,255,0.5)' : ACCENT.dim}
+              letterSpacing="0.16em">
+              {(i + 1)}.{b.toUpperCase()}
+            </text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/* ─────────── FFN-feature split-pane wrapper ─────────── */
+export function FFNFeatureSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 3
+  const phaseLabels = [
+    'isolate one neuron',
+    'tokens stream past',
+    'activation profile',
+  ]
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      7000 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      Pick one cell from the 1536-d FFN hidden layer. Treat it as an{' '}
+      <em>illustrative</em> feature detector and ask what makes it light up.
+    </>,
+    <>
+      Tokens stream past the neuron one at a time. The hero pulses bright
+      when the input matches its (illustrative) feature, dim when it doesn't.
+    </>,
+    <>
+      Across many test tokens, here's the response profile: high bars for
+      matches, low bars otherwise. This is what selective firing looks like.
+    </>,
+  ]
+
+  const equationByPhase: { label: string; body: ReactNode }[] = [
+    {
+      label: 'one hidden dimension',
+      body: <>h<sub>i</sub> = GELU((W₁ x)<sub>i</sub>),&nbsp; i = 147</>,
+    },
+    {
+      label: 'selective activation',
+      body: <>h₁₄₇ ≫ 0 when x matches feature,&nbsp; ≈ 0 otherwise</>,
+    },
+    {
+      label: 'response profile',
+      body: <>{'high-activation tokens  ≠  low-activation tokens'}</>,
+    },
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'Each of the 1536 hidden dimensions can specialize during training. We pick one — call it #147 — and ask what it lights up on.',
+    'Real models don\'t come with feature labels. Researchers probe a neuron by feeding it many inputs and recording when it activates strongly.',
+    'In real models the profile is messier: features are often distributed across many neurons, polysemantic, and context-dependent. The clean labels here are illustrative.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizFFNFeature />}
+      text={{
+        kicker: ACT2_KICKER,
+        title: 'Each hidden neuron detects something.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.amber,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.amber}
+          />
+        ),
+        stats: [
+          { label: 'd_hidden', value: '1536', color: COL_FF_NEURON },
+          { label: 'showing', value: 'dim #147' },
+          { label: 'feature', value: 'illustrative' },
+          { label: 'GPT-2 XL FFN', value: '~25M params' },
+        ],
+        equation: equationByPhase[phase],
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}

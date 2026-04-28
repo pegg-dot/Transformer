@@ -66,6 +66,7 @@ import {
   AttentionSplitPane,
   MultiHeadSplitPane,
   FFNSplitPane,
+  FFNFeatureSplitPane,
 } from './act2Scenes'
 
 const ACCENT = {
@@ -353,16 +354,17 @@ Attention moves information BETWEEN tokens. FFN processes information WITHIN a s
     title: 'Each hidden neuron detects something.',
     subGroup: { label: 'FFN · interpretation', index: 2, total: 3, color: ACCENT.amber },
     caption:
-      'Different FFN dimensions fire on different patterns: ends-with-vowel, capital-letter, inside-dialog. This is where the model stores learned "features".',
+      'Zoom into one hidden dimension and watch tokens stream by — it pulses on matches, stays dim otherwise. Labels are illustrative; real features are messier.',
     accent: ACCENT.amber,
     durationMs: 21000,
     part: 'ffn',
-    details: `Each dimension of the hidden (4d) layer can be thought of as one learned feature. During training, different dimensions specialize: maybe dimension #147 fires for "code syntax", dimension #892 fires for "French words", dimension #4921 fires for "sports vocabulary".
+    details: `Each dimension of the hidden (4d) layer can be thought of as one learned feature. During training, different dimensions specialize: maybe dimension #147 correlates with code syntax, another with French words, another with sports vocabulary.
 
-This is speculative for smaller models but well-documented for large ones — see Anthropic's superposition and dictionary-learning research. Many features get packed into overlapping subspaces because there are way more concepts than neurons.
+This is speculative for smaller models but well-documented for large ones — see Anthropic's superposition and dictionary-learning research. Many features get packed into overlapping subspaces because there are way more concepts than neurons. Real learned features are often distributed, polysemantic, and context-dependent — the clean labels here are simplified illustrative views.
 
 Interpretability research is largely about teasing out what each dimension represents.`,
-    render: () => <SceneFFNFeature />,
+    render: () => <FFNFeatureSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'gelu',
