@@ -7368,3 +7368,714 @@ export function FFNFeatureSplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 15 — gelu: "The gate that decides how strongly each feature fires."
+ *
+ * Continuation of the FFN story:
+ *   Scene 13 — FFN structure (expand · fire · compress)
+ *   Scene 14 — hidden neurons act like feature detectors
+ *   Scene 15 — THIS: the activation function decides HOW each detector fires
+ *
+ * Three-zone layout:
+ *   LEFT   — Pipeline view. W₁x raw bar → activation → activated bar.
+ *            One neuron zoomed in with a sweeping probe value showing the
+ *            three function outputs side-by-side.
+ *   RIGHT  — Curves comparison. ReLU · GELU · Swish on one clean axis,
+ *            with the probe dot tracking all three simultaneously.
+ *   BOTTOM — Nonlinearity insight (W₂(W₁x) = (W₂W₁)x without activation)
+ *            and a bridge to modern gated FFNs (SwiGLU).
+ * ====================================================================== */
+
+const COL_RELU = ACCENT.blue
+const COL_GELU = ACCENT.mint
+const COL_SWISH = ACCENT.amber
+
+function relu(z: number): number { return Math.max(0, z) }
+function swish(z: number): number { return z / (1 + Math.exp(-z)) }
+// gelu() is already defined above (in the FFN scene)
+
+/* Color helper for activated cells: amber for positive (kept), red-tint
+ * for cells that GELU softly attenuates from negative input. */
+function ffgColorActivated(out: number): string {
+  if (out >= 0) return `rgba(245,158,11,${0.15 + Math.min(1, out / 1.6) * 0.78})`
+  return `rgba(248,113,113,${0.15 + Math.min(1, -out / 0.5) * 0.45})`
+}
+
+/* Color helper for raw pre-activation values (cyan/red diverging) */
+function ffgColorRaw(v: number): string {
+  const m = Math.max(-2, Math.min(2, v)) / 2
+  if (m >= 0) return `rgba(34,211,238,${0.18 + m * 0.65})`
+  return `rgba(248,113,113,${0.18 + -m * 0.55})`
+}
+
+const FFG_W1X = Array.from({ length: 16 }).map(
+  (_, i) => Math.sin(i * 1.27 + 0.7) * 1.6 + Math.cos(i * 0.42) * 0.55,
+)
+
+export function VizFFNGelu() {
+  const speed = useSpeed()
+
+  // 3 phases × ~6.3s
+  const PHASES = 3
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      6300 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // Probe sweeps continuously between -2.6 and +2.6
+  const [probeTick, setProbeTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setProbeTick((t) => t + 1), 70 / speed)
+    return () => clearInterval(id)
+  }, [speed])
+  const probeZ = Math.sin(probeTick * 0.045) * 2.6
+
+  return (
+    <div className="relative h-full w-full">
+      <svg viewBox="0 0 1400 1000" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="ffg-glow"><feGaussianBlur stdDeviation="2.5" /></filter>
+          <filter id="ffg-bloom" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
+        </defs>
+
+        {/* Top kicker */}
+        <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.32em">
+          BLOCK 0 · FFN · ACTIVATION GATE
+        </text>
+
+        {/* Big title */}
+        <text x={700} y={88} textAnchor="middle"
+          fontSize="22" fontFamily="var(--font-display)"
+          fontStyle="italic" fill="rgba(255,255,255,0.95)">
+          the gate that decides how strongly each hidden feature fires
+        </text>
+        <text x={700} y={114} textAnchor="middle"
+          fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.08em">
+          this is the "fire" step from Scene 13 — between W₁ and W₂
+        </text>
+
+        {/* LEFT — Pipeline view */}
+        <FFGeluPipelineView phase={phase} probeZ={probeZ} speed={speed} />
+
+        {/* RIGHT — Curves comparison */}
+        <FFGeluCurvesPanel phase={phase} probeZ={probeZ} speed={speed} />
+
+        {/* BOTTOM — Nonlinearity insight + SwiGLU bridge */}
+        <FFGeluBottomPanel phase={phase} speed={speed} />
+
+        {/* Phase summary */}
+        <FFGeluPhaseSummary phase={phase} />
+      </svg>
+    </div>
+  )
+}
+
+/* ─────────── LEFT: pipeline view (raw → activation → activated) ─────────── */
+const FFG_LEFT = {
+  X: 80, Y: 170, W: 600, H: 560,
+  CELL_W: 24, CELL_H: 26,
+  RAW_BAR_X: 156, RAW_BAR_Y: 250,
+  ACT_BAR_Y: 380,
+}
+
+function FFGeluPipelineView({
+  phase, probeZ, speed,
+}: { phase: number; probeZ: number; speed: number }) {
+  const { X, Y, W, H, CELL_W, CELL_H, RAW_BAR_X, RAW_BAR_Y, ACT_BAR_Y } = FFG_LEFT
+  const activated = FFG_W1X.map(gelu)
+  const probeOutputs = {
+    relu: relu(probeZ),
+    gelu: gelu(probeZ),
+    swish: swish(probeZ),
+  }
+
+  return (
+    <g>
+      {/* Background panel */}
+      <rect x={X} y={Y} width={W} height={H} rx={12}
+        fill="rgba(245,158,11,0.025)"
+        stroke={phase === 0 ? COL_GELU : 'rgba(245,158,11,0.18)'}
+        strokeWidth={phase === 0 ? 1.8 : 1} />
+
+      {/* Header */}
+      <text x={X + 22} y={Y + 26}
+        fontSize="11" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
+        INSIDE THE FFN · BEFORE → AFTER
+      </text>
+      <text x={X + 22} y={Y + 46}
+        fontSize="13" fontFamily="var(--font-display)"
+        fontStyle="italic" fill={COL_GELU}>
+        the activation gate decides which hidden features survive
+      </text>
+
+      {/* W1x label and bar (raw, before activation) */}
+      <text x={RAW_BAR_X - 14} y={RAW_BAR_Y + 18} textAnchor="end"
+        fontSize="13" fontFamily="var(--font-display)"
+        fontStyle="italic" fill={ACCENT.cyan}>
+        W₁x
+      </text>
+      <text x={RAW_BAR_X - 14} y={RAW_BAR_Y + 36} textAnchor="end"
+        fontSize="9" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        raw scores
+      </text>
+      {FFG_W1X.map((v, i) => (
+        <rect
+          key={`raw-${i}`}
+          x={RAW_BAR_X + i * CELL_W} y={RAW_BAR_Y}
+          width={CELL_W - 2} height={CELL_H - 2} rx={2}
+          fill={ffgColorRaw(v)}
+          stroke="rgba(255,255,255,0.10)" strokeWidth={0.5}
+        />
+      ))}
+      {/* tick marks under raw bar showing sign */}
+      {FFG_W1X.map((v, i) => (
+        <text
+          key={`raw-sign-${i}`}
+          x={RAW_BAR_X + i * CELL_W + (CELL_W - 2) / 2}
+          y={RAW_BAR_Y + CELL_H + 12}
+          textAnchor="middle"
+          fontSize="9" fontFamily="var(--font-mono)"
+          fill={v >= 0 ? ACCENT.cyan : ACCENT.red}
+          opacity={0.6}>
+          {v >= 0 ? '+' : '−'}
+        </text>
+      ))}
+
+      {/* Big down arrow with activation label */}
+      <g transform={`translate(${RAW_BAR_X + 8 * CELL_W}, ${(RAW_BAR_Y + ACT_BAR_Y) / 2 + 12})`}>
+        <motion.path
+          d="M -16 -16 L 0 8 L 16 -16"
+          stroke={COL_GELU} strokeWidth={2.5} fill="none"
+          strokeLinecap="round"
+          initial={{ opacity: 0.5 }}
+          animate={{ opacity: [0.5, 1, 0.5] }}
+          transition={{ duration: 1.6 / speed, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <text x={28} y={4}
+          fontSize="13" fontFamily="var(--font-mono)"
+          fill={COL_GELU} fontStyle="italic">
+          GELU
+        </text>
+      </g>
+
+      {/* GELU(W1x) label and bar (activated) */}
+      <text x={RAW_BAR_X - 14} y={ACT_BAR_Y + 18} textAnchor="end"
+        fontSize="13" fontFamily="var(--font-display)"
+        fontStyle="italic" fill={COL_GELU}>
+        GELU(W₁x)
+      </text>
+      <text x={RAW_BAR_X - 14} y={ACT_BAR_Y + 36} textAnchor="end"
+        fontSize="9" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        fired
+      </text>
+      {activated.map((out, i) => {
+        const isStrong = out > 0.4
+        return (
+          <motion.rect
+            key={`act-${i}`}
+            x={RAW_BAR_X + i * CELL_W} y={ACT_BAR_Y}
+            width={CELL_W - 2} height={CELL_H - 2} rx={2}
+            fill={ffgColorActivated(out)}
+            stroke={isStrong ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.10)'}
+            strokeWidth={isStrong ? 1 : 0.5}
+            initial={{ opacity: 0.7, scale: 1 }}
+            animate={
+              isStrong
+                ? { opacity: [0.7, 1, 0.7], scale: [1, 1.06, 1] }
+                : { opacity: 1, scale: 1 }
+            }
+            transition={
+              isStrong
+                ? { duration: 1.4 / speed, repeat: Infinity, ease: 'easeInOut', delay: (i * 0.05) }
+                : { duration: 0.3 / speed }
+            }
+          />
+        )
+      })}
+
+      {/* Side-by-side note: where the change happened */}
+      <text x={X + W / 2} y={ACT_BAR_Y + CELL_H + 28} textAnchor="middle"
+        fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim}
+        fontStyle="italic">
+        negatives are softly suppressed · positives largely survive
+      </text>
+
+      {/* Zoom-in: one neuron through three activations with the probe */}
+      <FFGeluZoomNeuron probeZ={probeZ} speed={speed} />
+    </g>
+  )
+}
+
+/* Zoomed-in view of one neuron's value going through 3 activations.
+ * Lives inside the LEFT panel. */
+function FFGeluZoomNeuron({ probeZ, speed }: { probeZ: number; speed: number }) {
+  const Z_X = 110, Z_Y = 510, Z_W = 540, Z_H = 200
+  const inputBarH = 32
+
+  const outRelu = relu(probeZ)
+  const outGelu = gelu(probeZ)
+  const outSwish = swish(probeZ)
+
+  // Bar geometry — center at probeBarX, scale ±2.6 → ±BAR_HALF
+  const probeBarX = Z_X + Z_W / 2
+  const BAR_HALF = 110
+  const probeOffset = (probeZ / 2.6) * BAR_HALF
+  const outRange = (out: number) => Math.max(-1, Math.min(2.8, out))
+
+  return (
+    <g>
+      {/* Sub-panel background */}
+      <rect x={Z_X} y={Z_Y} width={Z_W} height={Z_H} rx={8}
+        fill="rgba(255,255,255,0.02)"
+        stroke="rgba(255,255,255,0.10)" strokeWidth={0.8} />
+
+      <text x={Z_X + 16} y={Z_Y + 22}
+        fontSize="11" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
+        ZOOM ▸ ONE NEURON, THREE GATES
+      </text>
+
+      {/* Input bar — probe value shown as a position on a horizontal scale */}
+      <text x={Z_X + 16} y={Z_Y + 56}
+        fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        raw score z =
+      </text>
+      <motion.text
+        key={`probez-${probeZ.toFixed(2)}`}
+        x={Z_X + 132} y={Z_Y + 56}
+        fontSize="14" fontFamily="var(--font-display)" fontStyle="italic"
+        fill={probeZ >= 0 ? ACCENT.cyan : ACCENT.red}
+        initial={{ opacity: 0.6 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2 }}
+      >
+        {probeZ.toFixed(2)}
+      </motion.text>
+
+      {/* Tiny number-line for probe */}
+      <line x1={probeBarX - BAR_HALF} x2={probeBarX + BAR_HALF}
+        y1={Z_Y + 80} y2={Z_Y + 80}
+        stroke={ACCENT.rule} strokeWidth={1} />
+      {[-2, -1, 0, 1, 2].map((tick) => (
+        <g key={`tick-${tick}`}>
+          <line
+            x1={probeBarX + (tick / 2.6) * BAR_HALF}
+            x2={probeBarX + (tick / 2.6) * BAR_HALF}
+            y1={Z_Y + 76} y2={Z_Y + 84}
+            stroke={ACCENT.rule} strokeWidth={1} />
+          <text
+            x={probeBarX + (tick / 2.6) * BAR_HALF}
+            y={Z_Y + 96} textAnchor="middle"
+            fontSize="8" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+            {tick}
+          </text>
+        </g>
+      ))}
+      {/* Probe dot on number-line */}
+      <motion.circle
+        cx={probeBarX + probeOffset} cy={Z_Y + 80}
+        r={5}
+        fill={probeZ >= 0 ? ACCENT.cyan : ACCENT.red}
+        filter="url(#ffg-glow)"
+        animate={{ cx: probeBarX + probeOffset }}
+        transition={{ duration: 0.1 }}
+      />
+
+      {/* Three output rows — one per activation */}
+      {([
+        { name: 'ReLU', out: outRelu, color: COL_RELU },
+        { name: 'GELU', out: outGelu, color: COL_GELU },
+        { name: 'Swish', out: outSwish, color: COL_SWISH },
+      ] as const).map((act, i) => {
+        const rowY = Z_Y + 122 + i * 26
+        const out = outRange(act.out)
+        const barEnd = probeBarX + (out / 2.8) * BAR_HALF
+        return (
+          <g key={`act-${act.name}`}>
+            <text x={Z_X + 16} y={rowY + 12}
+              fontSize="12" fontFamily="var(--font-mono)" fill={act.color}>
+              {act.name}(z)
+            </text>
+            {/* Track */}
+            <line x1={probeBarX - BAR_HALF} x2={probeBarX + BAR_HALF}
+              y1={rowY + 8} y2={rowY + 8}
+              stroke="rgba(255,255,255,0.08)" strokeWidth={0.5} />
+            {/* Zero tick */}
+            <line x1={probeBarX} x2={probeBarX}
+              y1={rowY + 4} y2={rowY + 12}
+              stroke="rgba(255,255,255,0.20)" strokeWidth={0.5} />
+            {/* Output bar from 0 to value */}
+            <motion.rect
+              x={Math.min(probeBarX, barEnd)}
+              y={rowY + 4}
+              width={Math.abs(barEnd - probeBarX)}
+              height={9}
+              rx={1}
+              fill={act.color}
+              opacity={0.85}
+              animate={{
+                x: Math.min(probeBarX, barEnd),
+                width: Math.abs(barEnd - probeBarX),
+              }}
+              transition={{ duration: 0.18 }}
+            />
+            <motion.text
+              key={`out-${act.name}-${out.toFixed(2)}`}
+              x={Z_X + Z_W - 16} y={rowY + 12} textAnchor="end"
+              fontSize="11" fontFamily="var(--font-mono)" fill={act.color}
+              initial={{ opacity: 0.6 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+            >
+              {act.out.toFixed(2)}
+            </motion.text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/* ─────────── RIGHT: curves comparison ─────────── */
+const FFG_RIGHT = {
+  X: 720, Y: 170, W: 600, H: 560,
+  GRAPH_X: 760, GRAPH_Y: 240, GRAPH_W: 520, GRAPH_H: 320,
+  X_SCALE: 100,  // px per unit on X
+  Y_SCALE: 80,   // px per unit on Y
+}
+
+function FFGeluCurvesPanel({
+  phase, probeZ, speed,
+}: { phase: number; probeZ: number; speed: number }) {
+  const { X, Y, W, H, GRAPH_X, GRAPH_Y, GRAPH_W, GRAPH_H, X_SCALE, Y_SCALE } = FFG_RIGHT
+
+  const cx = GRAPH_X + GRAPH_W / 2
+  const cy = GRAPH_Y + GRAPH_H * 0.7  // axis baseline (allow more room above for positive y)
+
+  // Curves
+  const xs: number[] = []
+  for (let z = -2.6; z <= 2.6; z += 0.06) xs.push(+z.toFixed(3))
+  function buildPath(fn: (z: number) => number) {
+    return xs.map((z, i) => {
+      const px = cx + z * X_SCALE
+      const py = cy - fn(z) * Y_SCALE
+      return `${i === 0 ? 'M' : 'L'} ${px.toFixed(1)} ${py.toFixed(1)}`
+    }).join(' ')
+  }
+
+  const probePx = cx + probeZ * X_SCALE
+
+  return (
+    <g>
+      {/* Background */}
+      <rect x={X} y={Y} width={W} height={H} rx={12}
+        fill="rgba(245,158,11,0.025)"
+        stroke={phase === 1 ? COL_GELU : 'rgba(245,158,11,0.18)'}
+        strokeWidth={phase === 1 ? 1.8 : 1} />
+
+      {/* Header */}
+      <text x={X + 22} y={Y + 26}
+        fontSize="11" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
+        ACTIVATION FUNCTIONS · COMPARISON
+      </text>
+      <text x={X + 22} y={Y + 46}
+        fontSize="13" fontFamily="var(--font-display)"
+        fontStyle="italic" fill={COL_GELU}>
+        same z, three different "fire strengths"
+      </text>
+
+      {/* Axes */}
+      <line x1={cx - 2.6 * X_SCALE} x2={cx + 2.6 * X_SCALE}
+        y1={cy} y2={cy}
+        stroke={ACCENT.rule} strokeWidth={1} />
+      <line x1={cx} x2={cx}
+        y1={cy - 2.4 * Y_SCALE} y2={cy + 0.6 * Y_SCALE}
+        stroke={ACCENT.rule} strokeWidth={1} />
+      {[-2, -1, 1, 2].map((t) => (
+        <g key={`gx-${t}`}>
+          <line x1={cx + t * X_SCALE} x2={cx + t * X_SCALE}
+            y1={cy - 3} y2={cy + 3}
+            stroke={ACCENT.rule} strokeWidth={1} />
+          <text x={cx + t * X_SCALE} y={cy + 16}
+            textAnchor="middle" fontSize="9"
+            fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+            {t}
+          </text>
+        </g>
+      ))}
+      {[1, 2].map((t) => (
+        <g key={`gy-${t}`}>
+          <line x1={cx - 3} x2={cx + 3}
+            y1={cy - t * Y_SCALE} y2={cy - t * Y_SCALE}
+            stroke={ACCENT.rule} strokeWidth={1} />
+          <text x={cx - 8} y={cy - t * Y_SCALE + 4}
+            textAnchor="end" fontSize="9"
+            fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+            {t}
+          </text>
+        </g>
+      ))}
+      <text x={cx + 2.7 * X_SCALE} y={cy + 4}
+        fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        z
+      </text>
+
+      {/* Negative-region callout box */}
+      <rect x={cx - 1.5 * X_SCALE} y={cy - 0.4 * Y_SCALE}
+        width={1.5 * X_SCALE} height={0.6 * Y_SCALE}
+        fill="rgba(248,113,113,0.04)"
+        stroke="rgba(248,113,113,0.25)"
+        strokeWidth={0.8}
+        strokeDasharray="3,3" />
+      <text x={cx - 0.75 * X_SCALE} y={cy - 0.5 * Y_SCALE}
+        textAnchor="middle" fontSize="9"
+        fontFamily="var(--font-mono)" fill={ACCENT.red}
+        letterSpacing="0.16em">
+        WHERE THEY DIFFER
+      </text>
+
+      {/* Curves */}
+      <path d={buildPath(relu)} stroke={COL_RELU} strokeWidth={2.4} fill="none" />
+      <path d={buildPath(gelu)} stroke={COL_GELU} strokeWidth={2.6} fill="none" />
+      <path d={buildPath(swish)} stroke={COL_SWISH} strokeWidth={2.2} fill="none" strokeDasharray="4 4" />
+
+      {/* Vertical probe line */}
+      <line x1={probePx} x2={probePx}
+        y1={GRAPH_Y + 12} y2={cy + 4}
+        stroke="rgba(255,255,255,0.30)"
+        strokeWidth={0.8} strokeDasharray="2,2" />
+
+      {/* Probe dots on each curve */}
+      <motion.circle cx={probePx} cy={cy - relu(probeZ) * Y_SCALE} r={5}
+        fill={COL_RELU} filter="url(#ffg-glow)"
+        animate={{ cx: probePx, cy: cy - relu(probeZ) * Y_SCALE }}
+        transition={{ duration: 0.1 }} />
+      <motion.circle cx={probePx} cy={cy - gelu(probeZ) * Y_SCALE} r={5}
+        fill={COL_GELU} filter="url(#ffg-glow)"
+        animate={{ cx: probePx, cy: cy - gelu(probeZ) * Y_SCALE }}
+        transition={{ duration: 0.1 }} />
+      <motion.circle cx={probePx} cy={cy - swish(probeZ) * Y_SCALE} r={5}
+        fill={COL_SWISH} filter="url(#ffg-glow)"
+        animate={{ cx: probePx, cy: cy - swish(probeZ) * Y_SCALE }}
+        transition={{ duration: 0.1 }} />
+
+      {/* Legend with descriptions */}
+      <g transform={`translate(${X + 22}, ${Y + H - 158})`}>
+        {([
+          { name: 'ReLU', formula: 'max(0, z)', desc: 'hard zero below 0', color: COL_RELU, dashed: false },
+          { name: 'GELU', formula: 'z · Φ(z)', desc: 'smooth gate, small negatives survive', color: COL_GELU, dashed: false },
+          { name: 'Swish', formula: 'z · σ(z)', desc: 'smooth self-gating, used in SwiGLU', color: COL_SWISH, dashed: true },
+        ] as const).map((curve, i) => (
+          <g key={`leg-${i}`} transform={`translate(0, ${i * 32})`}>
+            <line x1={0} x2={32} y1={10} y2={10}
+              stroke={curve.color} strokeWidth={2.6}
+              strokeDasharray={curve.dashed ? '4 4' : ''} />
+            <text x={42} y={14}
+              fontSize="13" fontFamily="var(--font-mono)" fill={curve.color}>
+              {curve.name}(z) = {curve.formula}
+            </text>
+            <text x={42} y={28}
+              fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+              {curve.desc}
+            </text>
+          </g>
+        ))}
+      </g>
+    </g>
+  )
+}
+
+/* ─────────── BOTTOM: nonlinearity insight + SwiGLU bridge ─────────── */
+function FFGeluBottomPanel({
+  phase, speed,
+}: { phase: number; speed: number }) {
+  const X = 80, Y = 750, W = 1240, H = 130
+  const half = W / 2
+
+  return (
+    <g>
+      <rect x={X} y={Y} width={W} height={H} rx={10}
+        fill="rgba(167,139,250,0.025)"
+        stroke={phase === 2 ? COL_GELU : 'rgba(167,139,250,0.20)'}
+        strokeWidth={phase === 2 ? 1.8 : 1} />
+
+      {/* LEFT half: nonlinearity insight */}
+      <g transform={`translate(${X + 20}, ${Y})`}>
+        <text x={0} y={26}
+          fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.22em">
+          WHY THE GATE EXISTS
+        </text>
+        <text x={0} y={56}
+          fontSize="14" fontFamily="var(--font-display)"
+          fontStyle="italic" fill="rgba(255,255,255,0.92)">
+          Without an activation, two linear layers collapse to one.
+        </text>
+        <text x={0} y={84}
+          fontSize="13" fontFamily="var(--font-mono)" fill={ACCENT.amber}>
+          W₂ · (W₁ x)  =  (W₂ W₁) · x
+        </text>
+        <text x={0} y={108}
+          fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} fontStyle="italic">
+          the activation makes the FFN <tspan fill={COL_GELU}>nonlinear</tspan> — that's what gives it expressive power.
+        </text>
+      </g>
+
+      {/* Divider */}
+      <line x1={X + half} x2={X + half}
+        y1={Y + 20} y2={Y + H - 20}
+        stroke={ACCENT.rule} strokeWidth={1} />
+
+      {/* RIGHT half: modern bridge */}
+      <g transform={`translate(${X + half + 20}, ${Y})`}>
+        <text x={0} y={26}
+          fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.22em">
+          MODERN UPGRADE ▸ SwiGLU
+        </text>
+        <text x={0} y={56}
+          fontSize="14" fontFamily="var(--font-display)"
+          fontStyle="italic" fill="rgba(255,255,255,0.92)">
+          Many modern LLMs replace the simple activation with a gated FFN.
+        </text>
+        <text x={0} y={84}
+          fontSize="13" fontFamily="var(--font-mono)" fill={COL_SWISH}>
+          SwiGLU(x) = (W₁ x ⊙ Swish(V x)) · W₂
+        </text>
+        <text x={0} y={108}
+          fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} fontStyle="italic">
+          two parallel projections, multiplied through Swish — slightly better loss per parameter (LLaMA, PaLM).
+        </text>
+      </g>
+    </g>
+  )
+}
+
+/* ─────────── Phase summary footer ─────────── */
+function FFGeluPhaseSummary({ phase }: { phase: number }) {
+  const beats = ['raw → activated', 'compare the gates', 'why nonlinearity']
+  return (
+    <g transform="translate(700, 950)">
+      {beats.map((b, i) => {
+        const w = 280
+        const x = (i - beats.length / 2) * w + w / 2
+        const active = i === phase
+        const done = i < phase
+        return (
+          <g key={`ffg-sum-${i}`} transform={`translate(${x}, 0)`}>
+            <rect x={-w / 2 + 14} y={-14} width={w - 28} height={28} rx={14}
+              fill={active ? 'rgba(52,211,153,0.18)' : 'transparent'}
+              stroke={active ? COL_GELU : ACCENT.rule}
+              strokeWidth={active ? 1.5 : 1} />
+            <text x={0} y={4} textAnchor="middle"
+              fontSize="11" fontFamily="var(--font-mono)"
+              fill={active ? COL_GELU : done ? 'rgba(255,255,255,0.5)' : ACCENT.dim}
+              letterSpacing="0.16em">
+              {(i + 1)}.{b.toUpperCase()}
+            </text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/* ─────────── FFN-GELU split-pane wrapper ─────────── */
+export function FFNGeluSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 3
+  const phaseLabels = [
+    'inside the FFN: raw → activated',
+    'compare ReLU · GELU · Swish',
+    'why we need nonlinearity',
+  ]
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      6300 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      Each W₁ row produces a raw score per neuron. The activation is the{' '}
+      <em>gate</em> that decides how strongly that hidden feature actually fires.
+    </>,
+    <>
+      ReLU clips hard at zero. GELU and Swish gate smoothly — small negatives
+      pass through softly, so gradients keep flowing.
+    </>,
+    <>
+      Without the activation, W₂(W₁x) would just be (W₂W₁)x — one big linear
+      map. The nonlinearity is what makes the FFN expressive.
+    </>,
+  ]
+
+  const equationByPhase: { label: string; body: ReactNode }[] = [
+    {
+      label: 'one neuron',
+      body: <>h<sub>i</sub> = GELU((W₁ x)<sub>i</sub>)</>,
+    },
+    {
+      label: 'three gates',
+      body: (
+        <>
+          ReLU: max(0, z) · GELU: z · Φ(z) · Swish: z · σ(z)
+        </>
+      ),
+    },
+    {
+      label: 'why nonlinear',
+      body: <>W₂(W₁ x) ≠ (W₂ W₁) x &nbsp;⇐&nbsp; activation</>,
+    },
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'After W₁ expands x into 1536 hidden coordinates, each one is a candidate feature score. The activation function decides — per coordinate — how strongly that feature ends up firing.',
+    'ReLU was the early default (simple, fast). Transformer-era models moved to GELU (BERT, GPT-2). Modern LLMs (LLaMA, PaLM) push further with gated variants like SwiGLU.',
+    'Stack two linear maps with no nonlinearity in between and you can collapse them into one matrix — no extra power. The activation is the only thing that makes deep nets actually deep.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizFFNGelu />}
+      text={{
+        kicker: ACT2_KICKER,
+        title: 'How each feature decides to fire.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.amber,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.amber}
+          />
+        ),
+        stats: [
+          { label: 'classic', value: 'ReLU', color: COL_RELU },
+          { label: 'transformer-era', value: 'GELU', color: COL_GELU },
+          { label: 'modern LLMs', value: 'SwiGLU', color: COL_SWISH },
+          { label: 'role', value: 'nonlinearity' },
+        ],
+        equation: equationByPhase[phase],
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}

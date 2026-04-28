@@ -11,9 +11,6 @@ import {
   SceneCELossSeqParallel,
   SceneCrossEntropy,
   SceneEmbedding,
-  SceneFFN,
-  SceneFFNFeature,
-  SceneFFNGelu,
   SceneGDAdam,
   SceneGDRavine,
   SceneKVCache,
@@ -67,6 +64,7 @@ import {
   MultiHeadSplitPane,
   FFNSplitPane,
   FFNFeatureSplitPane,
+  FFNGeluSplitPane,
 } from './act2Scenes'
 
 const ACCENT = {
@@ -372,19 +370,22 @@ Interpretability research is largely about teasing out what each dimension repre
     breadcrumb: ['Block 0', 'FFN', 'Activation'],
     focusedToken: 3,
     kicker: 'activation functions',
-    title: 'ReLU · GELU · Swish.',
+    title: 'How each feature decides to fire.',
     subGroup: { label: 'FFN · activation detail', index: 3, total: 3, color: ACCENT.amber },
     caption:
-      'ReLU has a sharp kink. GELU is smooth — small negatives get through. Modern models use GELU or Swish, which bridges us into Act V.',
+      'The gate between W₁ and W₂. Without it, two linear layers collapse to one. ReLU clips hard, GELU/Swish gate smoothly, modern LLMs use SwiGLU.',
     accent: ACCENT.amber,
     durationMs: 19000,
     part: 'ffn',
-    details: `ReLU zeroes any negative input. It's simple and fast but throws away gradient below zero, so "dead" neurons can stop learning forever. GELU (Gaussian Error Linear Unit) is a smooth variant: it weighs inputs by a probability-like curve so small negatives get partially through.
+    details: `After W₁ expands the token vector into many hidden coordinates, the activation function decides — per coordinate — how strongly that hidden feature actually fires. It's the gate at the center of "expand → fire → compress" from Scene 13, and it's what determines whether the feature detectors from Scene 14 turn on softly, sharply, or not at all.
 
-Swish (x · sigmoid(x)) is nearly identical to GELU but slightly cheaper to compute. Modern models use GELU (GPT) or Swish (LLaMA via SwiGLU).
+ReLU clips hard at zero — simple and fast, but throws away gradient below zero. GELU (Gaussian Error Linear Unit) is a smooth variant used in BERT and GPT-2: it weighs inputs by a probability-like curve so small negatives leak through. Swish (x · σ(x)) is nearly identical and easier to compute.
 
-Empirically, smooth activations train a bit faster and reach slightly better final loss. The activation choice is not why one model beats another — but it's one of the "free lunches" the field has collected.`,
-    render: () => <SceneFFNGelu />,
+The deeper reason this step exists: without a nonlinearity between W₁ and W₂, the two matrices would just multiply into one — W₂(W₁x) = (W₂W₁)x. The activation is the *only* reason the FFN is more expressive than a single linear map.
+
+Modern LLMs (LLaMA, PaLM, Mistral) push further with gated variants like SwiGLU: two parallel projections multiplied through Swish before W₂. Slightly better loss per parameter, which is why it became the default.`,
+    render: () => <FFNGeluSplitPane />,
+    panelAnchor: 'fullscreen',
   },
 
   // =============== ACT III — THE FULL STACK ===============
