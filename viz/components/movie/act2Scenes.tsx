@@ -6531,6 +6531,49 @@ function ffActivationFor(tok: string): number {
   return FF_PROFILE.find((p) => p.token === tok)?.activation ?? 0
 }
 
+/* Dim #147's "learned" weight template — 16 dims, fixed per session. */
+const FF_W147 = Array.from({ length: 16 }).map(
+  (_, i) => Math.sin(i * 0.71 + 0.3) * 0.95 + Math.cos(i * 0.43) * 0.35,
+)
+const FF_W147_NORM_SQ = FF_W147.reduce((s, w) => s + w * w, 0)
+
+/* Build a token's hidden representation x such that GELU(x · W₁[147])
+ * roughly matches its activation profile. High-activation tokens look
+ * similar to W (alignment); low-activation tokens are mostly noise. */
+function ffComputeXForToken(activation: number, tokenSeed: number): number[] {
+  const targetZ = activation > 0.5 ? activation * 1.7 : activation * 1.2 - 0.05
+  const scale = targetZ / FF_W147_NORM_SQ
+  return FF_W147.map((w, i) => {
+    const base = scale * w
+    const noise = Math.sin((i + tokenSeed * 1.7) * 1.13 + tokenSeed * 0.31) * 0.55 * (1 - activation * 0.7)
+    return base + noise
+  })
+}
+
+function ffSeedForToken(tok: string): number {
+  return tok.split('').reduce((s, c) => s + c.charCodeAt(0), 0) % 100
+}
+
+/* Diverging color (cyan positive, muted red negative) — for input/product cells. */
+function ffColorRes(v: number): string {
+  const m = Math.max(-1.5, Math.min(1.5, v)) / 1.5
+  if (m >= 0) return `rgba(34,211,238,${0.18 + m * 0.62})`
+  return `rgba(248,113,113,${0.18 + -m * 0.5})`
+}
+
+/* Amber-coded color for weight cells (same template every frame). */
+function ffColorWeight(w: number): string {
+  if (w >= 0) return `rgba(245,158,11,${0.20 + Math.min(1, w) * 0.65})`
+  return `rgba(248,113,113,${0.20 + Math.min(1, -w) * 0.55})`
+}
+
+/* Product cells: brightness = magnitude, color = sign of product. */
+function ffColorProduct(p: number): string {
+  const m = Math.min(1, Math.abs(p) / 1.2)
+  if (p >= 0) return `rgba(245,158,11,${0.18 + m * 0.78})`
+  return `rgba(248,113,113,${0.18 + m * 0.55})`
+}
+
 export function VizFFNFeature() {
   const speed = useSpeed()
 
@@ -6608,6 +6651,14 @@ export function VizFFNFeature() {
         <FFFeatureActivationPanel
           currentToken={currentToken}
           phase={phase}
+          speed={speed}
+        />
+
+        {/* Mechanism strip — dot product with the learned template */}
+        <FFFeatureMechanism
+          currentToken={currentToken}
+          currentActivation={currentActivation}
+          isFiring={isFiring}
           speed={speed}
         />
 
@@ -7008,6 +7059,184 @@ function FFFeatureActivationPanel({
           transition={{ duration: 2.4 / speed, repeat: Infinity, ease: 'easeInOut' }}
         />
       )}
+    </g>
+  )
+}
+
+/* ─────────── Mechanism strip — dot product with learned template ───────────
+ * Shows the actual computation that makes dim #147 fire (or not):
+ *   x · W₁[147]  →  Σ  →  GELU  →  activation
+ * Two stacked 16-cell bars (input x and weights W) make the alignment
+ * pattern visible — when many cells share sign/magnitude, the product
+ * is large and the neuron fires. */
+function FFFeatureMechanism({
+  currentToken, currentActivation, isFiring, speed,
+}: {
+  currentToken: string
+  currentActivation: number
+  isFiring: boolean
+  speed: number
+}) {
+  const seed = ffSeedForToken(currentToken)
+  const x = ffComputeXForToken(currentActivation, seed)
+  const xW = x.map((v, i) => v * FF_W147[i])
+  const sum = xW.reduce((s, v) => s + v, 0)
+  const geluOut = gelu(sum)
+
+  // Layout
+  const PANEL_X = 80, PANEL_Y = 638, PANEL_W = 1240, PANEL_H = 184
+  const CELL_W = 16, CELL_H = 22
+  const ROW_X_BAR = 248
+  const ROW_W_BAR = 248 // same start, see below
+  const Y_X_BAR = 700
+  const Y_W_BAR = 730
+  const Y_LABEL_X = 715
+  const Y_LABEL_W = 745
+
+  return (
+    <g>
+      {/* Background panel */}
+      <rect x={PANEL_X} y={PANEL_Y} width={PANEL_W} height={PANEL_H} rx={10}
+        fill="rgba(245,158,11,0.025)"
+        stroke="rgba(245,158,11,0.18)" strokeWidth={1} />
+
+      {/* Header */}
+      <text x={700} y={PANEL_Y + 24} textAnchor="middle"
+        fontSize="11" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
+        WHY DIM #147 FIRES — DOT PRODUCT WITH ITS LEARNED TEMPLATE
+      </text>
+
+      {/* x bar (input — current token's hidden representation) */}
+      <text x={ROW_X_BAR - 14} y={Y_LABEL_X} textAnchor="end"
+        fontSize="13" fontFamily="var(--font-display)" fontStyle="italic"
+        fill={ACCENT.cyan}>
+        x ("{currentToken}")
+      </text>
+      {x.map((v, i) => (
+        <motion.rect
+          key={`mech-x-${currentToken}-${i}`}
+          x={ROW_X_BAR + i * CELL_W} y={Y_X_BAR}
+          width={CELL_W - 1} height={CELL_H - 1} rx={2}
+          fill={ffColorRes(v)}
+          stroke="rgba(255,255,255,0.10)" strokeWidth={0.5}
+          initial={{ opacity: 0, scale: 0.7 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.35 / speed, delay: (i * 0.012) / speed }}
+        />
+      ))}
+
+      {/* W bar (the LEARNED weight template — fixed for this neuron) */}
+      <text x={ROW_W_BAR - 14} y={Y_LABEL_W} textAnchor="end"
+        fontSize="13" fontFamily="var(--font-display)" fontStyle="italic"
+        fill={COL_FF_NEURON}>
+        W₁[147]
+      </text>
+      {FF_W147.map((w, i) => (
+        <rect
+          key={`mech-w-${i}`}
+          x={ROW_W_BAR + i * CELL_W} y={Y_W_BAR}
+          width={CELL_W - 1} height={CELL_H - 1} rx={2}
+          fill={ffColorWeight(w)}
+          stroke="rgba(255,255,255,0.10)" strokeWidth={0.5}
+        />
+      ))}
+
+      {/* Alignment cues — small triangles where x and W have same sign */}
+      {x.map((v, i) => {
+        const aligned = (v > 0 && FF_W147[i] > 0) || (v < 0 && FF_W147[i] < 0)
+        const strong = Math.abs(xW[i]) > 0.4
+        if (!aligned || !strong) return null
+        const cx = ROW_X_BAR + i * CELL_W + CELL_W / 2
+        return (
+          <motion.path
+            key={`align-${currentToken}-${i}`}
+            d={`M ${cx - 3} ${Y_W_BAR + CELL_H + 4}
+                L ${cx + 3} ${Y_W_BAR + CELL_H + 4}
+                L ${cx} ${Y_W_BAR + CELL_H + 9} Z`}
+            fill={COL_FF_NEURON}
+            initial={{ opacity: 0, y: -3 }}
+            animate={{ opacity: [0.5, 1, 0.7] }}
+            transition={{
+              duration: 0.5 / speed,
+              delay: (0.1 + i * 0.012) / speed,
+            }}
+          />
+        )
+      })}
+
+      {/* "→" between bars and result */}
+      <text x={ROW_X_BAR + 16 * CELL_W + 24} y={729}
+        fontSize="22" fontFamily="var(--font-display)" fill={ACCENT.dim}>
+        →
+      </text>
+
+      {/* Σ scalar */}
+      <text x={ROW_X_BAR + 16 * CELL_W + 60} y={715}
+        fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim}
+        letterSpacing="0.18em">
+        x · W = Σ
+      </text>
+      <motion.text
+        key={`sum-${currentToken}`}
+        x={ROW_X_BAR + 16 * CELL_W + 60} y={742}
+        fontSize="22" fontFamily="var(--font-display)" fontStyle="italic"
+        fill={isFiring ? COL_FF_NEURON : 'rgba(255,255,255,0.65)'}
+        initial={{ opacity: 0, scale: 0.7 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3 / speed }}
+      >
+        {sum.toFixed(2)}
+      </motion.text>
+
+      {/* "→" */}
+      <text x={ROW_X_BAR + 16 * CELL_W + 150} y={729}
+        fontSize="22" fontFamily="var(--font-display)" fill={ACCENT.dim}>
+        →
+      </text>
+
+      {/* GELU output */}
+      <text x={ROW_X_BAR + 16 * CELL_W + 186} y={715}
+        fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim}
+        letterSpacing="0.18em">
+        GELU(Σ) = h₁₄₇
+      </text>
+      <motion.text
+        key={`gelu-${currentToken}`}
+        x={ROW_X_BAR + 16 * CELL_W + 186} y={742}
+        fontSize="26" fontFamily="var(--font-display)" fontStyle="italic"
+        fill={isFiring ? COL_FF_NEURON : 'rgba(255,255,255,0.55)'}
+        initial={{ opacity: 0, scale: 0.6 }}
+        animate={{
+          opacity: 1,
+          scale: isFiring ? [0.6, 1.2, 1] : [0.6, 1, 1],
+        }}
+        transition={{ duration: 0.45 / speed }}
+      >
+        {geluOut.toFixed(2)}
+      </motion.text>
+
+      {/* Match indicator */}
+      <motion.g
+        key={`match-${currentToken}`}
+        initial={{ opacity: 0, x: 6 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.4 / speed, delay: 0.15 / speed }}
+      >
+        <text x={ROW_X_BAR + 16 * CELL_W + 310} y={736}
+          fontSize="14" fontFamily="var(--font-mono)" fontStyle="italic"
+          fill={isFiring ? COL_FF_NEURON : ACCENT.dim}>
+          {isFiring ? '★ fires' : '○ quiet'}
+        </text>
+      </motion.g>
+
+      {/* Caption */}
+      <text x={700} y={PANEL_Y + PANEL_H - 18}
+        textAnchor="middle"
+        fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim}
+        fontStyle="italic">
+        x = the token's hidden state · W₁[147] = dim #147's learned template · they align ⇒ Σ large ⇒ GELU keeps it ⇒ neuron fires
+      </text>
     </g>
   )
 }
