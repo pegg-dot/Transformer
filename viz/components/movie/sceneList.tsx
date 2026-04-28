@@ -59,6 +59,7 @@ import {
   PositionalSplitPane,
   ReadyForBlock0SplitPane,
 } from './actIScenes'
+import { Act2IntroSplitPane } from './act2Scenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -222,17 +223,10 @@ Nothing in the model has done attention yet. Tokens have not "talked" to each ot
     title: 'Now zoom into one block.',
     caption: 'Attention first, then a small feedforward net. Every block runs the same two sub-layers.',
     accent: ACCENT.blue,
-    durationMs: 12000,
+    durationMs: 14000,
+    panelAnchor: 'fullscreen',
     details: `A transformer block is a fixed recipe: normalize, run multi-head attention, add the result back to the residual stream, normalize again, run a feedforward net, add that back too. Every one of the six blocks does exactly this.`,
-    render: () => (
-      <ActFramingPanel
-        actLabel={ACT_II}
-        headline="Now zoom into one block."
-        accent={ACCENT.blue}
-        recap="tokens became 384-dim vectors"
-        teaser="attention, then a small feedforward net"
-      />
-    ),
+    render: () => <Act2IntroSplitPane />,
   },
   {
     id: 'layernorm',
