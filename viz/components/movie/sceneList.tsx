@@ -13,7 +13,6 @@ import {
   SceneEmbedding,
   SceneGDAdam,
   SceneGDRavine,
-  SceneKVCache,
   SceneLayerNorm,
   SceneModern,
   SceneMultiHead,
@@ -34,7 +33,6 @@ import {
   PanelQKV,
   PanelFFN,
   PanelLayerNorm,
-  PanelKvCache,
   PanelOutput,
   PanelAttention,
   PanelMulti,
@@ -62,7 +60,12 @@ import {
   FFNFeatureSplitPane,
   FFNGeluSplitPane,
 } from './act2Scenes'
-import { ActIIIIntroSplitPane, StackSplitPane, SampleSplitPane } from './act3Scenes'
+import {
+  ActIIIIntroSplitPane,
+  StackSplitPane,
+  SampleSplitPane,
+  KVCacheSplitPane,
+} from './act3Scenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -461,7 +464,8 @@ The sampled token is then APPENDED to the input sequence and fed back into the m
 Only the NEW token's Q, K, V get computed each step. The old K and V columns stay in the cache. Attention attends from the new Q to the full (cached + new) K and V.
 
 This is the single biggest optimization behind fast generation. It's also why context length costs so much memory — the cache grows linearly with sequence length.`,
-    render: () => <PanelThenScene panel={<PanelKvCache />} scene={<SceneKVCache />} />,
+    render: () => <KVCacheSplitPane />,
+    panelAnchor: 'fullscreen',
   },
 
   // =============== ACT IV — TRAINING (LOSS → BACKPROP → GD) ===============

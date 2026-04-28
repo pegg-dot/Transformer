@@ -2002,3 +2002,741 @@ export function SampleSplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 19 — kvcache: "One new row per step."
+ *
+ * Three-zone layout that makes the mechanism literal:
+ *
+ *   token strip (current token highlighted)
+ *        │
+ *        ▼
+ *   ┌─────────────┐    ┌──────────────┐    ┌──────────────┐
+ *   │  fresh Q    │ →  │   K CACHE    │    │   V CACHE    │
+ *   │ (this step  │    │ past rows    │    │ past rows    │
+ *   │  only —     │    │ dim          │    │ dim          │
+ *   │  not stored)│    │ NEW row      │    │ NEW row      │
+ *   └─────────────┘    │ amber        │    │ amber        │
+ *                      │ future empty │    │ future empty │
+ *                      └──────────────┘    └──────────────┘
+ *
+ * Phase 1 — ARRIVE: token highlighted, cache state shown
+ * Phase 2 — FRESH Q: Q card materializes from current token
+ * Phase 3 — APPEND K/V: new rows fade-in with amber pulse on each cache
+ * Phase 4 — REUSE: dashed lines from Q to ALL cached K rows; values pulled
+ *
+ * Step advances when phase wraps from 3 → 0. Cache fills from row 0.
+ * ====================================================================== */
+
+const KV_SEQ = ['t', 'o', ' ', 'b', 'e', ' ', 'o', 'r', ' ', 'n', 'o', 't']
+const KV_MAX_STEP = KV_SEQ.length - 1
+const KV_D_K = 20
+
+const COL_KV_Q = ACCENT.cyan
+const COL_KV_K = ACCENT.blue
+const COL_KV_V = ACCENT.violet
+const COL_KV_NEW = ACCENT.amber
+
+// Token strip
+const KV_TOK_X = (1400 - (12 * 60 + 11 * 4)) / 2  // 358
+const KV_TOK_Y = 168
+const KV_TOK_W = 60
+const KV_TOK_H = 50
+
+// Fresh Q card
+const KV_Q_X = 70
+const KV_Q_Y = 320
+const KV_Q_W = 200
+const KV_Q_H = 320
+const KV_Q_CELLS = 8
+const KV_Q_CELL_H = 24
+
+// K cache matrix
+const KV_K_X = 320
+const KV_K_Y = 320
+const KV_K_W = 460
+const KV_K_H = 372
+const KV_K_CELL_W = KV_K_W / KV_D_K  // 23
+const KV_K_ROW_H = KV_K_H / KV_SEQ.length  // 31
+
+// V cache matrix
+const KV_V_X = 820
+const KV_V_Y = KV_K_Y
+const KV_V_W = KV_K_W
+const KV_V_H = KV_K_H
+const KV_V_CELL_W = KV_K_CELL_W
+const KV_V_ROW_H = KV_K_ROW_H
+
+function kvKValue(row: number, col: number): number {
+  return Math.sin(row * 1.71 + col * 0.43) * 0.9 + Math.cos(row * 0.6 + col) * 0.3
+}
+function kvVValue(row: number, col: number): number {
+  return Math.sin(row * 0.93 + col * 1.21 + 1.5) * 0.9 + Math.cos(row * 0.4 + col * 0.7) * 0.3
+}
+function kvQValue(step: number, i: number): number {
+  return Math.sin(i * 1.31 + step * 0.7) * 0.9 + Math.cos(i * 0.42 + step * 0.41) * 0.3
+}
+
+function kvCellColor(v: number, baseHue: 'blue' | 'violet'): string {
+  const m = Math.max(-1, Math.min(1, v))
+  if (m >= 0) {
+    return baseHue === 'blue'
+      ? `rgba(96,165,250,${0.18 + m * 0.62})`
+      : `rgba(167,139,250,${0.18 + m * 0.62})`
+  }
+  return `rgba(248,113,113,${0.18 + -m * 0.55})`
+}
+
+export function VizKVCache() {
+  const speed = useSpeed()
+
+  // 4 phases. Step advances when phase wraps to 0.
+  const PHASES = 4
+  const [phase, setPhase] = useState(0)
+  const [step, setStep] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPhase((p) => {
+        const np = (p + 1) % PHASES
+        if (np === 0) {
+          setStep((s) => (s + 1 > KV_MAX_STEP ? 0 : s + 1))
+        }
+        return np
+      })
+    }, 1500 / speed)
+    return () => clearInterval(id)
+  }, [speed])
+
+  return (
+    <div className="relative h-full w-full">
+      <svg viewBox="0 0 1400 1000" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="kv-glow"><feGaussianBlur stdDeviation="3" /></filter>
+          <filter id="kv-bloom" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
+        </defs>
+
+        <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.32em">
+          ACT III · OUTPUT · KV CACHE · ONE NEW ROW PER STEP
+        </text>
+
+        <text x={700} y={92} textAnchor="middle"
+          fontSize="22" fontFamily="var(--font-display)"
+          fontStyle="italic" fill="rgba(255,255,255,0.95)">
+          recompute Q · reuse K · reuse V
+        </text>
+        <text x={700} y={120} textAnchor="middle"
+          fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.08em">
+          fresh Q for the new token only · K and V rows are appended once and reused forever
+        </text>
+
+        {/* Token strip */}
+        <KVTokenStrip step={step} />
+
+        {/* Fresh Q card (left) — ephemeral */}
+        <KVFreshQ step={step} phase={phase} speed={speed} />
+
+        {/* K cache matrix (center) */}
+        <KVCacheMatrix
+          which="K"
+          x={KV_K_X} y={KV_K_Y} w={KV_K_W} h={KV_K_H}
+          cellW={KV_K_CELL_W} rowH={KV_K_ROW_H}
+          step={step} phase={phase} speed={speed} />
+
+        {/* V cache matrix (right) */}
+        <KVCacheMatrix
+          which="V"
+          x={KV_V_X} y={KV_V_Y} w={KV_V_W} h={KV_V_H}
+          cellW={KV_V_CELL_W} rowH={KV_V_ROW_H}
+          step={step} phase={phase} speed={speed} />
+
+        {/* Reuse arrows: Q → cached K rows (only in phase 3) */}
+        <KVReuseArrows step={step} phase={phase} speed={speed} />
+
+        {/* Append connectors: Q → new K row, Q → new V row (only in phase 2) */}
+        <KVAppendConnectors step={step} phase={phase} speed={speed} />
+
+        {/* Bottom payoff counter */}
+        <KVPayoff step={step} />
+
+        {/* Phase summary */}
+        <KVPhaseSummary phase={phase} />
+      </svg>
+    </div>
+  )
+}
+
+/* ─────────── Token strip — current token amber, past dim, future invisible ─── */
+function KVTokenStrip({ step }: { step: number }) {
+  return (
+    <g>
+      <text x={KV_TOK_X} y={KV_TOK_Y - 14}
+        fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
+        SEQUENCE ▸  STEP {step + 1} / {KV_SEQ.length}
+      </text>
+      {KV_SEQ.map((ch, i) => {
+        const x = KV_TOK_X + i * (KV_TOK_W + 4)
+        const isCurrent = i === step
+        const isPast = i < step
+        const fill = isCurrent
+          ? 'rgba(245,158,11,0.22)'
+          : isPast
+            ? 'rgba(96,165,250,0.10)'
+            : 'rgba(255,255,255,0.015)'
+        const stroke = isCurrent
+          ? COL_KV_NEW
+          : isPast
+            ? COL_KV_K
+            : 'rgba(255,255,255,0.10)'
+        const textColor = isCurrent
+          ? COL_KV_NEW
+          : isPast
+            ? 'rgba(255,255,255,0.85)'
+            : 'rgba(255,255,255,0.30)'
+        return (
+          <g key={`kv-tok-${i}`}>
+            {isCurrent && (
+              <motion.rect
+                x={x - 4} y={KV_TOK_Y - 4}
+                width={KV_TOK_W + 8} height={KV_TOK_H + 8} rx={6}
+                fill="none" stroke={COL_KV_NEW} strokeWidth={1.8}
+                filter="url(#kv-glow)"
+                initial={{ opacity: 0.5 }}
+                animate={{ opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            )}
+            <rect x={x} y={KV_TOK_Y}
+              width={KV_TOK_W} height={KV_TOK_H} rx={4}
+              fill={fill} stroke={stroke}
+              strokeWidth={isCurrent ? 2 : isPast ? 1 : 0.6} />
+            <text x={x + KV_TOK_W / 2} y={KV_TOK_Y + KV_TOK_H / 2 + 8}
+              textAnchor="middle"
+              fontSize="22" fontFamily="var(--font-display)" fontStyle="italic"
+              fill={textColor}>
+              {ch === ' ' ? '·' : ch}
+            </text>
+          </g>
+        )
+      })}
+      {/* "current token" caption */}
+      <motion.text
+        x={KV_TOK_X + step * (KV_TOK_W + 4) + KV_TOK_W / 2}
+        y={KV_TOK_Y + KV_TOK_H + 24}
+        textAnchor="middle"
+        fontSize="10" fontFamily="var(--font-mono)" fill={COL_KV_NEW}
+        animate={{ opacity: [0.6, 1, 0.6] }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        ↑ current token
+      </motion.text>
+    </g>
+  )
+}
+
+/* ─────────── Fresh Q card — ephemeral, cyan, dashed border ─────────── */
+function KVFreshQ({
+  step, phase, speed,
+}: { step: number; phase: number; speed: number }) {
+  const active = phase === 1
+  const computed = phase >= 1
+  const cellX = KV_Q_X + (KV_Q_W - 50) / 2
+  return (
+    <g>
+      {/* Card */}
+      <motion.rect
+        x={KV_Q_X} y={KV_Q_Y} width={KV_Q_W} height={KV_Q_H} rx={8}
+        fill="rgba(34,211,238,0.04)"
+        stroke={COL_KV_Q}
+        strokeWidth={active ? 2 : 1.2}
+        strokeDasharray="6,4"
+        animate={{
+          strokeOpacity: active ? [0.6, 1, 0.6] : 0.5,
+          strokeDashoffset: [0, -20],
+        }}
+        transition={{
+          strokeOpacity: { duration: 1.4 / speed, repeat: Infinity, ease: 'easeInOut' },
+          strokeDashoffset: { duration: 4 / speed, repeat: Infinity, ease: 'linear' },
+        }}
+      />
+
+      {/* Header */}
+      <text x={KV_Q_X + KV_Q_W / 2} y={KV_Q_Y + 22}
+        textAnchor="middle"
+        fontSize="11" fontFamily="var(--font-mono)" fill={COL_KV_Q}
+        letterSpacing="0.22em">
+        FRESH Q
+      </text>
+      <text x={KV_Q_X + KV_Q_W / 2} y={KV_Q_Y + 38}
+        textAnchor="middle"
+        fontSize="9" fontFamily="var(--font-mono)" fill={ACCENT.dim}
+        fontStyle="italic">
+        this step only · not cached
+      </text>
+
+      {/* Big Q label */}
+      <text x={KV_Q_X + 32} y={KV_Q_Y + KV_Q_H / 2 + 10}
+        fontSize="44" fontFamily="var(--font-display)" fontStyle="italic"
+        fill={COL_KV_Q} opacity={computed ? 1 : 0.4}>
+        Q
+      </text>
+
+      {/* Q vector cells — fade in when computed */}
+      <motion.g
+        initial={{ opacity: 0 }}
+        animate={{ opacity: computed ? 1 : 0.15 }}
+        transition={{ duration: 0.6 / speed }}
+      >
+        {Array.from({ length: KV_Q_CELLS }).map((_, i) => {
+          const v = kvQValue(step, i)
+          const fill = kvCellColor(v, 'blue').replace('96,165,250', '34,211,238')
+          return (
+            <motion.rect
+              key={`q-${step}-${i}`}
+              x={cellX}
+              y={KV_Q_Y + 70 + i * KV_Q_CELL_H}
+              width={50} height={KV_Q_CELL_H - 2} rx={2}
+              fill={fill}
+              stroke="rgba(255,255,255,0.10)" strokeWidth={0.5}
+              initial={{ opacity: 0, scale: 0.7 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3 / speed, delay: (i * 0.04) / speed }}
+            />
+          )
+        })}
+      </motion.g>
+
+      {/* Footer note */}
+      <text x={KV_Q_X + KV_Q_W / 2} y={KV_Q_Y + KV_Q_H - 14}
+        textAnchor="middle"
+        fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        used now · then discarded
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── K or V cache matrix — past dim, current amber, future invisible ─── */
+function KVCacheMatrix({
+  which, x, y, w, h, cellW, rowH, step, phase, speed,
+}: {
+  which: 'K' | 'V'
+  x: number; y: number; w: number; h: number
+  cellW: number; rowH: number
+  step: number; phase: number; speed: number
+}) {
+  const isK = which === 'K'
+  const baseHue: 'blue' | 'violet' = isK ? 'blue' : 'violet'
+  const baseColor = isK ? COL_KV_K : COL_KV_V
+  const compute = isK ? kvKValue : kvVValue
+  const headerColor = baseColor
+  const rowsActive = phase === 3 // brighten cached rows when reused
+
+  return (
+    <g>
+      {/* Header above matrix */}
+      <text x={x + w / 2} y={y - 24}
+        textAnchor="middle"
+        fontSize="13" fontFamily="var(--font-display)" fontStyle="italic"
+        fill={headerColor}>
+        {which} cache
+      </text>
+      <text x={x + w / 2} y={y - 8}
+        textAnchor="middle"
+        fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.18em">
+        {step + 1} ROW{step === 0 ? '' : 'S'} CACHED · d_k = 20
+      </text>
+
+      {/* Frame */}
+      <rect x={x - 4} y={y - 4} width={w + 8} height={h + 8} rx={6}
+        fill={`rgba(${isK ? '96,165,250' : '167,139,250'},0.025)`}
+        stroke={`rgba(${isK ? '96,165,250' : '167,139,250'},0.20)`}
+        strokeWidth={1} />
+
+      {/* Cells */}
+      {Array.from({ length: KV_SEQ.length }).map((_, r) =>
+        Array.from({ length: KV_D_K }).map((_, c) => {
+          const isPast = r < step
+          const isCurrent = r === step
+          const isFuture = r > step
+          const v = compute(r, c)
+          const baseFill = isFuture
+            ? 'rgba(255,255,255,0.02)'
+            : isCurrent
+              ? `rgba(245,158,11,${0.30 + Math.abs(v) * 0.5})`
+              : kvCellColor(v, baseHue)
+          const opacityTarget = isFuture ? 0.05 : isPast ? (rowsActive ? 0.7 : 0.45) : 1
+          // Current row only "appears" in phase 2+ for the freshly-appended look
+          const currentVisible = isCurrent && phase >= 2
+
+          return (
+            <motion.rect
+              key={`${which}-${r}-${c}`}
+              x={x + c * cellW + 0.5}
+              y={y + r * rowH + 0.5}
+              width={cellW - 1} height={rowH - 1} rx={1}
+              fill={baseFill}
+              initial={isCurrent ? { opacity: 0 } : false}
+              animate={{
+                opacity: isCurrent ? (currentVisible ? opacityTarget : 0) : opacityTarget,
+              }}
+              transition={
+                isCurrent
+                  ? { duration: 0.4 / speed, delay: (c * 0.012) / speed }
+                  : { duration: 0.4 / speed }
+              }
+            />
+          )
+        })
+      )}
+
+      {/* Current-row outline (always shown to mark "the next slot") */}
+      <motion.rect
+        x={x - 2} y={y + step * rowH - 2}
+        width={w + 4} height={rowH + 4} rx={3}
+        fill="none" stroke={COL_KV_NEW}
+        strokeWidth={2}
+        animate={{ opacity: [0.6, 1, 0.6] }}
+        transition={{ duration: 1.2 / speed, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      {/* Row labels — characters */}
+      {KV_SEQ.map((ch, r) => {
+        const isPast = r < step
+        const isCurrent = r === step
+        const isFuture = r > step
+        const labelColor = isCurrent
+          ? COL_KV_NEW
+          : isPast
+            ? 'rgba(255,255,255,0.7)'
+            : 'rgba(255,255,255,0.20)'
+        return (
+          <text key={`${which}-row-lbl-${r}`}
+            x={x - 14} y={y + r * rowH + rowH / 2 + 4}
+            textAnchor="end"
+            fontSize="11" fontFamily="var(--font-mono)" fontStyle="italic"
+            fill={labelColor}>
+            {ch === ' ' ? '·' : ch}
+          </text>
+        )
+      })}
+
+      {/* Annotations: "cached / reused" on past, "new row" on current */}
+      {step > 0 && (
+        <text x={x + w + 16} y={y + ((step - 1) / 2) * rowH + rowH}
+          fontSize="9" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.18em">
+          ↑ cached / reused
+        </text>
+      )}
+      <motion.text
+        x={x + w + 16}
+        y={y + step * rowH + rowH / 2 + 4}
+        fontSize="10" fontFamily="var(--font-mono)" fill={COL_KV_NEW}
+        letterSpacing="0.18em"
+        animate={{ opacity: [0.7, 1, 0.7] }}
+        transition={{ duration: 1.2 / speed, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        ← NEW ROW
+      </motion.text>
+    </g>
+  )
+}
+
+/* ─────────── Append connectors: Q → new K row, Q → new V row (phase 2) ─── */
+function KVAppendConnectors({
+  step, phase, speed,
+}: { step: number; phase: number; speed: number }) {
+  if (phase !== 2) return null
+  const fromX = KV_Q_X + KV_Q_W
+  const fromY = KV_Q_Y + KV_Q_H / 2
+  const toKX = KV_K_X
+  const toKY = KV_K_Y + step * KV_K_ROW_H + KV_K_ROW_H / 2
+  const toVX = KV_V_X
+  const toVY = KV_V_Y + step * KV_V_ROW_H + KV_V_ROW_H / 2
+
+  return (
+    <g>
+      {[
+        { tx: toKX, ty: toKY, label: 'append K row' },
+        { tx: toVX, ty: toVY, label: 'append V row' },
+      ].map((target, idx) => (
+        <g key={`append-${idx}`}>
+          <motion.path
+            d={`M ${fromX} ${fromY} Q ${(fromX + target.tx) / 2} ${(fromY + target.ty) / 2 - 30}, ${target.tx - 8} ${target.ty}`}
+            stroke={COL_KV_NEW}
+            strokeWidth={2}
+            fill="none"
+            strokeDasharray="4,4"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 0.85 }}
+            transition={{ duration: 0.7 / speed, delay: (idx * 0.2) / speed }}
+          />
+          <motion.path
+            d={`M ${target.tx - 12} ${target.ty - 5} L ${target.tx - 4} ${target.ty} L ${target.tx - 12} ${target.ty + 5}`}
+            stroke={COL_KV_NEW}
+            strokeWidth={2}
+            fill="none"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 / speed, delay: (0.6 + idx * 0.2) / speed }}
+          />
+          {/* Travelling particle */}
+          <motion.circle
+            r={4}
+            fill={COL_KV_NEW}
+            filter="url(#kv-glow)"
+            initial={{ cx: fromX, cy: fromY, opacity: 0 }}
+            animate={{
+              cx: [fromX, (fromX + target.tx) / 2, target.tx - 4],
+              cy: [fromY, (fromY + target.ty) / 2 - 30, target.ty],
+              opacity: [0, 1, 0],
+            }}
+            transition={{
+              duration: 0.8 / speed,
+              delay: (0.1 + idx * 0.2) / speed,
+              repeat: Infinity,
+              repeatDelay: 0.4 / speed,
+              ease: 'easeInOut',
+            }}
+          />
+        </g>
+      ))}
+    </g>
+  )
+}
+
+/* ─────────── Reuse arrows: Q → all cached K rows (phase 3) ─────────── */
+function KVReuseArrows({
+  step, phase, speed,
+}: { step: number; phase: number; speed: number }) {
+  if (phase !== 3) return null
+  if (step === 0) return null // no cached rows yet on first step
+
+  const fromX = KV_Q_X + KV_Q_W
+  const fromY = KV_Q_Y + KV_Q_H / 2
+
+  return (
+    <g>
+      {/* Lines from Q to each cached K row */}
+      {Array.from({ length: step + 1 }).map((_, r) => {
+        const toY = KV_K_Y + r * KV_K_ROW_H + KV_K_ROW_H / 2
+        const toX = KV_K_X
+        return (
+          <motion.line
+            key={`reuse-${r}`}
+            x1={fromX} x2={toX - 4}
+            y1={fromY} y2={toY}
+            stroke={COL_KV_NEW}
+            strokeWidth={1.2}
+            strokeDasharray="3,4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 0.6, 0.45] }}
+            transition={{
+              duration: 0.5 / speed,
+              delay: (r * 0.05) / speed,
+            }}
+          />
+        )
+      })}
+      {/* Pulsing glow on each cached K row */}
+      {Array.from({ length: step + 1 }).map((_, r) => (
+        <motion.rect
+          key={`reuse-glow-${r}`}
+          x={KV_K_X - 2} y={KV_K_Y + r * KV_K_ROW_H - 1}
+          width={KV_K_W + 4} height={KV_K_ROW_H + 2} rx={2}
+          fill="none" stroke={COL_KV_NEW}
+          strokeWidth={1.4}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 0.8, 0] }}
+          transition={{
+            duration: 0.7 / speed,
+            delay: (r * 0.07) / speed,
+            repeat: Infinity,
+            repeatDelay: 0.5 / speed,
+            ease: 'easeInOut',
+          }}
+        />
+      ))}
+      {/* "old rows reused" label */}
+      <motion.text
+        x={KV_K_X + KV_K_W / 2} y={KV_K_Y - 50}
+        textAnchor="middle"
+        fontSize="11" fontFamily="var(--font-mono)" fill={COL_KV_NEW}
+        letterSpacing="0.22em"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4 / speed }}
+      >
+        ↓ OLD K ROWS REUSED, NOT RECOMPUTED
+      </motion.text>
+    </g>
+  )
+}
+
+/* ─────────── Bottom payoff counter ─────────── */
+function KVPayoff({ step }: { step: number }) {
+  const newValues = 2 * KV_D_K // K + V row
+  const reusedValues = step * 2 * KV_D_K
+  return (
+    <g>
+      <text x={700} y={760} textAnchor="middle"
+        fontSize="14" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
+        THIS STEP
+      </text>
+      <text x={700} y={800} textAnchor="middle"
+        fontSize="20" fontFamily="var(--font-display)" fontStyle="italic"
+        fill="rgba(255,255,255,0.95)">
+        <tspan fill={COL_KV_NEW}>1 new K row + 1 new V row</tspan>
+        {' written  ·  '}
+        <tspan fill={COL_KV_K}>{reusedValues} values</tspan>
+        {' reused from cache'}
+      </text>
+      <text x={700} y={830} textAnchor="middle"
+        fontSize="13" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        cost per step:&nbsp;
+        <tspan fill={ACCENT.mint}>O(N)</tspan>
+        {'  vs naïve  '}
+        <tspan fill={ACCENT.red}>O(N²)</tspan>
+        {'  ·  reuse is the whole optimization'}
+      </text>
+      <text x={700} y={865} textAnchor="middle"
+        fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim} fontStyle="italic">
+        new this step: {newValues} values  ·  cache size now: {(step + 1) * KV_D_K * 2} values
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Phase summary footer ─────────── */
+function KVPhaseSummary({ phase }: { phase: number }) {
+  const beats = ['arrive', 'fresh Q', 'append K + V', 'reuse cache']
+  return (
+    <g transform="translate(700, 940)">
+      {beats.map((b, i) => {
+        const w = 240
+        const x = (i - beats.length / 2 + 0.5) * w
+        const active = i === phase
+        return (
+          <g key={`kv-sum-${i}`} transform={`translate(${x}, 0)`}>
+            <rect x={-w / 2 + 12} y={-14} width={w - 24} height={28} rx={14}
+              fill={active ? 'rgba(245,158,11,0.18)' : 'transparent'}
+              stroke={active ? COL_KV_NEW : ACCENT.rule}
+              strokeWidth={active ? 1.5 : 1} />
+            <text x={0} y={4} textAnchor="middle"
+              fontSize="11" fontFamily="var(--font-mono)"
+              fill={active ? COL_KV_NEW : ACCENT.dim}
+              letterSpacing="0.16em">
+              {(i + 1)}.{b.toUpperCase()}
+            </text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/* ─────────── KV cache split-pane wrapper ─────────── */
+export function KVCacheSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 4
+  const phaseLabels = [
+    'new token arrives',
+    'fresh Q computed',
+    'append K + V rows',
+    'reuse cached rows',
+  ]
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      1500 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      A new token from Scene 18 just arrived. The cache already holds K and V
+      rows for every prior position — those are not recomputed.
+    </>,
+    <>
+      Compute a <em>fresh Q</em> from the new token's hidden state. Q is used
+      this step only and never stored.
+    </>,
+    <>
+      Compute the new token's <em>K</em> and <em>V</em> too — and append exactly
+      one row to each cache. That's the only write per step.
+    </>,
+    <>
+      Attention reads from the <em>full cache</em>: Q dot-products against every
+      stored K row, then pulls a weighted sum from V. Old work is reused.
+    </>,
+  ]
+
+  const equationByPhase: { label: string; body: ReactNode }[] = [
+    {
+      label: 'cache state',
+      body: <>K<sub>cache</sub>, V<sub>cache</sub> ∈ R<sup>t × d</sup></>,
+    },
+    {
+      label: 'fresh per step',
+      body: <>Q = W<sub>Q</sub> · h<sub>new</sub>  ·  not cached</>,
+    },
+    {
+      label: 'append once',
+      body: (
+        <>
+          K<sub>cache</sub> ← [K<sub>cache</sub> ; W<sub>K</sub> · h<sub>new</sub>]
+          <br />
+          V<sub>cache</sub> ← [V<sub>cache</sub> ; W<sub>V</sub> · h<sub>new</sub>]
+        </>
+      ),
+    },
+    {
+      label: 'reuse — attention reads',
+      body: <>out = softmax(Q · K<sub>cache</sub>ᵀ / √d_k) · V<sub>cache</sub></>,
+    },
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'During training every position predicts in parallel; during generation we step token by token. The cache is what makes step N fast — N-1 is already done.',
+    'Q has to be fresh because it represents the question the new token is asking. The keys and values it queries against are properties of the prior tokens, which never change.',
+    'Each step writes exactly 2 × d_model = 2 × 384 = 768 numbers to the cache. That is the entire generation cost beyond the forward pass — no extra recompute.',
+    'Without the cache, attention at step N is O(N²) — recompute everything each step. With the cache it is O(N) per step — read N rows, write 1. This is the single biggest optimization in modern LLM serving.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizKVCache />}
+      text={{
+        kicker: 'ACT III · OUTPUT · KV CACHE',
+        title: 'One new row per step.',
+        subtitle: subtitleByPhase[phase],
+        accent: COL_KV_NEW,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={COL_KV_NEW}
+          />
+        ),
+        stats: [
+          { label: 'fresh per step', value: 'Q', color: COL_KV_Q },
+          { label: 'cached', value: 'K · V', color: COL_KV_K },
+          { label: 'append per step', value: '1 K + 1 V row' },
+          { label: 'cost per step', value: 'O(N) not O(N²)', color: ACCENT.mint },
+        ],
+        equation: equationByPhase[phase],
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}
