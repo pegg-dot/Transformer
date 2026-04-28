@@ -2475,21 +2475,51 @@ function BlockAnchor({
         const toX = miniTokenStart + j * miniTokenW + miniTokenW / 2
         const toY = miniTokenY + 18
         const ctrlY = miniTokenY - 32 - (focused - j) * 4
+        const ts = [0, 0.2, 0.4, 0.6, 0.8, 1]
+        const cxs = ts.map(
+          (t) => Math.pow(1 - t, 2) * fromX + 2 * (1 - t) * t * ((fromX + toX) / 2) + t * t * toX,
+        )
+        const cys = ts.map(
+          (t) => Math.pow(1 - t, 2) * fromY + 2 * (1 - t) * t * ctrlY + t * t * toY,
+        )
         return (
-          <motion.path
-            key={`anchor-arc-${j}`}
-            d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
-            stroke={COL_Q_ATT}
-            strokeWidth={1.2}
-            strokeOpacity={0.7}
-            fill="none"
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{
-              duration: 0.6 / speed,
-              delay: (j * 0.05) / speed,
-            }}
-          />
+          <g key={`anchor-arc-${j}`}>
+            <motion.path
+              d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
+              stroke={COL_Q_ATT}
+              strokeWidth={1.2}
+              fill="none"
+              initial={{ pathLength: 0, opacity: 0.4 }}
+              animate={{ pathLength: 1, opacity: [0.4, 0.85, 0.4] }}
+              transition={{
+                pathLength: { duration: 0.6 / speed, delay: (j * 0.05) / speed },
+                opacity: {
+                  duration: 2.0 / speed,
+                  delay: (1.0 + j * 0.12) / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                },
+              }}
+            />
+            {/* Continuously traveling particle */}
+            <motion.circle
+              r={1.8}
+              fill={COL_Q_ATT}
+              initial={{ cx: fromX, cy: fromY, opacity: 0 }}
+              animate={{
+                cx: cxs,
+                cy: cys,
+                opacity: [0, 1, 1, 1, 1, 0],
+              }}
+              transition={{
+                duration: 1.5 / speed,
+                delay: (1.0 + j * 0.15) / speed,
+                repeat: Infinity,
+                repeatDelay: 0.4 / speed,
+                ease: 'easeInOut',
+              }}
+            />
+          </g>
         )
       })}
 
@@ -2775,6 +2805,52 @@ function BlockAnchor({
                 Stream
               </text>
             </g>
+
+            {/* ── Continuous cross-zone data flow particles ──
+                LayerInput → Attention compartment → Residual stream.
+                These run regardless of phase to keep the anchor alive. */}
+            {Array.from({ length: 7 }).map((_, k) => {
+              const startX = layerInputX + layerInputW + 2
+              const endX = residualX - 2
+              const yLane = zoneY + 16 + ((k * 31) % (zoneH - 32))
+              return (
+                <motion.circle
+                  key={`anchor-flow-${k}`}
+                  r={1.6}
+                  fill={COL_Q_ATT}
+                  initial={{ cx: startX, cy: yLane, opacity: 0 }}
+                  animate={{
+                    cx: [startX, attMlpX + 4, attMlpX + attMlpW - 4, endX],
+                    opacity: [0, 0.7, 0.55, 0],
+                  }}
+                  transition={{
+                    duration: 3.6 / speed,
+                    delay: (k * 0.45) / speed,
+                    repeat: Infinity,
+                    ease: 'linear',
+                  }}
+                />
+              )
+            })}
+
+            {/* Subtle breathing on the active compartment border */}
+            <motion.rect
+              x={attMlpX - 2}
+              y={zoneY - 2}
+              width={attMlpW + 4}
+              height={zoneH + 4}
+              rx={4}
+              fill="none"
+              stroke={COL_K_ATT}
+              strokeWidth={1}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 0.35, 0] }}
+              transition={{
+                duration: 2.6 / speed,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
           </>
         )
       })()}
@@ -2934,8 +3010,17 @@ function PhaseA({
         const toY = ROW_Y - cellH / 2
         const arcHeight = 70 + (focused - j) * 8
         const ctrlY = fromY - arcHeight
+        // Sample points along the quadratic Bezier for traveling particle
+        const ts = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1]
+        const cxs = ts.map(
+          (t) => Math.pow(1 - t, 2) * fromX + 2 * (1 - t) * t * ((fromX + toX) / 2) + t * t * toX,
+        )
+        const cys = ts.map(
+          (t) => Math.pow(1 - t, 2) * fromY + 2 * (1 - t) * t * ctrlY + t * t * toY,
+        )
         return (
           <motion.g key={`arc-${j}`}>
+            {/* Initial draw — once */}
             <motion.path
               d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
               stroke={COL_Q_ATT}
@@ -2950,6 +3035,21 @@ function PhaseA({
                 delay: (0.4 + j * 0.12) / speed,
               }}
             />
+            {/* Continuous opacity pulse on top of the drawn arc */}
+            <motion.path
+              d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
+              stroke={COL_Q_ATT}
+              strokeWidth={2.4}
+              fill="none"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 0.55, 0] }}
+              transition={{
+                duration: 2.4 / speed,
+                delay: (1.2 + j * 0.18) / speed,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
             {/* Arrowhead near the key */}
             <motion.path
               d={`M ${toX - 5} ${toY - 8} L ${toX} ${toY - 2} L ${toX + 5} ${toY - 8}`}
@@ -2960,6 +3060,25 @@ function PhaseA({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: (1.0 + j * 0.12) / speed }}
+            />
+            {/* Continuously traveling particle along the arc */}
+            <motion.circle
+              r={3.5}
+              fill={COL_Q_ATT}
+              filter="url(#attn-glow)"
+              initial={{ cx: fromX, cy: fromY, opacity: 0 }}
+              animate={{
+                cx: cxs,
+                cy: cys,
+                opacity: [0, 1, 1, 1, 1, 1, 1, 0],
+              }}
+              transition={{
+                duration: 1.7 / speed,
+                delay: (1.4 + j * 0.18) / speed,
+                repeat: Infinity,
+                repeatDelay: 0.6 / speed,
+                ease: 'easeInOut',
+              }}
             />
           </motion.g>
         )
