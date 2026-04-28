@@ -4534,22 +4534,42 @@ export function VizMultiHead() {
           const fromY = RESID_Y + RESID_H / 2
           const toX = HEAD_AREA_X - 4
           const toY = headRowY(i) + HEAD_ROW_H / 2
+          const ctrlX = (fromX + toX) / 2 + 8
           return (
-            <motion.path
-              key={`fanout-${i}`}
-              d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2 + 8} ${toY}, ${toX} ${toY}`}
-              stroke={HEAD_COLORS[i]}
-              strokeWidth={1.8}
-              strokeOpacity={0.85}
-              fill="none"
-              strokeLinecap="round"
-              initial={{ pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{
-                duration: 0.6 / speed,
-                delay: (0.3 + i * 0.08) / speed,
-              }}
-            />
+            <g key={`fanout-${i}`}>
+              <motion.path
+                d={`M ${fromX} ${fromY} Q ${ctrlX} ${toY}, ${toX} ${toY}`}
+                stroke={HEAD_COLORS[i]}
+                strokeWidth={1.8}
+                strokeOpacity={0.85}
+                fill="none"
+                strokeLinecap="round"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{
+                  duration: 0.6 / speed,
+                  delay: (0.3 + i * 0.08) / speed,
+                }}
+              />
+              {/* Continuous flow particle along the fanout arrow */}
+              <motion.circle
+                r={2.4}
+                fill={HEAD_COLORS[i]}
+                initial={{ opacity: 0, cx: fromX, cy: fromY }}
+                animate={{
+                  opacity: [0, 0.95, 0.95, 0],
+                  cx: [fromX, ctrlX, toX],
+                  cy: [fromY, toY, toY],
+                }}
+                transition={{
+                  duration: 1.8 / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                  delay: (1.0 + i * 0.15) / speed,
+                  times: [0, 0.2, 0.85, 1],
+                }}
+              />
+            </g>
           )
         })}
 
@@ -4611,32 +4631,40 @@ export function VizMultiHead() {
                 </text>
               )}
 
-              {/* Phase 1: Q/K/V boxes + softmax + output */}
-              {phase === 0 && (
-                <Phase1HeadContent
-                  yT={yT}
-                  yC={yC}
-                  i={i}
-                  accent={accent}
-                  rowX={HEAD_AREA_X + 80}
-                  rowW={HEAD_AREA_W - 84}
-                />
-              )}
-
-              {/* Phase 2 / 3: token row with attention arcs */}
-              {phase >= 1 && (
-                <Phase2HeadContent
-                  yT={yT}
-                  yC={yC}
-                  i={i}
-                  accent={accent}
-                  tokens={tokens}
-                  focused={FOCUSED}
-                  rowX={HEAD_AREA_X + 80}
-                  rowW={HEAD_AREA_W - 220}
-                  speed={speed}
-                />
-              )}
+              {/* Phase content — wrapped in motion.g keyed on phase so the
+                  swap from Phase 1 (Q/K/V) → Phase 2 (arcs) crossfades and
+                  inner stagger animations re-trigger on remount. */}
+              <motion.g
+                key={`head-${i}-content-${phase === 0 ? 'qkv' : 'arcs'}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.45 / speed, ease: 'easeOut' }}
+              >
+                {phase === 0 && (
+                  <Phase1HeadContent
+                    yT={yT}
+                    yC={yC}
+                    i={i}
+                    accent={accent}
+                    rowX={HEAD_AREA_X + 80}
+                    rowW={HEAD_AREA_W - 84}
+                    speed={speed}
+                  />
+                )}
+                {phase >= 1 && (
+                  <Phase2HeadContent
+                    yT={yT}
+                    yC={yC}
+                    i={i}
+                    accent={accent}
+                    tokens={tokens}
+                    focused={FOCUSED}
+                    rowX={HEAD_AREA_X + 80}
+                    rowW={HEAD_AREA_W - 220}
+                    speed={speed}
+                  />
+                )}
+              </motion.g>
 
               {/* Mini output strip (4 cells) on the right of every head row */}
               {(() => {
@@ -4682,6 +4710,34 @@ export function VizMultiHead() {
                   strokeOpacity: { duration: 0.4 / speed },
                 }}
               />
+              {/* Continuous flow particle: head output → concat */}
+              {(() => {
+                const fromX = HEAD_AREA_X + HEAD_AREA_W
+                const fromY = yC
+                const ctrlX = (HEAD_AREA_X + HEAD_AREA_W + CONCAT_X) / 2
+                const ctrlY = yC
+                const toX = CONCAT_X
+                const toY = CONCAT_Y + (i + 0.5) * (CONCAT_H / 6)
+                return (
+                  <motion.circle
+                    r={2.4}
+                    fill={accent}
+                    initial={{ opacity: 0, cx: fromX, cy: fromY }}
+                    animate={{
+                      opacity: [0, 0.95, 0.95, 0],
+                      cx: [fromX, ctrlX, toX],
+                      cy: [fromY, ctrlY, toY],
+                    }}
+                    transition={{
+                      duration: 1.8 / speed,
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                      delay: (2.0 + i * 0.15) / speed,
+                      times: [0, 0.2, 0.85, 1],
+                    }}
+                  />
+                )
+              })()}
             </g>
           )
         })}
@@ -4828,6 +4884,41 @@ export function VizMultiHead() {
               fill="none"
             />
 
+            {/* Continuous flow: 6 colored particles streaming from concat
+                through W_O into the final output vector. Visualizes the
+                "concat → W_O → output" pipeline staying alive. */}
+            {Array.from({ length: 6 }).map((_, k) => {
+              const startY = CONCAT_Y + (k + 0.5) * (CONCAT_H / 6)
+              return (
+                <motion.circle
+                  key={`p3-flow-${k}`}
+                  r={2.8}
+                  fill={HEAD_COLORS[k]}
+                  initial={{
+                    cx: CONCAT_X + CONCAT_W,
+                    cy: startY,
+                    opacity: 0,
+                  }}
+                  animate={{
+                    cx: [
+                      CONCAT_X + CONCAT_W,
+                      WO_X + WO_W / 2,
+                      OUT_X + OUT_W / 2,
+                    ],
+                    cy: [startY, WO_Y + WO_H / 2, OUT_Y + OUT_H / 2],
+                    opacity: [0, 0.95, 0.95, 0.6, 0],
+                  }}
+                  transition={{
+                    duration: 2.4 / speed,
+                    repeat: Infinity,
+                    ease: 'easeInOut',
+                    delay: (1.0 + k * 0.22) / speed,
+                    times: [0, 0.18, 0.5, 0.82, 1],
+                  }}
+                />
+              )
+            })}
+
             {/* Final 384-d output vector — single, unified, glowing */}
             <motion.rect
               x={OUT_X - 6}
@@ -4947,6 +5038,7 @@ function Phase1HeadContent({
   accent,
   rowX,
   rowW,
+  speed,
 }: {
   yT: number
   yC: number
@@ -4954,6 +5046,7 @@ function Phase1HeadContent({
   accent: string
   rowX: number
   rowW: number
+  speed: number
 }) {
   const boxW = 38
   const boxH = 32
@@ -4961,9 +5054,18 @@ function Phase1HeadContent({
   const xStart = rowX + 30
   return (
     <g>
-      {/* Q, K, V boxes */}
+      {/* Q, K, V boxes — staggered spring-in per head */}
       {['Q', 'K', 'V'].map((label, k) => (
-        <g key={`qkv-${i}-${label}`}>
+        <motion.g
+          key={`qkv-${i}-${label}`}
+          initial={{ opacity: 0, scale: 0.7, y: -4 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{
+            duration: 0.4 / speed,
+            delay: ((i * 0.04) + k * 0.08) / speed,
+            ease: [0.22, 1.2, 0.36, 1],
+          }}
+        >
           <rect
             x={xStart + k * (boxW + boxGap)}
             y={yC - boxH / 2}
@@ -4987,7 +5089,7 @@ function Phase1HeadContent({
             {label}
             <tspan fontSize="9" dy="3">{i}</tspan>
           </text>
-        </g>
+        </motion.g>
       ))}
 
       {/* Arrow */}
@@ -5002,8 +5104,8 @@ function Phase1HeadContent({
         →
       </text>
 
-      {/* softmax attn box */}
-      <rect
+      {/* softmax attn box — fades in after Q/K/V then continuously breathes */}
+      <motion.rect
         x={xStart + 3 * (boxW + boxGap) + 26}
         y={yC - boxH / 2}
         width={68}
@@ -5013,6 +5115,25 @@ function Phase1HeadContent({
         stroke={accent}
         strokeOpacity={0.6}
         strokeWidth={1}
+        initial={{ opacity: 0 }}
+        animate={{
+          opacity: [0, 1, 0.8, 1],
+          strokeWidth: [1, 1.6, 1.2, 1.6],
+        }}
+        transition={{
+          opacity: {
+            duration: 2.4 / speed,
+            delay: (0.4 + i * 0.04) / speed,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          },
+          strokeWidth: {
+            duration: 2.4 / speed,
+            delay: (0.4 + i * 0.04) / speed,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          },
+        }}
       />
       <text
         x={xStart + 3 * (boxW + boxGap) + 26 + 34}
@@ -5048,6 +5169,32 @@ function Phase1HeadContent({
       >
         →
       </text>
+
+      {/* Flow particles: Q/K/V → softmax → output (continuous loop) */}
+      {Array.from({ length: 2 }).map((_, k) => (
+        <motion.circle
+          key={`flow-${i}-${k}`}
+          cy={yC}
+          r={2.6}
+          fill={accent}
+          opacity={0}
+          animate={{
+            cx: [
+              xStart + 3 * (boxW + boxGap) - 6,
+              xStart + 3 * (boxW + boxGap) + 26 + 34,
+              xStart + 3 * (boxW + boxGap) + 130,
+            ],
+            opacity: [0, 0.95, 0.95, 0],
+          }}
+          transition={{
+            duration: 2.0 / speed,
+            ease: 'easeInOut',
+            repeat: Infinity,
+            delay: (0.6 + i * 0.08 + k * 1.0) / speed,
+            times: [0, 0.2, 0.8, 1],
+          }}
+        />
+      ))}
     </g>
   )
 }
@@ -5128,7 +5275,9 @@ function Phase2HeadContent({
         )
       })}
 
-      {/* Attention arcs from focused → each attended position */}
+      {/* Attention arcs from focused → each attended position.
+          First draws in (pathLength 0→1), then continuously pulses
+          opacity + strokeWidth so the heads stay alive. */}
       {attended.map((j) => {
         const fromX = tokX(focused)
         const fromY = cellY
@@ -5136,23 +5285,74 @@ function Phase2HeadContent({
         const toY = cellY
         const arcHeight = 14 + (focused - j) * 2
         const ctrlY = fromY - arcHeight
+        const pathStr = `M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`
         return (
-          <motion.path
-            key={`mh-arc-${i}-${j}`}
-            d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
-            stroke={accent}
-            strokeWidth={1.4}
-            strokeOpacity={0.85}
-            fill="none"
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
+          <g key={`mh-arc-${i}-${j}`}>
+            {/* Initial draw-in */}
+            <motion.path
+              d={pathStr}
+              stroke={accent}
+              strokeWidth={1.4}
+              strokeOpacity={0.85}
+              fill="none"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{
+                duration: 0.5 / speed,
+                delay: (0.4 + i * 0.04 + j * 0.02) / speed,
+              }}
+            />
+            {/* Continuous pulse — kicks in after the initial draw */}
+            <motion.path
+              d={pathStr}
+              stroke={accent}
+              fill="none"
+              initial={{ opacity: 0, strokeWidth: 1.4 }}
+              animate={{
+                opacity: [0, 0.95, 0.45, 0.95],
+                strokeWidth: [1.4, 2.8, 1.6, 2.8],
+              }}
+              transition={{
+                duration: 2.4 / speed,
+                delay: (1.0 + i * 0.04) / speed,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
+          </g>
+        )
+      })}
+
+      {/* Tiny particle dot traveling along an arc — gives a "data flowing"
+          feel. Picks the longest arc per head if any. */}
+      {attended.length > 0 && (() => {
+        const j = attended[0]
+        const fromX = tokX(focused)
+        const fromY = cellY
+        const toX = tokX(j)
+        const arcHeight = 14 + (focused - j) * 2
+        const midX = (fromX + toX) / 2
+        const midY = fromY - arcHeight
+        return (
+          <motion.circle
+            r={2.4}
+            fill={accent}
+            initial={{ opacity: 0, cx: fromX, cy: fromY }}
+            animate={{
+              opacity: [0, 0.95, 0.95, 0],
+              cx: [fromX, midX, toX],
+              cy: [fromY, midY, fromY],
+            }}
             transition={{
-              duration: 0.5 / speed,
-              delay: (0.4 + i * 0.04 + j * 0.02) / speed,
+              duration: 1.6 / speed,
+              repeat: Infinity,
+              ease: 'easeInOut',
+              delay: (1.4 + i * 0.18) / speed,
+              times: [0, 0.15, 0.85, 1],
             }}
           />
         )
-      })}
+      })()}
     </g>
   )
 }
