@@ -4100,3 +4100,985 @@ export function AttentionSplitPane() {
     />
   )
 }
+
+
+/* =========================================================================
+ * Scene 12 — multi: "Six heads, in parallel."
+ *
+ * Three-beat structure per design feedback:
+ *
+ *   BEAT 1 — Split into 6 heads
+ *     Same input is projected six different ways. Each head has its own
+ *     W_Q, W_K, W_V. Show structural Q/K/V boxes inside each head row.
+ *
+ *   BEAT 2 — Heads learn different patterns
+ *     Each head's row shows a token strip with a different attention arc
+ *     pattern, plus a role label (prev-token, start-anchor, vowel-hook,
+ *     two-back, content, spread).
+ *
+ *   BEAT 3 — Concat + W_O → one output
+ *     Six head outputs flow right into a "concat" column, then through a
+ *     W_O box, emerging as one 384-d output vector. The payoff.
+ *
+ * Persistent across all 3 beats: the 6-head container, the residual/input
+ * column on the far left, the concat column, and the same focused token #3.
+ * ====================================================================== */
+
+const HEAD_COLORS = [
+  '#60a5fa', // head 0 - blue
+  '#a78bfa', // head 1 - violet
+  '#34d399', // head 2 - mint
+  '#f59e0b', // head 3 - amber
+  '#ec4899', // head 4 - pink
+  '#22d3ee', // head 5 - cyan
+]
+
+const HEAD_ROLES = [
+  { name: 'prev-token', blurb: 'Looks one step back.' },
+  { name: 'start-anchor', blurb: 'Anchors to the beginning.' },
+  { name: 'vowel-hook', blurb: 'Connects to nearby vowels.' },
+  { name: 'two-back', blurb: 'Attends two tokens back.' },
+  { name: 'content', blurb: 'Links semantically related tokens.' },
+  { name: 'spread', blurb: 'Distributes attention broadly.' },
+]
+
+// Per-head attention pattern: returns the set of "attended positions" for
+// the focused query at position f. Each head's pattern is different.
+function patternFor(headIdx: number, f: number, T: number): number[] {
+  switch (headIdx) {
+    case 0: // prev-token: just attends to previous
+      return f > 0 ? [f - 1] : []
+    case 1: // start-anchor: attends to position 0 + a couple early
+      return [0, 1].filter((p) => p < f)
+    case 2: // vowel-hook: attends to a few specific earlier positions
+      return [Math.max(0, f - 2), Math.max(0, f - 4)].filter(
+        (p, i, a) => p < f && a.indexOf(p) === i,
+      )
+    case 3: // two-back: attends two positions back
+      return f >= 2 ? [f - 2, f - 1] : f > 0 ? [0] : []
+    case 4: // content: attends to a couple semantically-relevant positions
+      return [Math.max(0, f - 3), Math.max(0, f - 5)].filter(
+        (p, i, a) => p < f && a.indexOf(p) === i,
+      )
+    case 5: // spread: attends broadly to all earlier positions
+      return Array.from({ length: f }).map((_, i) => i)
+    default:
+      return []
+  }
+}
+
+export function VizMultiHead() {
+  const speed = useSpeed()
+  const { prompt } = usePrompt()
+  const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
+  const T = tokens.length
+  const FOCUSED = Math.min(3, T - 1)
+
+  const PHASES = 3
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      8000 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // ── Geometry ──────────────────────────────────────────────────────────
+  // Container: x=140..1380, y=160..820
+  const CONTAINER_X = 140
+  const CONTAINER_Y = 160
+  const CONTAINER_W = 1240
+  const CONTAINER_H = 660
+
+  // Residual/input column on the far left
+  const RESID_X = 165
+  const RESID_Y = 240
+  const RESID_W = 50
+  const RESID_H = 460
+
+  // 6 head rows (stacked vertically)
+  const HEAD_AREA_X = 250
+  const HEAD_AREA_Y = 220
+  const HEAD_AREA_W = 700
+  const HEAD_AREA_H = 540
+  const HEAD_ROW_H = HEAD_AREA_H / 6 // 90
+  const HEAD_ROW_GAP = 4
+  const headRowY = (i: number) => HEAD_AREA_Y + i * HEAD_ROW_H
+
+  // Concat column on the right of head rows
+  const CONCAT_X = 990
+  const CONCAT_Y = 270
+  const CONCAT_W = 80
+  const CONCAT_H = 440
+
+  // W_O box (phase 3 only)
+  const WO_X = 1110
+  const WO_Y = 380
+  const WO_W = 90
+  const WO_H = 220
+
+  // Final 384-d output vector (phase 3 only)
+  const OUT_X = 1230
+  const OUT_Y = 360
+  const OUT_W = 130
+  const OUT_H = 260
+
+  return (
+    <div className="relative h-full w-full">
+      <svg viewBox="0 0 1400 1000" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="mh-glow"><feGaussianBlur stdDeviation="3" /></filter>
+          <filter id="mh-bloom" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
+        </defs>
+
+        {/* ────── Token strip ────── */}
+        <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.32em">
+          TOKENS
+        </text>
+        {tokens.map((ch, i) => {
+          const cellW = 32
+          const startX = 90
+          const x = startX + i * (cellW + 4)
+          const isFocused = i === FOCUSED
+          return (
+            <g key={`mh-tok-${i}`}>
+              {isFocused && (
+                <motion.rect
+                  x={x - 2} y={20} width={cellW + 4} height={36} rx={4}
+                  fill="rgba(236,72,153,0.22)"
+                  stroke={HEAD_COLORS[4]}
+                  strokeWidth={1.6}
+                  initial={{ opacity: 0.6 }}
+                  animate={{ opacity: [0.6, 1, 0.6] }}
+                  transition={{
+                    duration: 2 / speed,
+                    repeat: Infinity,
+                    ease: 'easeInOut',
+                  }}
+                />
+              )}
+              <rect x={x} y={22} width={cellW} height={32} rx={3}
+                fill="rgba(167,139,250,0.04)"
+                stroke="rgba(167,139,250,0.22)"
+                strokeWidth={1} />
+              <text x={x + cellW / 2} y={44} textAnchor="middle"
+                fontSize="14" fontFamily="var(--font-display)"
+                fontStyle="italic"
+                fill={isFocused ? '#fff' : 'rgba(255,255,255,0.55)'}>
+                {ch === ' ' ? '·' : ch}
+              </text>
+            </g>
+          )
+        })}
+        {/* T = number indicator */}
+        <text x={90 + tokens.length * 36 + 8} y={44}
+          fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+          {T}
+        </text>
+
+        {/* ────── Main container — BLOCK 0 · ATTENTION (MULTI-HEAD) ────── */}
+        <rect
+          x={CONTAINER_X}
+          y={CONTAINER_Y}
+          width={CONTAINER_W}
+          height={CONTAINER_H}
+          rx={8}
+          fill="rgba(8,8,11,0.45)"
+          stroke="rgba(167,139,250,0.32)"
+          strokeWidth={1.4}
+        />
+        <text
+          x={CONTAINER_X + CONTAINER_W / 2}
+          y={CONTAINER_Y + 24}
+          textAnchor="middle"
+          fontSize="11"
+          fontFamily="var(--font-mono)"
+          fill={ACCENT.dim}
+          letterSpacing="0.28em"
+        >
+          BLOCK 0  ·  ATTENTION (MULTI-HEAD)
+        </text>
+
+        {/* ────── Residual / input column ────── */}
+        <g>
+          <rect
+            x={RESID_X}
+            y={RESID_Y}
+            width={RESID_W}
+            height={RESID_H}
+            rx={4}
+            fill="rgba(96,165,250,0.06)"
+            stroke="rgba(96,165,250,0.45)"
+            strokeWidth={1.2}
+          />
+          <text x={RESID_X + RESID_W / 2} y={RESID_Y - 32} textAnchor="middle"
+            fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}
+            letterSpacing="0.18em">
+            residual /
+          </text>
+          <text x={RESID_X + RESID_W / 2} y={RESID_Y - 18} textAnchor="middle"
+            fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}
+            letterSpacing="0.18em">
+            input
+          </text>
+          {/* Cells */}
+          {Array.from({ length: 9 }).map((_, i) => (
+            <rect
+              key={`resid-cell-${i}`}
+              x={RESID_X + 4}
+              y={RESID_Y + 8 + i * 48}
+              width={RESID_W - 8}
+              height={42}
+              fill={`rgba(96,165,250,${0.18 + (i % 3) * 0.12})`}
+            />
+          ))}
+          <text x={RESID_X + RESID_W / 2} y={RESID_Y + RESID_H + 18}
+            textAnchor="middle"
+            fontSize="13" fontFamily="var(--font-display)" fontStyle="italic"
+            fill={ACCENT.dim}>
+            x
+          </text>
+          <text x={RESID_X + RESID_W / 2} y={RESID_Y + RESID_H + 36}
+            textAnchor="middle"
+            fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}
+            letterSpacing="0.18em">
+            384-d
+          </text>
+        </g>
+
+        {/* ────── Fan-out: residual → 6 head rows ────── */}
+        {Array.from({ length: 6 }).map((_, i) => {
+          const fromX = RESID_X + RESID_W
+          const fromY = RESID_Y + RESID_H / 2
+          const toX = HEAD_AREA_X - 4
+          const toY = headRowY(i) + HEAD_ROW_H / 2
+          return (
+            <motion.path
+              key={`fanout-${i}`}
+              d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2 + 8} ${toY}, ${toX} ${toY}`}
+              stroke={HEAD_COLORS[i]}
+              strokeWidth={1.8}
+              strokeOpacity={0.85}
+              fill="none"
+              strokeLinecap="round"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{
+                duration: 0.6 / speed,
+                delay: (0.3 + i * 0.08) / speed,
+              }}
+            />
+          )
+        })}
+
+        {/* ────── 6 head rows ────── */}
+        {Array.from({ length: 6 }).map((_, i) => {
+          const yT = headRowY(i)
+          const yC = yT + HEAD_ROW_H / 2
+          const yB = yT + HEAD_ROW_H - HEAD_ROW_GAP
+          const accent = HEAD_COLORS[i]
+          return (
+            <g key={`head-${i}`}>
+              {/* Head row outline */}
+              <rect
+                x={HEAD_AREA_X}
+                y={yT + 2}
+                width={HEAD_AREA_W}
+                height={HEAD_ROW_H - 4}
+                rx={4}
+                fill={`${accent}08`}
+                stroke={accent}
+                strokeWidth={1.2}
+                strokeOpacity={0.65}
+              />
+
+              {/* head label */}
+              <text
+                x={HEAD_AREA_X + 14}
+                y={yT + 22}
+                fontSize="13"
+                fontFamily="var(--font-mono)"
+                fill={accent}
+                letterSpacing="0.18em"
+              >
+                head {i}
+              </text>
+              <text
+                x={HEAD_AREA_X + 14}
+                y={yT + 38}
+                fontSize="9"
+                fontFamily="var(--font-mono)"
+                fill={ACCENT.dim}
+                letterSpacing="0.18em"
+              >
+                64-d
+              </text>
+
+              {/* Phase 2/3: role label inline */}
+              {phase >= 1 && (
+                <text
+                  x={HEAD_AREA_X + 14}
+                  y={yT + 60}
+                  fontSize="10"
+                  fontFamily="var(--font-display)"
+                  fontStyle="italic"
+                  fill={accent}
+                  opacity={0.85}
+                >
+                  {HEAD_ROLES[i].name}
+                </text>
+              )}
+
+              {/* Phase 1: Q/K/V boxes + softmax + output */}
+              {phase === 0 && (
+                <Phase1HeadContent
+                  yT={yT}
+                  yC={yC}
+                  i={i}
+                  accent={accent}
+                  rowX={HEAD_AREA_X + 80}
+                  rowW={HEAD_AREA_W - 84}
+                />
+              )}
+
+              {/* Phase 2 / 3: token row with attention arcs */}
+              {phase >= 1 && (
+                <Phase2HeadContent
+                  yT={yT}
+                  yC={yC}
+                  i={i}
+                  accent={accent}
+                  tokens={tokens}
+                  focused={FOCUSED}
+                  rowX={HEAD_AREA_X + 80}
+                  rowW={HEAD_AREA_W - 220}
+                  speed={speed}
+                />
+              )}
+
+              {/* Mini output strip (4 cells) on the right of every head row */}
+              {(() => {
+                const stripX = HEAD_AREA_X + HEAD_AREA_W - 100
+                const stripY = yC - 12
+                const cellCount = 4
+                const cellW = 22
+                return (
+                  <g>
+                    {Array.from({ length: cellCount }).map((_, c) => (
+                      <rect
+                        key={`strip-${i}-${c}`}
+                        x={stripX + c * (cellW + 2)}
+                        y={stripY}
+                        width={cellW}
+                        height={24}
+                        rx={2}
+                        fill={`${accent}${Math.round((0.30 + c * 0.12) * 255).toString(16).padStart(2, '0')}`}
+                        stroke={accent}
+                        strokeOpacity={0.55}
+                        strokeWidth={0.8}
+                      />
+                    ))}
+                  </g>
+                )
+              })()}
+
+              {/* Output → concat connector */}
+              <motion.path
+                d={`M ${HEAD_AREA_X + HEAD_AREA_W} ${yC} Q ${(HEAD_AREA_X + HEAD_AREA_W + CONCAT_X) / 2} ${yC}, ${CONCAT_X} ${CONCAT_Y + (i + 0.5) * (CONCAT_H / 6)}`}
+                stroke={accent}
+                strokeWidth={phase === 2 ? 2.2 : 1.4}
+                strokeOpacity={phase === 2 ? 0.95 : 0.55}
+                fill="none"
+                strokeLinecap="round"
+                initial={{ pathLength: 0 }}
+                animate={{
+                  pathLength: 1,
+                  strokeOpacity: phase === 2 ? 0.95 : 0.55,
+                }}
+                transition={{
+                  pathLength: { duration: 0.5 / speed, delay: (0.8 + i * 0.06) / speed },
+                  strokeOpacity: { duration: 0.4 / speed },
+                }}
+              />
+            </g>
+          )
+        })}
+
+        {/* ────── Concat column ────── */}
+        <g>
+          <rect
+            x={CONCAT_X}
+            y={CONCAT_Y}
+            width={CONCAT_W}
+            height={CONCAT_H}
+            rx={4}
+            fill={
+              phase === 2
+                ? 'rgba(167,139,250,0.18)'
+                : 'rgba(167,139,250,0.06)'
+            }
+            stroke={ACCENT.violet}
+            strokeWidth={phase === 2 ? 2 : 1.4}
+            strokeOpacity={phase === 2 ? 1 : 0.75}
+          />
+          <text
+            x={CONCAT_X + CONCAT_W / 2}
+            y={CONCAT_Y - 8}
+            textAnchor="middle"
+            fontSize="11"
+            fontFamily="var(--font-mono)"
+            fill={phase === 2 ? ACCENT.violet : ACCENT.dim}
+            letterSpacing="0.22em"
+          >
+            concat
+          </text>
+          {/* 6 colored bands inside concat (one per head) */}
+          {Array.from({ length: 6 }).map((_, i) => (
+            <rect
+              key={`concat-band-${i}`}
+              x={CONCAT_X + 6}
+              y={CONCAT_Y + 8 + i * ((CONCAT_H - 16) / 6)}
+              width={CONCAT_W - 12}
+              height={(CONCAT_H - 16) / 6 - 4}
+              fill={HEAD_COLORS[i]}
+              opacity={0.75}
+            />
+          ))}
+          <text
+            x={CONCAT_X + CONCAT_W / 2}
+            y={CONCAT_Y + CONCAT_H + 18}
+            textAnchor="middle"
+            fontSize="10"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.dim}
+            letterSpacing="0.18em"
+          >
+            384-d
+          </text>
+        </g>
+
+        {/* ────── Phase 3: W_O box + final output ────── */}
+        {phase === 2 && (
+          <motion.g
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6 / speed, delay: 0.4 / speed }}
+          >
+            {/* Concat → W_O arrow */}
+            <path
+              d={`M ${CONCAT_X + CONCAT_W + 4} ${CONCAT_Y + CONCAT_H / 2} L ${WO_X - 6} ${WO_Y + WO_H / 2}`}
+              stroke={ACCENT.violet}
+              strokeWidth={2}
+              strokeOpacity={0.85}
+              fill="none"
+              strokeLinecap="round"
+            />
+            <path
+              d={`M ${WO_X - 14} ${WO_Y + WO_H / 2 - 6} L ${WO_X - 4} ${WO_Y + WO_H / 2} L ${WO_X - 14} ${WO_Y + WO_H / 2 + 6}`}
+              stroke={ACCENT.violet}
+              strokeWidth={2}
+              fill="none"
+            />
+
+            {/* W_O box */}
+            <rect
+              x={WO_X}
+              y={WO_Y}
+              width={WO_W}
+              height={WO_H}
+              rx={4}
+              fill="rgba(167,139,250,0.10)"
+              stroke={ACCENT.violet}
+              strokeWidth={2}
+            />
+            {/* Mini grid hint inside W_O */}
+            {Array.from({ length: 6 }).map((_, r) =>
+              Array.from({ length: 4 }).map((_, c) => (
+                <rect
+                  key={`wo-${r}-${c}`}
+                  x={WO_X + 8 + c * 18}
+                  y={WO_Y + 30 + r * 28}
+                  width={16}
+                  height={26}
+                  fill="rgba(167,139,250,0.18)"
+                  stroke="rgba(167,139,250,0.3)"
+                  strokeWidth={0.5}
+                />
+              )),
+            )}
+            <text
+              x={WO_X + WO_W / 2}
+              y={WO_Y + 22}
+              textAnchor="middle"
+              fontSize="22"
+              fontFamily="var(--font-display)"
+              fontStyle="italic"
+              fill={ACCENT.violet}
+            >
+              W
+              <tspan fontSize="14" dy="6">O</tspan>
+            </text>
+            <text
+              x={WO_X + WO_W / 2}
+              y={WO_Y + WO_H + 18}
+              textAnchor="middle"
+              fontSize="9"
+              fontFamily="var(--font-mono)"
+              fill={ACCENT.dim}
+              letterSpacing="0.18em"
+            >
+              384 × 384
+            </text>
+
+            {/* W_O → final output arrow */}
+            <path
+              d={`M ${WO_X + WO_W + 4} ${WO_Y + WO_H / 2} L ${OUT_X - 6} ${OUT_Y + OUT_H / 2}`}
+              stroke={ACCENT.violet}
+              strokeWidth={2}
+              strokeOpacity={0.85}
+              fill="none"
+              strokeLinecap="round"
+            />
+            <path
+              d={`M ${OUT_X - 14} ${OUT_Y + OUT_H / 2 - 6} L ${OUT_X - 4} ${OUT_Y + OUT_H / 2} L ${OUT_X - 14} ${OUT_Y + OUT_H / 2 + 6}`}
+              stroke={ACCENT.violet}
+              strokeWidth={2}
+              fill="none"
+            />
+
+            {/* Final 384-d output vector — single, unified, glowing */}
+            <motion.rect
+              x={OUT_X - 6}
+              y={OUT_Y - 6}
+              width={OUT_W + 12}
+              height={OUT_H + 12}
+              rx={6}
+              fill="rgba(167,139,250,0.06)"
+              filter="url(#mh-bloom)"
+              animate={{ opacity: [0.4, 0.85, 0.4] }}
+              transition={{
+                duration: 3 / speed,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
+            <rect
+              x={OUT_X}
+              y={OUT_Y}
+              width={OUT_W}
+              height={OUT_H}
+              rx={4}
+              fill="rgba(167,139,250,0.10)"
+              stroke={ACCENT.violet}
+              strokeWidth={2.4}
+            />
+            {Array.from({ length: 12 }).map((_, i) => (
+              <rect
+                key={`out-cell-${i}`}
+                x={OUT_X + 4}
+                y={OUT_Y + 8 + i * ((OUT_H - 16) / 12)}
+                width={OUT_W - 8}
+                height={(OUT_H - 16) / 12 - 2}
+                fill={`rgba(167,139,250,${0.30 + (i % 3) * 0.18})`}
+              />
+            ))}
+            <text
+              x={OUT_X + OUT_W / 2}
+              y={OUT_Y - 14}
+              textAnchor="middle"
+              fontSize="11"
+              fontFamily="var(--font-mono)"
+              fill={ACCENT.violet}
+              letterSpacing="0.22em"
+            >
+              MHA OUTPUT
+            </text>
+            <text
+              x={OUT_X + OUT_W / 2}
+              y={OUT_Y + OUT_H + 18}
+              textAnchor="middle"
+              fontSize="10"
+              fontFamily="var(--font-mono)"
+              fill={ACCENT.dim}
+              letterSpacing="0.18em"
+            >
+              384-d
+            </text>
+          </motion.g>
+        )}
+
+        {/* ────── Dimension breakdown ribbon (bottom of scene) ────── */}
+        <g transform={`translate(${CONTAINER_X + 20}, ${CONTAINER_Y + CONTAINER_H + 24})`}>
+          <text x={0} y={0} fontSize="10" fontFamily="var(--font-mono)"
+            fill={ACCENT.dim} letterSpacing="0.22em">
+            DIMS
+          </text>
+          <text x={70} y={0} fontSize="11" fontFamily="var(--font-mono)"
+            fill="rgba(255,255,255,0.85)">
+            input{' '}
+            <tspan fill={ACCENT.violet}>384</tspan>
+            {'  →  split into '}
+            <tspan fill={HEAD_COLORS[1]}>6 heads</tspan>
+            {'  →  '}
+            <tspan fill={HEAD_COLORS[3]}>64-d</tspan>
+            {' each  →  concat back to '}
+            <tspan fill={ACCENT.violet}>384</tspan>
+          </text>
+        </g>
+
+        {/* ────── Phase summary strip at bottom ────── */}
+        <g>
+          {[
+            { letter: '1', text: 'split into 6 heads' },
+            { letter: '2', text: 'each learns a different pattern' },
+            { letter: '3', text: 'concat → W_O → 384-d output' },
+          ].map((s, i) => {
+            const xStart = CONTAINER_X + 20 + i * 420
+            const isActive = phase === i
+            return (
+              <g key={`summary-${i}`}>
+                <text
+                  x={xStart}
+                  y={970}
+                  fontSize="11"
+                  fontFamily="var(--font-mono)"
+                  fill={isActive ? ACCENT.violet : 'rgba(255,255,255,0.4)'}
+                  letterSpacing="0.18em"
+                  fontWeight={isActive ? 600 : 400}
+                >
+                  ({s.letter}) {s.text}
+                </text>
+              </g>
+            )
+          })}
+        </g>
+      </svg>
+    </div>
+  )
+}
+
+/* ─────────── Phase 1 head content: Q/K/V boxes + softmax + arrow ─────────── */
+function Phase1HeadContent({
+  yT,
+  yC,
+  i,
+  accent,
+  rowX,
+  rowW,
+}: {
+  yT: number
+  yC: number
+  i: number
+  accent: string
+  rowX: number
+  rowW: number
+}) {
+  const boxW = 38
+  const boxH = 32
+  const boxGap = 8
+  const xStart = rowX + 30
+  return (
+    <g>
+      {/* Q, K, V boxes */}
+      {['Q', 'K', 'V'].map((label, k) => (
+        <g key={`qkv-${i}-${label}`}>
+          <rect
+            x={xStart + k * (boxW + boxGap)}
+            y={yC - boxH / 2}
+            width={boxW}
+            height={boxH}
+            rx={3}
+            fill={`${accent}10`}
+            stroke={accent}
+            strokeWidth={1.2}
+            strokeOpacity={0.7}
+          />
+          <text
+            x={xStart + k * (boxW + boxGap) + boxW / 2}
+            y={yC + 5}
+            textAnchor="middle"
+            fontSize="14"
+            fontFamily="var(--font-display)"
+            fontStyle="italic"
+            fill={accent}
+          >
+            {label}
+            <tspan fontSize="9" dy="3">{i}</tspan>
+          </text>
+        </g>
+      ))}
+
+      {/* Arrow */}
+      <text
+        x={xStart + 3 * (boxW + boxGap) + 4}
+        y={yC + 5}
+        fontSize="14"
+        fontFamily="var(--font-mono)"
+        fill={accent}
+        opacity={0.7}
+      >
+        →
+      </text>
+
+      {/* softmax attn box */}
+      <rect
+        x={xStart + 3 * (boxW + boxGap) + 26}
+        y={yC - boxH / 2}
+        width={68}
+        height={boxH}
+        rx={3}
+        fill={`${accent}08`}
+        stroke={accent}
+        strokeOpacity={0.6}
+        strokeWidth={1}
+      />
+      <text
+        x={xStart + 3 * (boxW + boxGap) + 26 + 34}
+        y={yC - 1}
+        textAnchor="middle"
+        fontSize="9"
+        fontFamily="var(--font-mono)"
+        fill={accent}
+        opacity={0.85}
+      >
+        softmax
+      </text>
+      <text
+        x={xStart + 3 * (boxW + boxGap) + 26 + 34}
+        y={yC + 11}
+        textAnchor="middle"
+        fontSize="9"
+        fontFamily="var(--font-mono)"
+        fill={accent}
+        opacity={0.85}
+      >
+        attn
+      </text>
+
+      {/* Arrow to output */}
+      <text
+        x={xStart + 3 * (boxW + boxGap) + 100}
+        y={yC + 5}
+        fontSize="14"
+        fontFamily="var(--font-mono)"
+        fill={accent}
+        opacity={0.7}
+      >
+        →
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Phase 2/3 head content: token row + attention arcs ─────────── */
+function Phase2HeadContent({
+  yT,
+  yC,
+  i,
+  accent,
+  tokens,
+  focused,
+  rowX,
+  rowW,
+  speed,
+}: {
+  yT: number
+  yC: number
+  i: number
+  accent: string
+  tokens: string[]
+  focused: number
+  rowX: number
+  rowW: number
+  speed: number
+}) {
+  const T = tokens.length
+  const cellW = (rowW - 20) / T
+  const cellH = 22
+  const cellY = yC - cellH / 2 + 6
+  const tokX = (j: number) => rowX + 16 + j * cellW + cellW / 2
+
+  const attended = patternFor(i, focused, T)
+
+  return (
+    <g>
+      {/* Token row */}
+      {tokens.map((ch, j) => {
+        const isFocused = j === focused
+        const isAttended = attended.includes(j)
+        const x = rowX + 16 + j * cellW
+        return (
+          <g key={`mh-tok-${i}-${j}`}>
+            <rect
+              x={x}
+              y={cellY}
+              width={cellW - 1.5}
+              height={cellH}
+              rx={2}
+              fill={
+                isFocused
+                  ? `${accent}28`
+                  : isAttended
+                    ? `${accent}14`
+                    : 'rgba(255,255,255,0.02)'
+              }
+              stroke={
+                isFocused
+                  ? accent
+                  : isAttended
+                    ? accent
+                    : 'rgba(255,255,255,0.18)'
+              }
+              strokeWidth={isFocused ? 1.8 : isAttended ? 1.2 : 0.6}
+              strokeOpacity={isFocused ? 1 : isAttended ? 0.85 : 0.45}
+            />
+            <text
+              x={x + (cellW - 1.5) / 2}
+              y={cellY + cellH - 6}
+              textAnchor="middle"
+              fontSize="11"
+              fontFamily="var(--font-mono)"
+              fill={isFocused ? '#fff' : isAttended ? '#fff' : 'rgba(255,255,255,0.45)'}
+            >
+              {ch === ' ' ? '·' : ch}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* Attention arcs from focused → each attended position */}
+      {attended.map((j) => {
+        const fromX = tokX(focused)
+        const fromY = cellY
+        const toX = tokX(j)
+        const toY = cellY
+        const arcHeight = 14 + (focused - j) * 2
+        const ctrlY = fromY - arcHeight
+        return (
+          <motion.path
+            key={`mh-arc-${i}-${j}`}
+            d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
+            stroke={accent}
+            strokeWidth={1.4}
+            strokeOpacity={0.85}
+            fill="none"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{
+              duration: 0.5 / speed,
+              delay: (0.4 + i * 0.04 + j * 0.02) / speed,
+            }}
+          />
+        )
+      })}
+    </g>
+  )
+}
+
+/* ─────────── Scene 12 wrapper ─────────── */
+export function MultiHeadSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 3
+  const phaseLabels = [
+    'split into 6 heads',
+    'different patterns',
+    'concat → W_O → output',
+  ]
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      8000 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // Per-phase right-pane content
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      The same input is projected six different ways. Each head gets its own{' '}
+      <em>W_Q</em>, <em>W_K</em>, <em>W_V</em>.
+    </>,
+    <>
+      Each head learns to attend to a different relation — previous token,
+      sentence start, vowels, two-back, content, broad spread.
+    </>,
+    <>
+      Six 64-dim outputs are concatenated, then a final{' '}
+      <em>W_O</em> matrix mixes them back into a single 384-dim stream.
+    </>,
+  ]
+
+  const equationByPhase: { label: string; body: ReactNode }[] = [
+    {
+      label: 'six independent heads',
+      body: (
+        <>
+          head<sub>i</sub> = Attn<sub>i</sub>(x)
+          <br />
+          <span style={{ fontSize: '0.78em', opacity: 0.72 }}>
+            each head has its own W<sub>Q,i</sub>, W<sub>K,i</sub>, W<sub>V,i</sub>
+          </span>
+        </>
+      ),
+    },
+    {
+      label: 'heads specialize',
+      body: (
+        <>
+          head 0 prev-token · head 1 start-anchor
+          <br />
+          head 2 vowel-hook · head 3 two-back
+          <br />
+          head 4 content · head 5 spread
+        </>
+      ),
+    },
+    {
+      label: 'multi-head attention',
+      body: (
+        <>
+          MHA(x) = W<sub>O</sub> · concat(head<sub>1</sub>, …, head<sub>6</sub>)
+        </>
+      ),
+    },
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'All six heads run in parallel on the same input. Width is split: d_model = 384, h = 6, d_head = 64. So 6 × 64 = 384 — same total work as one big head, but with six different learned views.',
+    'Different heads tend to specialize during training — some attend nearby, some far back, some by syntax, some by content. The patterns shown are illustrative; trained heads vary by model.',
+    'W_O is a learned 384 × 384 matrix. Without it, the six head streams would just sit side by side. W_O lets them interact and produces the final per-token update added to the residual stream.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizMultiHead />}
+      text={{
+        kicker: ACT2_KICKER,
+        title: 'Six heads, in parallel.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.violet,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.violet}
+          />
+        ),
+        stats: [
+          { label: 'd_model', value: '384', color: ACCENT.violet },
+          { label: 'heads', value: '6', color: '#a78bfa' },
+          { label: 'd_head', value: '64', color: '#f59e0b' },
+          { label: 'W_O params', value: '147 K' },
+        ],
+        equation: equationByPhase[phase],
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}

@@ -64,6 +64,7 @@ import {
   LayerNormSplitPane,
   QKVSplitPane,
   AttentionSplitPane,
+  MultiHeadSplitPane,
 } from './act2Scenes'
 
 const ACCENT = {
@@ -307,8 +308,8 @@ This is the mechanism that lets "the animal didn't cross the street because IT w
     title: 'Six heads in parallel.',
     caption:
       'Same attention machinery, six times, each with its own W_q, W_k, W_v and its own learned pattern.',
-    accent: ACCENT.pink,
-    durationMs: 21000,
+    accent: ACCENT.violet,
+    durationMs: 26000,
     promptAware: true,
     part: 'attention',
     details: `One attention head only learns one pattern. Real models run 6–32 heads in parallel, each with its own Q, K, V matrices. Each head can specialize — one on syntax, one on coreference, one on positional distance.
@@ -316,7 +317,8 @@ This is the mechanism that lets "the animal didn't cross the street because IT w
 After all heads compute their output vectors, concatenate them into one wide vector, then apply one more linear projection (W_O) to mix the heads and return to d_model dimensions.
 
 Empirically, the heads DO specialize. Different heads attend to different kinds of relations, and you can visualize the patterns per head.`,
-    render: () => <PanelThenScene panel={<PanelMulti />} scene={<SceneMultiHead />} />,
+    render: () => <MultiHeadSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   // FFN sub-section — structure first, then interpretation, then activation detail
   {
