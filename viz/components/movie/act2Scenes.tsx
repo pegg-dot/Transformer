@@ -2263,8 +2263,16 @@ export function VizAttention() {
           speed={speed}
         />
 
-        {/* ────── Phase-specific teaching viz on the right ────── */}
-        <g>
+        {/* ────── Phase-specific teaching viz on the right ──────
+            Wrapped in motion.g keyed on phase so the entire phase content
+            crossfades on transition. Each phase's internal animations
+            re-trigger on remount (initial → animate). */}
+        <motion.g
+          key={`phase-${phase}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5 / speed, ease: 'easeOut' }}
+        >
           {phase === 0 && (
             <PhaseA tokens={tokens} focused={FOCUSED} speed={speed} />
           )}
@@ -2293,7 +2301,7 @@ export function VizAttention() {
               softmaxRow={softmaxRow}
             />
           )}
-        </g>
+        </motion.g>
 
         {/* ────── Phase summary strip at bottom (active letter highlighted) ────── */}
         <PhaseSummary phase={phase} />
@@ -3132,16 +3140,43 @@ function PhaseB({
               {r}
             </text>
 
-            {/* Active row arrow indicator */}
+            {/* Active row arrow indicator — pulsing */}
             {isFocusedRow && (
-              <text
+              <motion.text
                 x={matrixX - 56}
                 y={matrixY + r * cellH + cellH / 2 + 5}
                 fontSize="14"
                 fill={COL_K_ATT}
+                animate={{ x: [matrixX - 56, matrixX - 50, matrixX - 56] }}
+                transition={{
+                  duration: 1.4 / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
               >
                 →
-              </text>
+              </motion.text>
+            )}
+
+            {/* Active row breathing halo */}
+            {isFocusedRow && (
+              <motion.rect
+                x={matrixX - 4}
+                y={matrixY + r * cellH - 2}
+                width={tokens.length * cellW + 8}
+                height={cellH + 4}
+                rx={3}
+                fill="none"
+                stroke={COL_K_ATT}
+                strokeWidth={2.4}
+                initial={{ opacity: 0.4 }}
+                animate={{ opacity: [0.4, 1, 0.4] }}
+                transition={{
+                  duration: 2 / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+              />
             )}
 
             {/* Cells */}
@@ -3153,7 +3188,15 @@ function PhaseB({
                   ? rawScoresRow[c]
                   : Math.sin(r * 1.1 + c * 0.7) * 1.1
               return (
-                <g key={`b-cell-${r}-${c}`}>
+                <motion.g
+                  key={`b-cell-${r}-${c}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{
+                    duration: 0.3 / speed,
+                    delay: ((r * 0.05 + c * 0.015)) / speed,
+                  }}
+                >
                   <rect
                     x={matrixX + c * cellW}
                     y={matrixY + r * cellH}
@@ -3192,7 +3235,7 @@ function PhaseB({
                   >
                     {masked ? '—' : score!.toFixed(2)}
                   </text>
-                </g>
+                </motion.g>
               )
             })}
           </g>
@@ -3329,7 +3372,15 @@ function PhaseC({
         const isFocused = j === focused
         const v = isMasked ? '-∞' : rawScoresRow[j].toFixed(2)
         return (
-          <g key={`raw-${j}`}>
+          <motion.g
+            key={`raw-${j}`}
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.35 / speed,
+              delay: (j * 0.04) / speed,
+            }}
+          >
             <rect
               x={x}
               y={RAW_Y}
@@ -3378,7 +3429,26 @@ function PhaseC({
             >
               {j}
             </text>
-          </g>
+            {/* Active column pulsing outline */}
+            {isFocused && (
+              <motion.rect
+                x={x - 2}
+                y={RAW_Y - 2}
+                width={cellW + 2}
+                height={cellH + 4}
+                rx={4}
+                fill="none"
+                stroke={COL_K_ATT}
+                strokeWidth={2.4}
+                animate={{ opacity: [0.4, 1, 0.4] }}
+                transition={{
+                  duration: 1.6 / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+              />
+            )}
+          </motion.g>
         )
       })}
 
@@ -3423,13 +3493,22 @@ function PhaseC({
         <tspan fill={COL_K_ATT}>{focused}</tspan>)
       </text>
 
-      {/* Weights row */}
+      {/* Weights row — staggered fade-in after softmax animates */}
       {tokens.map((_, j) => {
         const x = X0 + 12 + j * cellW
         const w = softmaxRow[j] || 0
         const isFocused = j === focused
         return (
-          <g key={`wts-${j}`}>
+          <motion.g
+            key={`wts-${j}`}
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{
+              duration: 0.4 / speed,
+              delay: (1.6 + j * 0.04) / speed,
+              ease: [0.22, 1.2, 0.36, 1],
+            }}
+          >
             <rect
               x={x}
               y={WTS_Y}
@@ -3460,9 +3539,50 @@ function PhaseC({
             >
               {j}
             </text>
-          </g>
+            {/* Active column pulse */}
+            {isFocused && (
+              <motion.rect
+                x={x - 2}
+                y={WTS_Y - 2}
+                width={cellW + 2}
+                height={cellH + 4}
+                rx={4}
+                fill="none"
+                stroke={COL_K_ATT}
+                strokeWidth={2.4}
+                animate={{ opacity: [0.4, 1, 0.4] }}
+                transition={{
+                  duration: 1.6 / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+              />
+            )}
+          </motion.g>
         )
       })}
+
+      {/* Flow particles from raw row → weights row (looping) */}
+      {Array.from({ length: 5 }).map((_, k) => (
+        <motion.circle
+          key={`c-flow-${k}`}
+          cx={X0 + 12 + (T * cellW) / 2 + 50}
+          r={3}
+          fill={COL_Q_ATT}
+          opacity={0}
+          animate={{
+            cy: [RAW_Y + cellH, WTS_Y - 4],
+            opacity: [0, 0.95, 0.95, 0],
+          }}
+          transition={{
+            duration: 1.4 / speed,
+            ease: 'easeIn',
+            repeat: Infinity,
+            delay: (1.0 + k * 0.25) / speed,
+            times: [0, 0.15, 0.85, 1],
+          }}
+        />
+      ))}
 
       {/* sum = 1.00 underline */}
       <line
@@ -3591,7 +3711,39 @@ function PhaseD({
         const isHero = j === 3 // mockup highlights w[i,3]
         const isEllipsis = rowIdx === 6 && visibleIdx[6] === tokens.length - 1
         return (
-          <g key={`d-row-${j}`}>
+          <motion.g
+            key={`d-row-${j}`}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{
+              duration: 0.4 / speed,
+              delay: (rowIdx * 0.1) / speed,
+              ease: 'easeOut',
+            }}
+          >
+            {/* Hero row breathing halo */}
+            {isHero && (
+              <motion.rect
+                x={X_WT - 6}
+                y={yRow - 6}
+                width={X_OUT + COL_W_VEC + 16 - X_WT + 6}
+                height={44}
+                rx={6}
+                fill="none"
+                stroke={COL_K_ATT}
+                strokeWidth={1.4}
+                strokeOpacity={0.4}
+                animate={{
+                  opacity: [0.3, 0.85, 0.3],
+                  strokeWidth: [1.4, 2.2, 1.4],
+                }}
+                transition={{
+                  duration: 2.4 / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+              />
+            )}
             {/* Weight label box */}
             <rect
               x={X_WT}
@@ -3765,7 +3917,33 @@ function PhaseD({
                 </text>
               </g>
             )}
-          </g>
+          </motion.g>
+        )
+      })}
+
+      {/* Flow particles along × multiplier arrows — green dots streaming
+          from V vectors into the weighted-V output column. */}
+      {visibleIdx.slice(0, 5).map((j, rowIdx) => {
+        const yLane = Y_TOP + rowIdx * ROW_H + 16
+        return (
+          <motion.circle
+            key={`d-flow-${j}`}
+            cy={yLane}
+            r={3.2}
+            fill={COL_V_ATT}
+            opacity={0}
+            animate={{
+              cx: [X_VEC + 200, X_OUT - 4],
+              opacity: [0, 0.95, 0.95, 0],
+            }}
+            transition={{
+              duration: 1.4 / speed,
+              ease: 'easeInOut',
+              repeat: Infinity,
+              delay: (1.0 + rowIdx * 0.18) / speed,
+              times: [0, 0.18, 0.82, 1],
+            }}
+          />
         )
       })}
 
