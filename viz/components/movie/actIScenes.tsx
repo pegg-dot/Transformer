@@ -1451,6 +1451,14 @@ export function VizEmbedding() {
                 <motion.rect
                   x={100} y={matrixY + i * 50}
                   width={70} height={36} rx={3}
+                  fill="rgba(255,255,255,0.015)"
+                  stroke="rgba(255,255,255,0.10)"
+                  opacity={0.42}
+                  initial={{
+                    fill: 'rgba(255,255,255,0.015)',
+                    stroke: 'rgba(255,255,255,0.10)',
+                    opacity: 0.42,
+                  }}
                   animate={{
                     fill: isActive
                       ? 'rgba(167,139,250,0.28)'
@@ -1466,6 +1474,9 @@ export function VizEmbedding() {
                   textAnchor="middle"
                   fontSize={isActive ? 17 : 14}
                   fontFamily="var(--font-mono)"
+                  fill="rgba(255,255,255,0.45)"
+                  opacity={0.55}
+                  initial={{ fill: 'rgba(255,255,255,0.45)', opacity: 0.55 }}
                   animate={{
                     fill: isActive ? '#fff' : 'rgba(255,255,255,0.45)',
                     opacity: isActive ? 1 : 0.55,
@@ -1938,6 +1949,8 @@ export function VizPositional() {
         {/* Active position sampling window — rounded violet rectangle that
             spans the wave bank vertically. */}
         <motion.rect
+          x={posX(pos) - 30}
+          initial={{ x: posX(pos) - 30 }}
           animate={{ x: posX(pos) - 30 }}
           transition={{ type: 'spring', stiffness: 140, damping: 22 }}
           y={WAVE_BASE_Y - 26}
@@ -1998,7 +2011,10 @@ export function VizPositional() {
                     key={`dot-${w}-${p}`}
                     cx={cx}
                     cy={cy}
+                    r={2.6}
                     fill={waveColors[w]}
+                    opacity={0.45}
+                    initial={{ r: 2.6, opacity: 0.45 }}
                     animate={{
                       r: isActive ? 5 : 2.6,
                       opacity: isActive ? 1 : 0.45,
@@ -2050,6 +2066,9 @@ export function VizPositional() {
             textAnchor="middle"
             fontSize="14"
             fontFamily="var(--font-mono)"
+            fill={ACCENT.dim}
+            opacity={0.55}
+            initial={{ fill: ACCENT.dim, opacity: 0.55 }}
             animate={{
               fill: p === pos ? ACCENT.violet : ACCENT.dim,
               opacity: p === pos ? 1 : 0.55,
@@ -2071,6 +2090,7 @@ export function VizPositional() {
         </text>
         {Array.from({ length: NUM_WAVES }).map((_, w) => {
           const v = sampleValue(pos, w)
+          const cellColor = colorFor(v, 'wave', w)
           return (
             <motion.rect
               key={`mini-${w}-${pos}`}
@@ -2078,9 +2098,10 @@ export function VizPositional() {
               y={MINI_PE_Y + w * MINI_PE_CELL_H}
               width={MINI_PE_W}
               height={MINI_PE_CELL_H - 1}
-              initial={{ opacity: 0.3 }}
+              fill={cellColor}
+              initial={{ opacity: 0.3, fill: cellColor }}
               animate={{
-                fill: colorFor(v, 'wave', w),
+                fill: cellColor,
                 opacity: 1,
               }}
               transition={{ duration: 0.4 }}
@@ -2218,21 +2239,25 @@ export function VizPositional() {
           strokeWidth={1.4}
           rx={3}
         />
-        {Array.from({ length: NUM_DIMS }).map((_, d) => (
+        {Array.from({ length: NUM_DIMS }).map((_, d) => {
+          const peColor = colorFor(peValue(pos, d), 'wave', d)
+          return (
           <motion.rect
             key={`pe-${d}-${pos}`}
             x={X_PE + 1}
             y={OPS_TOP_Y + d * CELL_H + 1}
             width={VEC_W - 2}
             height={CELL_H - 2}
-            initial={{ opacity: 0.5 }}
+            fill={peColor}
+            initial={{ opacity: 0.5, fill: peColor }}
             animate={{
-              fill: colorFor(peValue(pos, d), 'wave', d),
+              fill: peColor,
               opacity: 1,
             }}
             transition={{ duration: 0.4 / speed, delay: d * 0.015 / speed }}
           />
-        ))}
+          )
+        })}
 
         {/* = sign */}
         <text
@@ -2292,6 +2317,7 @@ export function VizPositional() {
         />
         {Array.from({ length: NUM_DIMS }).map((_, d) => {
           const v = inputValue(pos, d)
+          const inColor = colorFor(v)
           return (
             <motion.rect
               key={`in-${d}-${pos}`}
@@ -2299,9 +2325,10 @@ export function VizPositional() {
               y={OPS_TOP_Y + d * CELL_H + 1}
               width={VEC_W - 2}
               height={CELL_H - 2}
-              initial={{ opacity: 0 }}
+              fill={inColor}
+              initial={{ opacity: 0, fill: inColor }}
               animate={{
-                fill: colorFor(v),
+                fill: inColor,
                 opacity: 1,
               }}
               transition={{
