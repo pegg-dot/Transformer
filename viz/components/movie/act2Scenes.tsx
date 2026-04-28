@@ -91,11 +91,14 @@ export function VizAct2Intro() {
           THE FULL STACK
         </text>
 
-        {/* ────── Token strip ────── */}
+        {/* ────── Token strip ──────
+            The tokens at the top connect down into the input slab via a
+            funneling band — visualizes "these N tokens have already become
+            the [T, d_model] slab that's about to enter Block 0." */}
         <g>
           <text x={20} y={86} fontSize="10" fontFamily="var(--font-mono)"
             fill={ACCENT.violet} letterSpacing="0.22em" opacity="0.85">
-            tokens flowing in ▸
+            tokens already in slab ▸
           </text>
           {tokens.map((ch, i) => {
             const cellW = 32
@@ -125,6 +128,65 @@ export function VizAct2Intro() {
               </motion.g>
             )
           })}
+
+          {/* Funnel — converging dashed lines from the token strip down into
+              the slab's left face, showing the tokens are now the slab. */}
+          {(() => {
+            const cellW = 32
+            const startX = 220
+            const tokenStripBottom = 102
+            const slabLeft = 20
+            const slabTop = heroCenterY - 50
+            const slabBot = heroCenterY + 50
+            const tokenLeft = startX
+            const tokenRight = startX + tokens.length * (cellW + 4) - 4
+            return (
+              <motion.g
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.45 }}
+                transition={{ delay: 1.0 / speed, duration: 0.6 / speed }}
+              >
+                {/* Funnel envelope — from token-strip bottom edge to slab left edge */}
+                <path
+                  d={`M ${tokenLeft} ${tokenStripBottom} L ${slabLeft} ${slabTop} L ${slabLeft} ${slabBot} L ${tokenRight} ${tokenStripBottom} Z`}
+                  fill="rgba(167,139,250,0.04)"
+                  stroke={ACCENT.violet}
+                  strokeOpacity={0.18}
+                  strokeWidth={0.8}
+                />
+                {/* A few thin guide rays so the funnel reads as "tokens → slab" */}
+                {[0, 0.33, 0.66, 1].map((t, i) => {
+                  const tx = tokenLeft + t * (tokenRight - tokenLeft)
+                  const sy = slabTop + t * (slabBot - slabTop)
+                  return (
+                    <line
+                      key={`funnel-${i}`}
+                      x1={tx}
+                      y1={tokenStripBottom + 2}
+                      x2={slabLeft}
+                      y2={sy}
+                      stroke={ACCENT.violet}
+                      strokeOpacity={0.32}
+                      strokeDasharray="2 4"
+                      strokeWidth={0.9}
+                    />
+                  )
+                })}
+                {/* Tiny "T tokens → [T, d_model]" label */}
+                <text
+                  x={(tokenLeft + slabLeft) / 2}
+                  y={(tokenStripBottom + slabTop) / 2 - 4}
+                  fontSize="9"
+                  fontFamily="var(--font-mono)"
+                  fill={ACCENT.violet}
+                  letterSpacing="0.18em"
+                  opacity={0.75}
+                >
+                  T tokens
+                </text>
+              </motion.g>
+            )
+          })()}
         </g>
 
         {/* ────── Inflow slab — arriving at Block 0's left intake ────── */}
@@ -177,7 +239,7 @@ export function VizAct2Intro() {
           })}
           {/* Slab → Block 0 arrow */}
           <motion.path
-            d={`M 178 ${heroCenterY} L 200 ${heroCenterY}`}
+            d={`M 178 ${heroCenterY} L ${heroBlock.x - 4} ${heroCenterY}`}
             stroke={ACCENT.violet}
             strokeWidth={2.5}
             strokeLinecap="round"
@@ -187,6 +249,76 @@ export function VizAct2Intro() {
             transition={{ duration: 0.5 / speed, delay: 1.6 / speed }}
           />
         </motion.g>
+
+        {/* ────── Block 0 intake slot — glowing rectangular doorway on the
+            slab-side face. Pulses + halo so the slab handoff feels physical. */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.4 / speed, duration: 0.5 / speed }}
+        >
+          {/* Glow halo around the intake */}
+          <motion.rect
+            x={heroBlock.x - 8}
+            y={heroCenterY - 90}
+            width={20}
+            height={180}
+            fill="rgba(167,139,250,0.45)"
+            filter="url(#act2-bloom)"
+            animate={{ opacity: [0.45, 0.95, 0.45] }}
+            transition={{
+              duration: 2.4 / speed,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+          {/* Intake slot — bright violet edge */}
+          <line
+            x1={heroBlock.x}
+            x2={heroBlock.x}
+            y1={heroCenterY - 90}
+            y2={heroCenterY + 90}
+            stroke={ACCENT.violet}
+            strokeWidth={3.5}
+            strokeOpacity={0.95}
+          />
+          {/* Top + bottom caps */}
+          <line x1={heroBlock.x - 4} x2={heroBlock.x + 6}
+            y1={heroCenterY - 90} y2={heroCenterY - 90}
+            stroke={ACCENT.violet} strokeWidth={2.4} strokeOpacity={0.85} />
+          <line x1={heroBlock.x - 4} x2={heroBlock.x + 6}
+            y1={heroCenterY + 90} y2={heroCenterY + 90}
+            stroke={ACCENT.violet} strokeWidth={2.4} strokeOpacity={0.85} />
+        </motion.g>
+
+        {/* ────── Motion-trail particles — looping flow from slab → intake ────── */}
+        {Array.from({ length: 8 }).map((_, i) => {
+          const lane = i % 4
+          const colors = [
+            ACCENT.violet, ACCENT.cyan, ACCENT.mint, ACCENT.amber,
+          ]
+          const yLane = heroCenterY - 60 + lane * 40
+          return (
+            <motion.circle
+              key={`flow-${i}`}
+              r={2.6}
+              cy={yLane}
+              fill={colors[lane]}
+              opacity={0.85}
+              animate={{
+                cx: [40, heroBlock.x + 10],
+                opacity: [0, 0.95, 0.95, 0],
+              }}
+              transition={{
+                duration: 2.2 / speed,
+                ease: 'easeOut',
+                repeat: Infinity,
+                delay: 1.8 / speed + (i * 0.18) / speed,
+                times: [0, 0.15, 0.85, 1],
+              }}
+            />
+          )
+        })}
 
         {/* ────── "[T, d_model] → Block 0" label ────── */}
         <motion.text
@@ -254,26 +386,26 @@ export function VizAct2Intro() {
                 {/* Top face */}
                 <path
                   d={topPath}
-                  fill={isHero ? 'rgba(167,139,250,0.10)' : 'rgba(167,139,250,0.04)'}
+                  fill={isHero ? 'rgba(167,139,250,0.14)' : 'rgba(167,139,250,0.04)'}
                   stroke={ACCENT.violet}
-                  strokeWidth={isHero ? 1.6 : 0.8}
-                  strokeOpacity={isHero ? 0.85 : 0.45}
+                  strokeWidth={isHero ? 2 : 0.8}
+                  strokeOpacity={isHero ? 1 : 0.45}
                 />
                 {/* Side face */}
                 <path
                   d={sidePath}
-                  fill={isHero ? 'rgba(167,139,250,0.06)' : 'rgba(167,139,250,0.02)'}
+                  fill={isHero ? 'rgba(167,139,250,0.08)' : 'rgba(167,139,250,0.02)'}
                   stroke={ACCENT.violet}
-                  strokeWidth={isHero ? 1.4 : 0.7}
-                  strokeOpacity={isHero ? 0.7 : 0.38}
+                  strokeWidth={isHero ? 1.8 : 0.7}
+                  strokeOpacity={isHero ? 0.85 : 0.38}
                 />
                 {/* Front face */}
                 <path
                   d={frontPath}
-                  fill={isHero ? 'rgba(167,139,250,0.05)' : 'rgba(167,139,250,0.018)'}
+                  fill={isHero ? 'rgba(167,139,250,0.07)' : 'rgba(167,139,250,0.018)'}
                   stroke={ACCENT.violet}
-                  strokeWidth={isHero ? 2.4 : 1}
-                  strokeOpacity={isHero ? 0.95 : 0.5}
+                  strokeWidth={isHero ? 3 : 1}
+                  strokeOpacity={isHero ? 1 : 0.5}
                 />
 
                 {/* Block label */}
@@ -312,10 +444,53 @@ export function VizAct2Intro() {
             strokeWidth={1}
           />
 
+          {/* LN gate before Attention — matches recipe x ← x + Attn(LN(x)) */}
+          <g>
+            <rect
+              x={heroBlock.x + heroBlock.w / 2 - 60}
+              y={heroBlock.y + 14}
+              width={120}
+              height={22}
+              rx={11}
+              fill="rgba(34,211,238,0.10)"
+              stroke={ACCENT.cyan}
+              strokeWidth={1.4}
+              strokeOpacity={0.85}
+            />
+            <text
+              x={heroBlock.x + heroBlock.w / 2}
+              y={heroBlock.y + 30}
+              textAnchor="middle"
+              fontSize="11"
+              fontFamily="var(--font-mono)"
+              fill={ACCENT.cyan}
+              letterSpacing="0.26em"
+            >
+              LayerNorm
+            </text>
+            {/* Arrow LN → Attention */}
+            <line
+              x1={heroBlock.x + heroBlock.w / 2}
+              x2={heroBlock.x + heroBlock.w / 2}
+              y1={heroBlock.y + 38}
+              y2={heroBlock.y + 50}
+              stroke={ACCENT.cyan}
+              strokeOpacity={0.7}
+              strokeWidth={1.4}
+            />
+            <path
+              d={`M ${heroBlock.x + heroBlock.w / 2 - 4} ${heroBlock.y + 46} L ${heroBlock.x + heroBlock.w / 2} ${heroBlock.y + 50} L ${heroBlock.x + heroBlock.w / 2 + 4} ${heroBlock.y + 46}`}
+              stroke={ACCENT.cyan}
+              strokeOpacity={0.85}
+              strokeWidth={1.4}
+              fill="none"
+            />
+          </g>
+
           {/* Attention compartment label + tease */}
           <text
             x={heroBlock.x + heroBlock.w / 2}
-            y={heroBlock.y + 36}
+            y={heroBlock.y + 70}
             textAnchor="middle"
             fontSize="13"
             fontFamily="var(--font-mono)"
@@ -328,15 +503,15 @@ export function VizAct2Intro() {
           {/* Mini Q K V tease */}
           {['Q', 'K', 'V'].map((label, i) => {
             const colors = [ACCENT.blue, ACCENT.red, ACCENT.mint]
-            const cw = 50
-            const cgap = 16
+            const cw = 46
+            const cgap = 14
             const totalW = 3 * cw + 2 * cgap
             const startX = heroBlock.x + (heroBlock.w - totalW) / 2
             return (
-              <g key={`qkv-${i}`} transform={`translate(${startX + i * (cw + cgap)}, ${heroBlock.y + 60})`}>
+              <g key={`qkv-${i}`} transform={`translate(${startX + i * (cw + cgap)}, ${heroBlock.y + 84})`}>
                 <rect
                   width={cw}
-                  height={68}
+                  height={56}
                   rx={3}
                   fill={`${colors[i]}10`}
                   stroke={colors[i]}
@@ -345,9 +520,9 @@ export function VizAct2Intro() {
                 />
                 <text
                   x={cw / 2}
-                  y={42}
+                  y={36}
                   textAnchor="middle"
-                  fontSize="22"
+                  fontSize="20"
                   fontFamily="var(--font-display)"
                   fontStyle="italic"
                   fill={colors[i]}
@@ -359,10 +534,53 @@ export function VizAct2Intro() {
             )
           })}
 
+          {/* LN gate before MLP — matches recipe x ← x + FFN(LN(x)) */}
+          <g>
+            <rect
+              x={heroBlock.x + heroBlock.w / 2 - 60}
+              y={splitY + 8}
+              width={120}
+              height={22}
+              rx={11}
+              fill="rgba(34,211,238,0.10)"
+              stroke={ACCENT.cyan}
+              strokeWidth={1.4}
+              strokeOpacity={0.85}
+            />
+            <text
+              x={heroBlock.x + heroBlock.w / 2}
+              y={splitY + 24}
+              textAnchor="middle"
+              fontSize="11"
+              fontFamily="var(--font-mono)"
+              fill={ACCENT.cyan}
+              letterSpacing="0.26em"
+            >
+              LayerNorm
+            </text>
+            {/* Arrow LN → MLP */}
+            <line
+              x1={heroBlock.x + heroBlock.w / 2}
+              x2={heroBlock.x + heroBlock.w / 2}
+              y1={splitY + 32}
+              y2={splitY + 44}
+              stroke={ACCENT.cyan}
+              strokeOpacity={0.7}
+              strokeWidth={1.4}
+            />
+            <path
+              d={`M ${heroBlock.x + heroBlock.w / 2 - 4} ${splitY + 40} L ${heroBlock.x + heroBlock.w / 2} ${splitY + 44} L ${heroBlock.x + heroBlock.w / 2 + 4} ${splitY + 40}`}
+              stroke={ACCENT.cyan}
+              strokeOpacity={0.85}
+              strokeWidth={1.4}
+              fill="none"
+            />
+          </g>
+
           {/* MLP compartment label + tease */}
           <text
             x={heroBlock.x + heroBlock.w / 2}
-            y={splitY + 30}
+            y={splitY + 60}
             textAnchor="middle"
             fontSize="13"
             fontFamily="var(--font-mono)"
@@ -374,7 +592,7 @@ export function VizAct2Intro() {
           </text>
           {/* Horizontal bar tease for MLP */}
           {Array.from({ length: 5 }).map((_, i) => {
-            const barY = splitY + 56 + i * 18
+            const barY = splitY + 76 + i * 16
             const barWidths = [0.7, 0.55, 0.85, 0.4, 0.65]
             const startX = heroBlock.x + 30
             const fullW = heroBlock.w - 60
@@ -404,10 +622,11 @@ export function VizAct2Intro() {
             const y = heroBlock.y - heroBlock.depth - 28
             const w = heroBlock.w + heroBlock.depth + 28
             const h = heroBlock.h + heroBlock.depth + 42
-            const armLen = 22
+            const armLen = 32
             const stroke = ACCENT.violet
             return (
-              <g stroke={stroke} strokeWidth={2.4} fill="none" opacity={0.95}>
+              <g stroke={stroke} strokeWidth={3.2} fill="none" opacity={1}
+                strokeLinecap="round">
                 {/* Top-left */}
                 <path d={`M ${x} ${y + armLen} L ${x} ${y} L ${x + armLen} ${y}`} />
                 {/* Top-right */}
