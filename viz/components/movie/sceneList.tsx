@@ -64,7 +64,7 @@ import {
   FFNFeatureSplitPane,
   FFNGeluSplitPane,
 } from './act2Scenes'
-import { StackSplitPane } from './act3Scenes'
+import { ActIIIIntroSplitPane, StackSplitPane } from './act3Scenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -394,19 +394,14 @@ Modern LLMs (LLaMA, PaLM, Mistral) push further with gated variants like SwiGLU:
     breadcrumb: ['Stack of 6'],
     kicker: 'act three',
     title: 'That block, six times over.',
-    caption: 'One signal climbs through six identical blocks, each adding its own refinement.',
-    accent: ACCENT.mint,
-    durationMs: 10000,
-    details: `The residual stream is a 384-dim vector per token that flows through all six blocks. Each block reads it, computes a correction, adds that correction back. By the top, the stream carries everything the model knows about "what comes next."`,
-    render: () => (
-      <ActFramingPanel
-        actLabel={ACT_III}
-        headline="Same block. Six times over."
-        accent={ACCENT.mint}
-        recap="one block: attention, then FFN"
-        teaser="one signal climbing through all six"
-      />
-    ),
+    caption: 'Zoom back out. The block we just studied is the whole recipe — repeated six times, with one residual stream climbing through it all.',
+    accent: ACCENT.cyan,
+    durationMs: 12000,
+    details: `Act II was a deep dive into a single transformer block: LayerNorm, multi-head attention, FFN, two residual adds. Act III zooms back out. The full transformer is just that block, stacked six times. The signal — a 384-dim vector per token — climbs through every one of them, gathering refinements along the way.
+
+Six blocks in our tiny model. GPT-2 Small had 12. GPT-2 XL had 48. GPT-4 reportedly ~120. Depth is the only knob; the recipe is fixed.`,
+    render: () => <ActIIIIntroSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'stack',

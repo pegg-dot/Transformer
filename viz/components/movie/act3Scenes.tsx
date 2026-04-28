@@ -30,18 +30,19 @@ const ACT3_KICKER = 'ACT III · THE FULL STACK'
  * ====================================================================== */
 
 const BLOCK_COUNT = 6
-const BLOCK_W = 160
-const BLOCK_H = 280
-const BLOCK_Y = 220
+const BLOCK_W = 168
+const BLOCK_H = 340
+const BLOCK_Y = 200
 const BLOCK_BOTTOM = BLOCK_Y + BLOCK_H
 const STREAM_Y = 600
-const STREAM_H = 22
+const STREAM_H = 26
 const STREAM_X_START = 90
 const STREAM_X_END = 1310
 const STREAM_LEN = STREAM_X_END - STREAM_X_START
 const HERO_DURATION = 8 // seconds for the pulse to traverse the stream
 
 const BLOCK_CENTERS = [180, 380, 580, 780, 980, 1180]
+const BLOCK_CENTER_Y = BLOCK_Y + BLOCK_H / 2
 
 // Block hue progression: cyan (195°) → magenta (305°)
 function blockHue(i: number): number {
@@ -49,6 +50,366 @@ function blockHue(i: number): number {
 }
 function blockColor(i: number, sat = 70, light = 65, alpha = 1): string {
   return `hsla(${blockHue(i)}, ${sat}%, ${light}%, ${alpha})`
+}
+
+/* =========================================================================
+ * Scene 16 — act3-intro: "That block, six times over."
+ *
+ * Cinematic transition from Act II to Act III. Phase A holds the single
+ * block we just studied at center, scaled up. Phase B animates that block
+ * back to its slot in a 6-stack while five sibling clones fade in around
+ * it; the residual stream emerges underneath, draws left-to-right, and
+ * primes the eye for Scene 17.
+ * ====================================================================== */
+
+export function VizActIIIntro() {
+  const speed = useSpeed()
+  const PHASES = 2
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      5000 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // Hero: block index 3 (slightly right-of-center stack slot at x=780)
+  const heroIdx = 3
+  const heroFinalX = BLOCK_CENTERS[heroIdx]
+  const heroFinalY = BLOCK_CENTER_Y
+  const heroCenterX = 700
+  const heroCenterY = 420
+  const heroDx = phase === 0 ? heroCenterX - heroFinalX : 0
+  const heroDy = phase === 0 ? heroCenterY - heroFinalY : 0
+  const heroScale = phase === 0 ? 1.45 : 1
+
+  return (
+    <div className="relative h-full w-full">
+      <svg viewBox="0 0 1400 1000" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="intro-glow"><feGaussianBlur stdDeviation="3" /></filter>
+          <filter id="intro-bloom" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="8" />
+          </filter>
+          <linearGradient id="intro-stream-grad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="rgba(34,211,238,0.55)" />
+            <stop offset="50%" stopColor="rgba(96,165,250,0.85)" />
+            <stop offset="100%" stopColor="rgba(167,139,250,0.85)" />
+          </linearGradient>
+          <linearGradient id="intro-stream-bright" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="rgba(34,211,238,1)" />
+            <stop offset="50%" stopColor="rgba(96,165,250,1)" />
+            <stop offset="100%" stopColor="rgba(236,72,153,1)" />
+          </linearGradient>
+        </defs>
+
+        {/* Top kicker */}
+        <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.32em">
+          ACT III · THE FULL STACK · ZOOMING OUT
+        </text>
+
+        {/* Title — crossfades between phases */}
+        {[
+          'the one block we just studied …',
+          '… is repeated six times.',
+        ].map((t, i) => (
+          <motion.text
+            key={`intro-title-${i}`}
+            x={700} y={92} textAnchor="middle"
+            fontSize="22" fontFamily="var(--font-display)"
+            fontStyle="italic" fill="rgba(255,255,255,0.95)"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: phase === i ? 1 : 0 }}
+            transition={{ duration: 0.5 / speed, ease: 'easeOut' }}
+          >
+            {t}
+          </motion.text>
+        ))}
+        <text x={700} y={120} textAnchor="middle"
+          fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.08em">
+          {phase === 0
+            ? 'Act II zoomed in. Act III zooms back out.'
+            : 'same recipe · same shape · stacked into a tower'}
+        </text>
+
+        {/* Five sibling clones — fade in only in phase B, staggered by distance from hero */}
+        {[0, 1, 2, 4, 5].map((i) => {
+          const distFromHero = Math.abs(i - heroIdx)
+          return (
+            <motion.g
+              key={`clone-${i}`}
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{
+                opacity: phase >= 1 ? 1 : 0,
+                scale: phase >= 1 ? 1 : 0.5,
+              }}
+              transition={{
+                duration: 0.55 / speed,
+                delay: phase >= 1 ? (0.3 + distFromHero * 0.15) / speed : 0,
+                ease: 'easeOut',
+              }}
+              style={{
+                transformOrigin: `${BLOCK_CENTERS[i]}px ${heroFinalY}px`,
+              }}
+            >
+              <StackBlockBody idx={i} speed={speed} />
+            </motion.g>
+          )
+        })}
+
+        {/* Hero block — animates between centered+scaled (phase A) and slot 3 (phase B) */}
+        <motion.g
+          animate={{
+            x: heroDx,
+            y: heroDy,
+            scale: heroScale,
+          }}
+          transition={{ duration: 1.2 / speed, ease: 'easeInOut' }}
+          style={{ transformOrigin: `${heroFinalX}px ${heroFinalY}px` }}
+        >
+          <StackBlockBody idx={heroIdx} speed={speed} />
+          {/* Hero glow ring (only in phase A) */}
+          <motion.rect
+            x={BLOCK_CENTERS[heroIdx] - BLOCK_W / 2 - 8}
+            y={BLOCK_Y - 8}
+            width={BLOCK_W + 16}
+            height={BLOCK_H + 16}
+            rx={12}
+            fill="none"
+            stroke={ACCENT.cyan}
+            strokeWidth={1.6}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: phase === 0 ? [0.35, 0.85, 0.35] : 0 }}
+            transition={{
+              duration: 2.0 / speed,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+        </motion.g>
+
+        {/* Phase-A annotation: "the one we studied" call-out around the hero */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: phase === 0 ? 1 : 0 }}
+          transition={{ duration: 0.5 / speed, delay: phase === 0 ? 0.6 / speed : 0 }}
+        >
+          <text x={heroCenterX} y={heroCenterY - BLOCK_H * 0.85}
+            textAnchor="middle"
+            fontSize="11" fontFamily="var(--font-mono)"
+            fill={ACCENT.cyan} letterSpacing="0.22em">
+            ↑ THE ONE WE JUST STUDIED
+          </text>
+          <text x={heroCenterX} y={heroCenterY + BLOCK_H * 0.86}
+            textAnchor="middle"
+            fontSize="11" fontFamily="var(--font-mono)"
+            fill={ACCENT.dim} fontStyle="italic">
+            LayerNorm · Attention · FFN · residual add
+          </text>
+        </motion.g>
+
+        {/* Residual stream — emerges in phase B, drawing left-to-right */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: phase >= 1 ? 1 : 0 }}
+          transition={{ duration: 0.6 / speed, delay: phase >= 1 ? 1.1 / speed : 0 }}
+        >
+          <text x={STREAM_X_START + STREAM_LEN / 2} y={STREAM_Y - 16}
+            textAnchor="middle"
+            fontSize="11" fontFamily="var(--font-mono)"
+            fill={ACCENT.cyan} letterSpacing="0.22em">
+            RESIDUAL STREAM · 384-DIM
+          </text>
+          <motion.rect
+            x={STREAM_X_START} y={STREAM_Y}
+            height={STREAM_H} rx={STREAM_H / 2}
+            fill="url(#intro-stream-bright)"
+            filter="url(#intro-bloom)"
+            initial={{ width: 0, opacity: 0.5 }}
+            animate={{
+              width: phase >= 1 ? STREAM_LEN : 0,
+              opacity: phase >= 1 ? [0.6, 0.95, 0.85] : 0,
+            }}
+            transition={{
+              width: { duration: 1.2 / speed, delay: phase >= 1 ? 1.3 / speed : 0, ease: 'easeOut' },
+              opacity: { duration: 1.5 / speed, delay: phase >= 1 ? 1.3 / speed : 0 },
+            }}
+          />
+          <motion.rect
+            x={STREAM_X_START} y={STREAM_Y + 4}
+            height={STREAM_H - 8} rx={(STREAM_H - 8) / 2}
+            fill="url(#intro-stream-grad)"
+            initial={{ width: 0 }}
+            animate={{ width: phase >= 1 ? STREAM_LEN : 0 }}
+            transition={{ duration: 1.2 / speed, delay: phase >= 1 ? 1.3 / speed : 0, ease: 'easeOut' }}
+          />
+          {/* Endpoint chips */}
+          <g transform={`translate(20, ${STREAM_Y - 14})`}>
+            <rect width={60} height={50} rx={4}
+              fill="rgba(34,211,238,0.10)"
+              stroke={ACCENT.cyan} strokeWidth={1.4} />
+            <text x={30} y={32} textAnchor="middle"
+              fontSize="16" fontFamily="var(--font-mono)" fill={ACCENT.cyan}>
+              in
+            </text>
+          </g>
+          <g transform={`translate(1320, ${STREAM_Y - 14})`}>
+            <rect width={60} height={50} rx={4}
+              fill="rgba(236,72,153,0.18)"
+              stroke={ACCENT.pink} strokeWidth={1.6}
+              filter="url(#intro-glow)" />
+            <text x={30} y={32} textAnchor="middle"
+              fontSize="16" fontFamily="var(--font-display)" fontStyle="italic"
+              fill={ACCENT.pink}>
+              out
+            </text>
+          </g>
+        </motion.g>
+
+        {/* Bottom message panel */}
+        <ActIIIIntroBottom phase={phase} />
+
+        {/* Phase summary */}
+        <ActIIIIntroPhaseSummary phase={phase} />
+      </svg>
+    </div>
+  )
+}
+
+function ActIIIIntroBottom({ phase }: { phase: number }) {
+  return (
+    <g>
+      <rect x={200} y={720} width={1000} height={100} rx={12}
+        fill="rgba(34,211,238,0.025)"
+        stroke="rgba(34,211,238,0.18)" strokeWidth={1} />
+      {[
+        {
+          big: 'one block · zoomed in',
+          small: 'we spent Act II inside this · LayerNorm, attention, FFN',
+        },
+        {
+          big: 'same block · stacked six times',
+          small: 'six identical blocks · one running residual stream · climbing',
+        },
+      ].map((c, i) => (
+        <motion.g
+          key={`intro-bot-${i}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: phase === i ? 1 : 0 }}
+          transition={{ duration: 0.45 }}
+        >
+          <text x={700} y={758} textAnchor="middle"
+            fontSize="20" fontFamily="var(--font-display)"
+            fontStyle="italic" fill="rgba(255,255,255,0.92)">
+            {c.big}
+          </text>
+          <text x={700} y={794} textAnchor="middle"
+            fontSize="12" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+            {c.small}
+          </text>
+        </motion.g>
+      ))}
+    </g>
+  )
+}
+
+function ActIIIIntroPhaseSummary({ phase }: { phase: number }) {
+  const beats = ['one block · zoomed in', 'multiplied · into six']
+  return (
+    <g transform="translate(700, 950)">
+      {beats.map((b, i) => {
+        const w = 320
+        const x = (i - beats.length / 2) * w + w / 2
+        const active = i === phase
+        return (
+          <g key={`intro-sum-${i}`} transform={`translate(${x}, 0)`}>
+            <rect x={-w / 2 + 14} y={-14} width={w - 28} height={28} rx={14}
+              fill={active ? 'rgba(34,211,238,0.18)' : 'transparent'}
+              stroke={active ? ACCENT.cyan : ACCENT.rule}
+              strokeWidth={active ? 1.5 : 1} />
+            <text x={0} y={4} textAnchor="middle"
+              fontSize="11" fontFamily="var(--font-mono)"
+              fill={active ? ACCENT.cyan : ACCENT.dim}
+              letterSpacing="0.16em">
+              {(i + 1)}.{b.toUpperCase()}
+            </text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+export function ActIIIIntroSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 2
+  const phaseLabels = ['the one block', 'multiplied into six']
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      5000 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      We just spent Act II zooming inside <em>this</em> block. LayerNorm,
+      attention, multi-head, FFN, residual add — all inside one module.
+    </>,
+    <>
+      Now zoom back out. The full transformer is just the same block, stacked
+      six times. One residual stream walks through every one of them.
+    </>,
+  ]
+
+  const equationByPhase: { label: string; body: ReactNode }[] = [
+    {
+      label: 'one block (Act II)',
+      body: <>block(x) = FFN(LN(x + Attn(LN(x))))</>,
+    },
+    {
+      label: 'six blocks (Act III)',
+      body: <>x ← block₅(block₄(block₃(block₂(block₁(block₀(x))))))</>,
+    },
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'A single block is dense — LayerNorm + multi-head attention + FFN + two residual adds. Now imagine that whole assembly repeated, top to bottom of the model.',
+    'GPT-2 Small had 12 of these. GPT-2 XL had 48. GPT-4 reportedly ~120. The recipe is fixed; depth is the only knob that changes.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizActIIIntro />}
+      text={{
+        kicker: ACT3_KICKER,
+        title: 'That block, six times over.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.cyan,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.cyan}
+          />
+        ),
+        stats: [
+          { label: 'we just saw', value: '1 block', color: ACCENT.cyan },
+          { label: 'this act', value: '6 blocks', color: ACCENT.cyan },
+          { label: 'GPT-2 Small', value: '12 blocks' },
+          { label: 'GPT-2 XL', value: '48 blocks' },
+        ],
+        equation: equationByPhase[phase],
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
 }
 
 export function VizStack() {
@@ -174,60 +535,56 @@ function StackResidualStream({ phase, speed }: { phase: number; speed: number })
   )
 }
 
-/* ─────────── One block in the stack (attn motif + FFN motif + label) ─────────── */
-function StackBlock({ idx, phase, speed }: { idx: number; phase: number; speed: number }) {
+/* ─────────── Block body (no entry animation — reused by intro + stack) ─────────── */
+function StackBlockBody({ idx, speed }: { idx: number; speed: number }) {
   const cx = BLOCK_CENTERS[idx]
   const x = cx - BLOCK_W / 2
   const y = BLOCK_Y
   const color = blockColor(idx)
-  const dimColor = blockColor(idx, 60, 55, 0.55)
+  const dimColor = blockColor(idx, 60, 55, 0.6)
   const fillColor = blockColor(idx, 70, 50, 0.10)
   const halfY = y + BLOCK_H / 2
 
   return (
-    <motion.g
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45 / speed, delay: (idx * 0.12) / speed }}
-    >
+    <g>
       {/* Block frame */}
-      <rect x={x} y={y} width={BLOCK_W} height={BLOCK_H} rx={6}
+      <rect x={x} y={y} width={BLOCK_W} height={BLOCK_H} rx={8}
         fill={fillColor}
         stroke={dimColor}
-        strokeWidth={1.5} />
+        strokeWidth={1.6} />
 
       {/* Block label */}
-      <text x={cx} y={y + 22} textAnchor="middle"
-        fontSize="11" fontFamily="var(--font-mono)"
-        fill={color} letterSpacing="0.22em">
+      <text x={cx} y={y + 26} textAnchor="middle"
+        fontSize="12" fontFamily="var(--font-mono)"
+        fill={color} letterSpacing="0.24em">
         BLOCK {idx}
       </text>
 
       {/* Top-half label — ATTN */}
-      <text x={cx} y={y + 46} textAnchor="middle"
-        fontSize="9" fontFamily="var(--font-mono)"
-        fill={ACCENT.dim} letterSpacing="0.18em">
+      <text x={cx} y={y + 54} textAnchor="middle"
+        fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
         ATTN
       </text>
-      {/* Attention motif: 4×4 lower-triangular grid */}
-      {Array.from({ length: 4 }).map((_, q) =>
-        Array.from({ length: 4 }).map((_, k) => {
+      {/* Attention motif: 5×5 lower-triangular grid */}
+      {Array.from({ length: 5 }).map((_, q) =>
+        Array.from({ length: 5 }).map((_, k) => {
           if (k > q) return null
-          const cellSize = 14
-          const startX = cx - 2 * cellSize
+          const cellSize = 16
+          const startX = cx - 2.5 * cellSize
           return (
             <motion.rect
               key={`attn-${idx}-${q}-${k}`}
               x={startX + k * cellSize}
-              y={y + 58 + q * cellSize}
+              y={y + 68 + q * cellSize}
               width={cellSize - 1}
               height={cellSize - 1}
               rx={1}
               fill={color}
               initial={{ opacity: 0.18 }}
-              animate={{ opacity: [0.18, 0.75, 0.18] }}
+              animate={{ opacity: [0.18, 0.85, 0.18] }}
               transition={{
-                duration: 1.6 / speed,
+                duration: 1.7 / speed,
                 delay: (idx * 0.08 + q * 0.07 + k * 0.05) / speed,
                 repeat: Infinity,
                 ease: 'easeInOut',
@@ -238,32 +595,32 @@ function StackBlock({ idx, phase, speed }: { idx: number; phase: number; speed: 
       )}
 
       {/* Mid divider */}
-      <line x1={x + 14} x2={x + BLOCK_W - 14}
+      <line x1={x + 16} x2={x + BLOCK_W - 16}
         y1={halfY + 4} y2={halfY + 4}
-        stroke={ACCENT.rule} strokeWidth={0.5} strokeDasharray="2,3" />
+        stroke={ACCENT.rule} strokeWidth={0.6} strokeDasharray="2,3" />
 
       {/* Bottom-half label — FFN */}
-      <text x={cx} y={halfY + 24} textAnchor="middle"
-        fontSize="9" fontFamily="var(--font-mono)"
-        fill={ACCENT.dim} letterSpacing="0.18em">
+      <text x={cx} y={halfY + 28} textAnchor="middle"
+        fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
         FFN
       </text>
-      {/* FFN motif: 5 amber bars that breathe */}
-      {Array.from({ length: 5 }).map((_, bi) => {
-        const barW = 12
-        const barX = cx - 2.5 * (barW + 2) + bi * (barW + 2)
+      {/* FFN motif: 6 amber bars that breathe */}
+      {Array.from({ length: 6 }).map((_, bi) => {
+        const barW = 14
+        const barX = cx - 3 * (barW + 2) + bi * (barW + 2)
         return (
           <motion.rect
             key={`ffn-${idx}-${bi}`}
             x={barX}
-            y={halfY + 36}
+            y={halfY + 42}
             width={barW}
             rx={2}
             fill={ACCENT.amber}
-            initial={{ height: 16, opacity: 0.18 }}
-            animate={{ height: [16, 50, 16], opacity: [0.18, 0.75, 0.18] }}
+            initial={{ height: 18, opacity: 0.20 }}
+            animate={{ height: [18, 78, 18], opacity: [0.20, 0.85, 0.20] }}
             transition={{
-              duration: 1.4 / speed,
+              duration: 1.5 / speed,
               delay: (idx * 0.1 + bi * 0.08) / speed,
               repeat: Infinity,
               ease: 'easeInOut',
@@ -273,11 +630,24 @@ function StackBlock({ idx, phase, speed }: { idx: number; phase: number; speed: 
       })}
 
       {/* Block readout — "attn + ffn → Δi" */}
-      <text x={cx} y={y + BLOCK_H - 12} textAnchor="middle"
-        fontSize="10" fontFamily="var(--font-mono)"
+      <text x={cx} y={y + BLOCK_H - 14} textAnchor="middle"
+        fontSize="11" fontFamily="var(--font-mono)"
         fill={dimColor} fontStyle="italic">
         attn + ffn → Δ{idx}
       </text>
+    </g>
+  )
+}
+
+/* ─────────── One block in the stack — wraps body with stagger entry ─────────── */
+function StackBlock({ idx, phase, speed }: { idx: number; phase: number; speed: number }) {
+  return (
+    <motion.g
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 / speed, delay: (idx * 0.12) / speed }}
+    >
+      <StackBlockBody idx={idx} speed={speed} />
     </motion.g>
   )
 }
@@ -454,18 +824,22 @@ function StackInputOutput({ speed }: { speed: number }) {
 function StackPayoff({ phase }: { phase: number }) {
   return (
     <g>
-      <text x={700} y={730} textAnchor="middle"
-        fontSize="20" fontFamily="var(--font-display)"
-        fontStyle="italic" fill="rgba(255,255,255,0.92)">
+      {/* Subtle wrap panel so the payoff doesn't float */}
+      <rect x={120} y={696} width={1160} height={142} rx={12}
+        fill="rgba(34,211,238,0.025)"
+        stroke="rgba(34,211,238,0.18)" strokeWidth={1} />
+      <text x={700} y={732} textAnchor="middle"
+        fontSize="22" fontFamily="var(--font-display)"
+        fontStyle="italic" fill="rgba(255,255,255,0.95)">
         every block <tspan fill={ACCENT.amber}>adds</tspan> to the stream — never overwrites
       </text>
-      <text x={700} y={770} textAnchor="middle"
-        fontSize="22" fontFamily="var(--font-mono)"
+      <text x={700} y={780} textAnchor="middle"
+        fontSize="28" fontFamily="var(--font-mono)"
         fill={ACCENT.cyan}>
         x ← x + block(x)
       </text>
-      <text x={700} y={804} textAnchor="middle"
-        fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+      <text x={700} y={818} textAnchor="middle"
+        fontSize="12" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
         each block reads x · computes Δ (attn + ffn) · adds it back · skip-connections preserve early features
       </text>
     </g>
