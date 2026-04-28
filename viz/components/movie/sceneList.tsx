@@ -21,7 +21,6 @@ import {
   ScenePositional,
   SceneQKV,
   SceneRoPE,
-  SceneSample,
   SceneTokenization,
   SceneTraining,
 } from './scenes'
@@ -35,7 +34,6 @@ import {
   PanelQKV,
   PanelFFN,
   PanelLayerNorm,
-  PanelSample,
   PanelKvCache,
   PanelOutput,
   PanelAttention,
@@ -64,7 +62,7 @@ import {
   FFNFeatureSplitPane,
   FFNGeluSplitPane,
 } from './act2Scenes'
-import { ActIIIIntroSplitPane, StackSplitPane } from './act3Scenes'
+import { ActIIIIntroSplitPane, StackSplitPane, SampleSplitPane } from './act3Scenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -442,7 +440,8 @@ Each block asks "given what I just read, what's a better representation?" and nu
 Temperature scales the logits before softmax. T=0 means greedy; T=1 means "trust the distribution"; T>1 flattens probabilities and makes output more random; T<1 sharpens them.
 
 The sampled token is then APPENDED to the input sequence and fed back into the model for the next step.`,
-    render: () => <PanelThenScene panel={<PanelSample />} scene={<SceneSample />} />,
+    render: () => <SampleSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'kvcache',
