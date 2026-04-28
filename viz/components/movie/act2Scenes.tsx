@@ -524,3 +524,803 @@ export function Act2IntroSplitPane() {
     />
   )
 }
+
+
+/* =========================================================================
+ * Scene 9 — layernorm: "Normalize before every sublayer."
+ *
+ * Visual story per design feedback:
+ *   1. Four explicit stages laid out left-to-right:
+ *        x  →  centered  →  normalized  →  γ·x + β
+ *      Each stage gets its own labeled column with the actual vector,
+ *      its mean line, and a μ/σ readout below it.
+ *   2. Operation arrows between stages with the math symbols (− μ, ÷ σ,
+ *      × γ + β) so the four math beats read at a glance.
+ *   3. γ and β rendered as VISIBLE parameter strips below the pipeline,
+ *      with arrows pointing into the affine stage. They feel like real
+ *      learnable vectors, not text labels.
+ *   4. The final affine output gets a violet glow + "LN(x) → attention
+ *      input" handoff label so it sets up Scene 10.
+ *   5. Token strip at the top with token #3 highlighted reminds the
+ *      viewer this is one token's 384-dim vector being normalized.
+ * ====================================================================== */
+
+export function VizLayerNorm() {
+  const speed = useSpeed()
+  const { prompt } = usePrompt()
+  const tokens = (prompt || 'To be, or not to be').split('').slice(0, 14)
+  const FOCUSED = 3
+
+  // ── Math: actual computed values ──────────────────────────────────────
+  const D = 12 // visible dim count
+  const RAW = Array.from({ length: D }).map(
+    (_, i) => Math.sin(i * 1.27 + 2.1) * 1.0 + 0.42,
+  )
+  const muRaw = RAW.reduce((a, b) => a + b, 0) / D
+  const centered = RAW.map((v) => v - muRaw)
+  const muCentered = centered.reduce((a, b) => a + b, 0) / D // ≈ 0
+  const sigCentered = Math.sqrt(
+    centered.reduce((a, b) => a + b * b, 0) / D,
+  )
+  const normalized = centered.map((v) => v / (sigCentered || 1))
+  const sigNormalized = Math.sqrt(
+    normalized.reduce((a, b) => a + b * b, 0) / D,
+  ) // ≈ 1
+  const GAMMA = Array.from({ length: D }).map(
+    (_, i) => 0.85 + 0.42 * Math.sin(i * 0.7 + 0.3),
+  )
+  const BETA = Array.from({ length: D }).map(
+    (_, i) => 0.22 * Math.cos(i * 0.9),
+  )
+  const affine = normalized.map((v, i) => GAMMA[i] * v + BETA[i])
+
+  // Diverging color (positive violet, negative muted red)
+  const colorFor = (v: number): string => {
+    const m = Math.max(-2, Math.min(2, v)) / 2
+    if (m >= 0) {
+      const a = 0.10 + Math.min(1, m) * 0.62
+      return `rgba(167,139,250,${a})`
+    }
+    const a = 0.10 + Math.min(1, -m) * 0.55
+    return `rgba(248,113,113,${a})`
+  }
+  const gammaColor = (v: number): string => {
+    // γ values are around 1; saturate amber
+    const a = 0.25 + Math.min(1, v) * 0.5
+    return `rgba(245,158,11,${a})`
+  }
+  const betaColor = (v: number): string => {
+    if (v >= 0) return `rgba(245,158,11,${0.18 + Math.min(1, v) * 0.5})`
+    return `rgba(248,113,113,${0.18 + Math.min(1, -v) * 0.5})`
+  }
+
+  // ── Phase progression (5 phases, last one is "settled hold") ──────────
+  const PHASES = 5
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      2400 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // Stage visibility — stage K appears at phase K
+  const stageOpacity = (k: number): number =>
+    phase >= k ? 1 : 0.18
+
+  // ── Geometry ──────────────────────────────────────────────────────────
+  const STAGE_X = [120, 410, 700, 990] // left edges of the 4 stage columns
+  const COL_W = 84
+  const CELL_H = 24
+  const VEC_TOP = 200
+  const VEC_BOT = VEC_TOP + D * CELL_H // 488
+
+  return (
+    <div className="relative h-full w-full">
+      <svg viewBox="0 0 1400 1000" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="ln-glow"><feGaussianBlur stdDeviation="3" /></filter>
+          <filter id="ln-bloom" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
+        </defs>
+
+        {/* ────── Top kicker ────── */}
+        <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.32em">
+          BLOCK 0 · LAYERNORM
+        </text>
+
+        {/* ────── Token strip with focused token ────── */}
+        <g>
+          <text x={20} y={84} fontSize="10" fontFamily="var(--font-mono)"
+            fill={ACCENT.violet} letterSpacing="0.22em" opacity="0.85">
+            this token's 384-dim vector ▸
+          </text>
+          {tokens.map((ch, i) => {
+            const cellW = 30
+            const startX = 280
+            const x = startX + i * (cellW + 4)
+            const isFocused = i === FOCUSED
+            return (
+              <g key={`tok-${i}`}>
+                {isFocused && (
+                  <motion.rect
+                    x={x - 2} y={64} width={cellW + 4} height={36} rx={4}
+                    fill="rgba(167,139,250,0.18)"
+                    stroke={ACCENT.violet}
+                    strokeWidth={1.6}
+                    initial={{ opacity: 0.6 }}
+                    animate={{ opacity: [0.55, 1, 0.55] }}
+                    transition={{
+                      duration: 2 / speed,
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                    }}
+                  />
+                )}
+                <rect x={x} y={66} width={cellW} height={32} rx={3}
+                  fill="rgba(167,139,250,0.04)"
+                  stroke="rgba(167,139,250,0.32)"
+                  strokeWidth={1} />
+                <text x={x + cellW / 2} y={88} textAnchor="middle"
+                  fontSize="15" fontFamily="var(--font-display)"
+                  fontStyle="italic"
+                  fill={isFocused ? '#fff' : 'rgba(255,255,255,0.55)'}>
+                  {ch === ' ' ? '·' : ch}
+                </text>
+              </g>
+            )
+          })}
+
+          {/* Drop arrow from focused token to stage 1 */}
+          <motion.path
+            d={`M ${280 + FOCUSED * 34 + 15} 102 L ${STAGE_X[0] + COL_W / 2} ${VEC_TOP - 16}`}
+            stroke={ACCENT.violet}
+            strokeOpacity={0.45}
+            strokeDasharray="3 5"
+            strokeWidth={1.2}
+            fill="none"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 0.6 / speed, delay: 0.4 / speed }}
+          />
+        </g>
+
+        {/* ────── Stage 1: RAW INPUT ────── */}
+        <Stage
+          x={STAGE_X[0]}
+          y={VEC_TOP}
+          w={COL_W}
+          cellH={CELL_H}
+          values={RAW}
+          colorFn={colorFor}
+          opacity={1} // raw is always visible
+          label="1. RAW"
+          subLabel="x"
+          mu={muRaw}
+          sigma={Math.sqrt(RAW.reduce((a, b) => a + (b - muRaw) ** 2, 0) / D)}
+          showMuLine
+          accent={ACCENT.violet}
+        />
+
+        {/* Op 1: − μ */}
+        <Operation
+          x={STAGE_X[0] + COL_W + 14}
+          y={(VEC_TOP + VEC_BOT) / 2}
+          width={STAGE_X[1] - (STAGE_X[0] + COL_W) - 28}
+          symbol="− μ"
+          label="subtract mean"
+          color={ACCENT.violet}
+          active={phase >= 1}
+          speed={speed}
+        />
+
+        {/* ────── Stage 2: CENTERED ────── */}
+        <motion.g
+          initial={false}
+          animate={{ opacity: stageOpacity(1) }}
+          transition={{ duration: 0.5 / speed }}
+        >
+          <Stage
+            x={STAGE_X[1]}
+            y={VEC_TOP}
+            w={COL_W}
+            cellH={CELL_H}
+            values={centered}
+            colorFn={colorFor}
+            opacity={1}
+            label="2. CENTERED"
+            subLabel="x − μ"
+            mu={muCentered}
+            sigma={sigCentered}
+            showMuLine
+            accent={ACCENT.violet}
+          />
+        </motion.g>
+
+        {/* Op 2: ÷ σ */}
+        <Operation
+          x={STAGE_X[1] + COL_W + 14}
+          y={(VEC_TOP + VEC_BOT) / 2}
+          width={STAGE_X[2] - (STAGE_X[1] + COL_W) - 28}
+          symbol="÷ σ"
+          label="divide by std"
+          color={ACCENT.violet}
+          active={phase >= 2}
+          speed={speed}
+        />
+
+        {/* ────── Stage 3: NORMALIZED ────── */}
+        <motion.g
+          initial={false}
+          animate={{ opacity: stageOpacity(2) }}
+          transition={{ duration: 0.5 / speed }}
+        >
+          <Stage
+            x={STAGE_X[2]}
+            y={VEC_TOP}
+            w={COL_W}
+            cellH={CELL_H}
+            values={normalized}
+            colorFn={colorFor}
+            opacity={1}
+            label="3. NORMALIZED"
+            subLabel="(x − μ) / σ"
+            mu={0}
+            sigma={sigNormalized}
+            showMuLine
+            sigmaEnvelope
+            accent={ACCENT.cyan}
+          />
+        </motion.g>
+
+        {/* Op 3: × γ + β */}
+        <Operation
+          x={STAGE_X[2] + COL_W + 14}
+          y={(VEC_TOP + VEC_BOT) / 2}
+          width={STAGE_X[3] - (STAGE_X[2] + COL_W) - 28}
+          symbol="× γ  + β"
+          label="affine: scale + shift"
+          color={ACCENT.amber}
+          active={phase >= 3}
+          speed={speed}
+        />
+
+        {/* ────── Stage 4: AFFINE OUTPUT ────── */}
+        <motion.g
+          initial={false}
+          animate={{ opacity: stageOpacity(3) }}
+          transition={{ duration: 0.5 / speed }}
+        >
+          {/* Glow halo for the final output (the payoff) */}
+          {phase >= 3 && (
+            <motion.rect
+              x={STAGE_X[3] - 8}
+              y={VEC_TOP - 8}
+              width={COL_W + 16}
+              height={D * CELL_H + 16}
+              rx={6}
+              fill="rgba(167,139,250,0.06)"
+              filter="url(#ln-bloom)"
+              animate={{ opacity: [0.45, 0.85, 0.45] }}
+              transition={{
+                duration: 3 / speed,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
+          )}
+          <Stage
+            x={STAGE_X[3]}
+            y={VEC_TOP}
+            w={COL_W}
+            cellH={CELL_H}
+            values={affine}
+            colorFn={colorFor}
+            opacity={1}
+            label="4. LN(x)"
+            subLabel="γ · x̂ + β"
+            mu={affine.reduce((a, b) => a + b, 0) / D}
+            sigma={Math.sqrt(
+              affine.reduce(
+                (a, b) =>
+                  a +
+                  (b - affine.reduce((p, q) => p + q, 0) / D) ** 2,
+                0,
+              ) / D,
+            )}
+            showMuLine={false}
+            heroOutline
+            accent={ACCENT.violet}
+          />
+        </motion.g>
+
+        {/* ────── γ and β parameter strips ────── */}
+        <motion.g
+          initial={false}
+          animate={{ opacity: phase >= 3 ? 1 : 0.18 }}
+          transition={{ duration: 0.5 / speed }}
+        >
+          {/* γ strip */}
+          <text x={STAGE_X[2] - 30} y={620} textAnchor="end"
+            fontSize="14" fontFamily="var(--font-display)"
+            fontStyle="italic" fill={ACCENT.amber}
+            letterSpacing="0.06em">
+            γ
+          </text>
+          <text x={STAGE_X[2] - 30} y={636} textAnchor="end"
+            fontSize="9" fontFamily="var(--font-mono)"
+            fill={ACCENT.dim} letterSpacing="0.18em">
+            scale (learned)
+          </text>
+          <ParamStrip
+            x={STAGE_X[2]}
+            y={604}
+            w={COL_W * 4 + 84}
+            cellH={28}
+            values={GAMMA}
+            colorFn={gammaColor}
+          />
+
+          {/* β strip */}
+          <text x={STAGE_X[2] - 30} y={690} textAnchor="end"
+            fontSize="14" fontFamily="var(--font-display)"
+            fontStyle="italic" fill={ACCENT.amber}
+            letterSpacing="0.06em">
+            β
+          </text>
+          <text x={STAGE_X[2] - 30} y={706} textAnchor="end"
+            fontSize="9" fontFamily="var(--font-mono)"
+            fill={ACCENT.dim} letterSpacing="0.18em">
+            shift (learned)
+          </text>
+          <ParamStrip
+            x={STAGE_X[2]}
+            y={672}
+            w={COL_W * 4 + 84}
+            cellH={28}
+            values={BETA}
+            colorFn={betaColor}
+          />
+
+          {/* Arrows from γ and β into stage 4's affine box */}
+          <path
+            d={`M ${STAGE_X[3] - 30} 618 L ${STAGE_X[3] - 8} 618`}
+            stroke={ACCENT.amber}
+            strokeOpacity={0.7}
+            strokeWidth={1.4}
+            fill="none"
+          />
+          <path
+            d={`M ${STAGE_X[3] - 30} 686 L ${STAGE_X[3] - 8} 686`}
+            stroke={ACCENT.amber}
+            strokeOpacity={0.7}
+            strokeWidth={1.4}
+            fill="none"
+          />
+        </motion.g>
+
+        {/* ────── Caption: γ and β explanation ────── */}
+        <motion.text
+          x={STAGE_X[0]}
+          y={770}
+          fontSize="13"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill="rgba(255,255,255,0.78)"
+          initial={false}
+          animate={{ opacity: phase >= 3 ? 0.85 : 0.25 }}
+          transition={{ duration: 0.5 / speed }}
+        >
+          γ and β are learned per-dimension. They let the model un-do
+        </motion.text>
+        <motion.text
+          x={STAGE_X[0]}
+          y={792}
+          fontSize="13"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill="rgba(255,255,255,0.78)"
+          initial={false}
+          animate={{ opacity: phase >= 3 ? 0.85 : 0.25 }}
+          transition={{ duration: 0.5 / speed }}
+        >
+          or re-tune the normalization where it helps the loss go down.
+        </motion.text>
+
+        {/* ────── Final handoff label ────── */}
+        <motion.g
+          initial={false}
+          animate={{ opacity: phase >= 4 ? 1 : 0.4 }}
+          transition={{ duration: 0.6 / speed }}
+        >
+          <line
+            x1={STAGE_X[3] + COL_W / 2}
+            y1={VEC_BOT + 14}
+            x2={STAGE_X[3] + COL_W / 2}
+            y2={VEC_BOT + 70}
+            stroke={ACCENT.violet}
+            strokeOpacity={0.7}
+            strokeWidth={1.4}
+          />
+          <path
+            d={`M ${STAGE_X[3] + COL_W / 2 - 6} ${VEC_BOT + 64} L ${STAGE_X[3] + COL_W / 2} ${VEC_BOT + 70} L ${STAGE_X[3] + COL_W / 2 + 6} ${VEC_BOT + 64}`}
+            stroke={ACCENT.violet}
+            strokeOpacity={0.85}
+            strokeWidth={1.4}
+            fill="none"
+          />
+          <text
+            x={STAGE_X[3] + COL_W / 2}
+            y={VEC_BOT + 92}
+            textAnchor="middle"
+            fontSize="12"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.violet}
+            letterSpacing="0.22em"
+          >
+            LN(x) → ATTENTION INPUT
+          </text>
+        </motion.g>
+
+        {/* ────── Bottom italic caption ────── */}
+        <text
+          x={700}
+          y={950}
+          textAnchor="middle"
+          fontSize="14"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill={ACCENT.dim}
+          opacity={0.85}
+        >
+          One token's 384-dim vector — recentered, rescaled, then re-tuned.
+        </text>
+      </svg>
+    </div>
+  )
+}
+
+/** One stage column in the LayerNorm pipeline. */
+function Stage({
+  x,
+  y,
+  w,
+  cellH,
+  values,
+  colorFn,
+  opacity,
+  label,
+  subLabel,
+  mu,
+  sigma,
+  showMuLine,
+  sigmaEnvelope,
+  heroOutline,
+  accent,
+}: {
+  x: number
+  y: number
+  w: number
+  cellH: number
+  values: number[]
+  colorFn: (v: number) => string
+  opacity: number
+  label: string
+  subLabel: string
+  mu: number
+  sigma: number
+  showMuLine?: boolean
+  sigmaEnvelope?: boolean
+  heroOutline?: boolean
+  accent: string
+}) {
+  const D = values.length
+  const totalH = D * cellH
+  // μ position in the column — assumes value range [-2, 2] roughly
+  const muY = y + totalH / 2 - (mu * totalH) / 4 // visual: 0 mean is in middle
+  return (
+    <g opacity={opacity}>
+      {/* Stage label above */}
+      <text x={x + w / 2} y={y - 30} textAnchor="middle"
+        fontSize="11" fontFamily="var(--font-mono)"
+        fill={accent} letterSpacing="0.22em">
+        {label}
+      </text>
+      <text x={x + w / 2} y={y - 14} textAnchor="middle"
+        fontSize="13" fontFamily="var(--font-display)"
+        fontStyle="italic" fill="rgba(255,255,255,0.7)">
+        {subLabel}
+      </text>
+
+      {/* Column outline */}
+      <rect
+        x={x}
+        y={y}
+        width={w}
+        height={totalH}
+        fill="none"
+        stroke={accent}
+        strokeWidth={heroOutline ? 2.2 : 1.2}
+        strokeOpacity={heroOutline ? 0.95 : 0.5}
+        rx={3}
+      />
+
+      {/* Cells */}
+      {values.map((v, i) => (
+        <rect
+          key={i}
+          x={x + 1}
+          y={y + i * cellH + 1}
+          width={w - 2}
+          height={cellH - 2}
+          fill={colorFn(v)}
+        />
+      ))}
+
+      {/* μ overlay line */}
+      {showMuLine && (
+        <g>
+          <line
+            x1={x - 6}
+            x2={x + w + 6}
+            y1={muY}
+            y2={muY}
+            stroke={ACCENT.cyan}
+            strokeWidth={1.4}
+            strokeDasharray="4 3"
+          />
+          <text
+            x={x + w + 10}
+            y={muY + 4}
+            fontSize="10"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.cyan}
+            letterSpacing="0.06em"
+          >
+            μ
+          </text>
+        </g>
+      )}
+
+      {/* σ envelope (for normalized stage) */}
+      {sigmaEnvelope && (
+        <g>
+          <rect
+            x={x - 5}
+            y={muY - sigma * (totalH / 4)}
+            width={w + 10}
+            height={sigma * (totalH / 2)}
+            fill="rgba(34,211,238,0.05)"
+            stroke={ACCENT.cyan}
+            strokeOpacity={0.4}
+            strokeDasharray="3 4"
+            strokeWidth={1}
+          />
+          <text
+            x={x + w + 10}
+            y={muY - sigma * (totalH / 4) + 4}
+            fontSize="9"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.cyan}
+          >
+            +σ
+          </text>
+          <text
+            x={x + w + 10}
+            y={muY + sigma * (totalH / 4) + 4}
+            fontSize="9"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.cyan}
+          >
+            −σ
+          </text>
+        </g>
+      )}
+
+      {/* μ / σ readouts below */}
+      <text x={x} y={y + totalH + 22}
+        fontSize="11" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim}>
+        μ ={' '}
+        <tspan fill={Math.abs(mu) < 0.01 ? ACCENT.mint : ACCENT.cyan}>
+          {mu.toFixed(2)}
+        </tspan>
+      </text>
+      <text x={x} y={y + totalH + 40}
+        fontSize="11" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim}>
+        σ ={' '}
+        <tspan fill={Math.abs(sigma - 1) < 0.01 ? ACCENT.mint : ACCENT.cyan}>
+          {sigma.toFixed(2)}
+        </tspan>
+      </text>
+    </g>
+  )
+}
+
+/** Operation arrow + symbol between two stages. */
+function Operation({
+  x,
+  y,
+  width,
+  symbol,
+  label,
+  color,
+  active,
+  speed,
+}: {
+  x: number
+  y: number
+  width: number
+  symbol: string
+  label: string
+  color: string
+  active: boolean
+  speed: number
+}) {
+  return (
+    <motion.g
+      initial={false}
+      animate={{ opacity: active ? 1 : 0.35 }}
+      transition={{ duration: 0.4 / speed }}
+    >
+      {/* Arrow line */}
+      <line
+        x1={x}
+        x2={x + width - 8}
+        y1={y}
+        y2={y}
+        stroke={color}
+        strokeOpacity={0.8}
+        strokeWidth={1.6}
+      />
+      <path
+        d={`M ${x + width - 14} ${y - 6} L ${x + width - 6} ${y} L ${x + width - 14} ${y + 6}`}
+        stroke={color}
+        strokeOpacity={0.85}
+        strokeWidth={1.6}
+        fill="none"
+      />
+      {/* Symbol box above the arrow */}
+      <rect
+        x={x + width / 2 - 36}
+        y={y - 38}
+        width={72}
+        height={28}
+        rx={4}
+        fill="rgba(8,8,11,0.75)"
+        stroke={color}
+        strokeOpacity={0.65}
+        strokeWidth={1.2}
+      />
+      <text
+        x={x + width / 2}
+        y={y - 19}
+        textAnchor="middle"
+        fontSize="14"
+        fontFamily="var(--font-display)"
+        fontStyle="italic"
+        fill={color}
+      >
+        {symbol}
+      </text>
+      {/* Sub-label below */}
+      <text
+        x={x + width / 2}
+        y={y + 22}
+        textAnchor="middle"
+        fontSize="10"
+        fontFamily="var(--font-mono)"
+        fill={ACCENT.dim}
+        letterSpacing="0.18em"
+      >
+        {label}
+      </text>
+    </motion.g>
+  )
+}
+
+/** Horizontal parameter strip (γ or β). */
+function ParamStrip({
+  x,
+  y,
+  w,
+  cellH,
+  values,
+  colorFn,
+}: {
+  x: number
+  y: number
+  w: number
+  cellH: number
+  values: number[]
+  colorFn: (v: number) => string
+}) {
+  const D = values.length
+  const cellW = (w - 2) / D
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={cellH}
+        fill="none" stroke={ACCENT.amber} strokeOpacity={0.45}
+        strokeWidth={1} rx={2} />
+      {values.map((v, i) => (
+        <rect
+          key={i}
+          x={x + 1 + i * cellW}
+          y={y + 1}
+          width={cellW - 1}
+          height={cellH - 2}
+          fill={colorFn(v)}
+        />
+      ))}
+    </g>
+  )
+}
+
+/* ─────────── Scene 9 wrapper ─────────── */
+export function LayerNormSplitPane() {
+  const speed = useSpeed()
+  // Sync phase chip with the viz's phase progression
+  const PHASES = 5
+  const phaseLabels = [
+    'raw input',
+    'subtract μ',
+    'divide by σ',
+    'apply γ, β',
+    'output ready',
+  ]
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      2400 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  return (
+    <SplitPaneScene
+      viz={<VizLayerNorm />}
+      text={{
+        kicker: ACT2_KICKER,
+        title: 'Re-center. Re-scale. Re-tilt.',
+        subtitle: (
+          <>
+            Before each sublayer the activations get a controlled
+            distribution, then learnable γ and β tune it.
+          </>
+        ),
+        accent: ACCENT.violet,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.violet}
+          />
+        ),
+        stats: [
+          { label: 'norm dim', value: '384' },
+          { label: 'γ params', value: '384' },
+          { label: 'β params', value: '384' },
+          { label: 'ε', value: '1e-5' },
+        ],
+        equation: {
+          label: 'how each token is normalized',
+          body: (
+            <>
+              LN(x) = γ ·{' '}
+              <span style={{ color: ACCENT.cyan }}>(x − μ) / σ</span>
+              {' + β'}
+            </>
+          ),
+        },
+        infoCallout:
+          'LayerNorm runs per-token-vector — across the 384 dims of one token, NOT across tokens or batch. Different from BatchNorm.',
+      }}
+    />
+  )
+}

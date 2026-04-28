@@ -59,7 +59,7 @@ import {
   PositionalSplitPane,
   ReadyForBlock0SplitPane,
 } from './actIScenes'
-import { Act2IntroSplitPane } from './act2Scenes'
+import { Act2IntroSplitPane, LayerNormSplitPane } from './act2Scenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -237,15 +237,16 @@ Nothing in the model has done attention yet. Tokens have not "talked" to each ot
     title: 'Normalize before every sublayer.',
     caption:
       'Subtract mean → divide by std → scale & shift (γ, β). Runs before attention AND before FFN.',
-    accent: ACCENT.amber,
-    durationMs: 21000,  // 4 × 4.5s
+    accent: ACCENT.violet,
+    durationMs: 26000,
     part: 'layernorm',
+    panelAnchor: 'fullscreen',
     details: `LayerNorm stabilizes training. Without it, gradients through deep stacks of attention/FFN can explode or vanish. The fix: at every layer boundary, renormalize the input vector so its mean is 0 and variance is 1, then apply two learned scale/shift parameters (γ and β) to let the model undo the normalization if useful.
 
 Key detail: LayerNorm runs per-token-vector — it normalizes across the 384 dimensions of ONE token, not across tokens or across batch. This is different from BatchNorm (which averages across the batch) and is why LayerNorm works in models with variable sequence length.
 
 Modern models (LLaMA, PaLM) switched to RMSNorm, which drops the mean-subtraction step for a small speedup with no quality loss.`,
-    render: () => <PanelThenScene panel={<PanelLayerNorm />} scene={<SceneLayerNorm />} />,
+    render: () => <LayerNormSplitPane />,
   },
   {
     id: 'qkv',
