@@ -59,7 +59,11 @@ import {
   PositionalSplitPane,
   ReadyForBlock0SplitPane,
 } from './actIScenes'
-import { Act2IntroSplitPane, LayerNormSplitPane } from './act2Scenes'
+import {
+  Act2IntroSplitPane,
+  LayerNormSplitPane,
+  QKVSplitPane,
+} from './act2Scenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -258,15 +262,16 @@ Modern models (LLaMA, PaLM) switched to RMSNorm, which drops the mean-subtractio
     title: 'One vector. Three roles.',
     caption:
       'Three learned matrices project the same input into query, key, and value vectors.',
-    accent: ACCENT.amber,
-    durationMs: 18000,
+    accent: ACCENT.violet,
+    durationMs: 22000,
     part: 'attention',
+    panelAnchor: 'fullscreen',
     details: `Q, K, V are three linear projections of the same input vector. Every token gets its own Q (what am I looking for?), K (how can I be found?), and V (what do I contribute?). Three matrices, one shape each [d_model × d_head].
 
 Why three? Because you want to ask a different question than you want to broadcast. Q and K must match in dimension (they're compared via dot product), but V can be totally different — it's just what the token offers once someone has decided to listen to it.
 
 All three are learned. Nothing special about the split — they start as random matrices and the network figures out what each should encode during training.`,
-    render: () => <PanelThenScene panel={<PanelQKV />} scene={<SceneQKV />} />,
+    render: () => <QKVSplitPane />,
   },
   {
     id: 'attn',

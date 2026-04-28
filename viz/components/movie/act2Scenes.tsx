@@ -1543,3 +1543,639 @@ export function LayerNormSplitPane() {
     />
   )
 }
+
+
+/* =========================================================================
+ * Scene 10 — qkv: "One vector. Three roles."
+ *
+ * Visual story per design feedback:
+ *   1. The source vector is explicitly LN(x) — picks up where Scene 9 ended.
+ *   2. ONE primary teaching visualization: the branching pipeline. The
+ *      same LN(x) is fanned out into three lanes, each multiplied by a
+ *      learned matrix, producing Q / K / V output vectors.
+ *   3. Each lane reads as a mini pipeline:
+ *         LN(x)  →  W_Q  →  Q   (amber, query)
+ *         LN(x)  →  W_K  →  K   (blue, key)
+ *         LN(x)  →  W_V  →  V   (mint, value)
+ *   4. Q, K, V are rendered as parallel-shaped vectors with consistent
+ *      cell layout — they're three different vectors from the same source.
+ *   5. Explicit role labels under each: "query / key / value" plus the
+ *      one-line intuitive caption.
+ *   6. Bottom handoff cue: "NEXT: compare Q against all K → attention scores"
+ * ====================================================================== */
+
+const COL_Q = '#f59e0b' // amber
+const COL_K = '#60a5fa' // blue
+const COL_V = '#34d399' // green/mint
+
+export function VizQKV() {
+  const speed = useSpeed()
+  const { prompt } = usePrompt()
+  const tokens = (prompt || 'To be, or not to be').split('').slice(0, 14)
+  const FOCUSED = 3
+
+  // Phase cycle: which lane is "active" right now (0=Q, 1=K, 2=V, 3=all settled)
+  const PHASES = 4
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      2400 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // ── Math: deterministic signed values for source vector + matrix → output ──
+  const D = 12
+  const LN_VALUES = Array.from({ length: D }).map(
+    (_, i) => Math.sin(i * 1.27 + 2.1) * 0.85,
+  )
+  // Synthesize Q/K/V from the source so each output looks like a real
+  // projection — different mixes, different per-dim values
+  const projectionFor = (whichSeed: number): number[] =>
+    Array.from({ length: D }).map((_, i) => {
+      const a = Math.sin(i * 0.9 + whichSeed * 1.3)
+      const b = Math.cos(i * 0.6 + whichSeed * 0.7 + 0.4)
+      return Math.max(-1, Math.min(1, (a * 0.6 + b * 0.5) * 0.9))
+    })
+  const Q_VALUES = projectionFor(1)
+  const K_VALUES = projectionFor(2)
+  const V_VALUES = projectionFor(3)
+
+  // Diverging color (positive accent, negative muted red), tinted by the
+  // lane's color
+  const colorForVal = (v: number, accent: string): string => {
+    if (v >= 0) {
+      const a = Math.round((0.10 + Math.min(1, v) * 0.62) * 255)
+        .toString(16)
+        .padStart(2, '0')
+      return `${accent}${a}`
+    }
+    const a = 0.10 + Math.min(1, -v) * 0.55
+    return `rgba(248,113,113,${a})`
+  }
+
+  // ── Geometry ──────────────────────────────────────────────────────────
+  // Source LN(x) vector
+  const SRC_X = 100
+  const SRC_TOP = 320
+  const SRC_W = 60
+  const SRC_CELL_H = 30
+  const SRC_BOT = SRC_TOP + D * SRC_CELL_H // 680
+
+  // Three weight matrices in middle
+  const MATRIX_X = 410
+  const MATRIX_W = 130
+  const MATRIX_H = 100
+  const LANE_Y = [240, 460, 680] // y-center for Q, K, V lanes
+
+  // Three output vectors on the right
+  const OUT_X = 700
+  const OUT_W = 60
+  const OUT_CELL_H = 18
+  const OUT_H = D * OUT_CELL_H // 216
+
+  // Right-side labels
+  const LABEL_X = 800
+  const ROLE_NAMES = ['query', 'key', 'value']
+  const ROLE_BLURBS = [
+    'what this token is asking',
+    'how this token can be found',
+    'what this token contributes',
+  ]
+  const ROLE_COLORS = [COL_Q, COL_K, COL_V]
+  const ROLE_LETTERS = ['Q', 'K', 'V']
+  const W_NAMES = ['W_Q', 'W_K', 'W_V']
+
+  return (
+    <div className="relative h-full w-full">
+      <svg viewBox="0 0 1400 1000" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="qkv-glow"><feGaussianBlur stdDeviation="3" /></filter>
+          <filter id="qkv-bloom" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
+        </defs>
+
+        {/* ────── Top kicker ────── */}
+        <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.32em">
+          BLOCK 0 · ATTENTION · Q · K · V
+        </text>
+
+        {/* ────── Token strip with focused #3 ────── */}
+        <g>
+          <text x={20} y={84} fontSize="10" fontFamily="var(--font-mono)"
+            fill={ACCENT.violet} letterSpacing="0.22em" opacity={0.85}>
+            same focused token ▸
+          </text>
+          {tokens.map((ch, i) => {
+            const cellW = 30
+            const startX = 280
+            const x = startX + i * (cellW + 4)
+            const isFocused = i === FOCUSED
+            return (
+              <g key={`tok-${i}`}>
+                {isFocused && (
+                  <motion.rect
+                    x={x - 2} y={64} width={cellW + 4} height={36} rx={4}
+                    fill="rgba(167,139,250,0.18)"
+                    stroke={ACCENT.violet}
+                    strokeWidth={1.6}
+                    initial={{ opacity: 0.6 }}
+                    animate={{ opacity: [0.55, 1, 0.55] }}
+                    transition={{
+                      duration: 2 / speed,
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                    }}
+                  />
+                )}
+                <rect x={x} y={66} width={cellW} height={32} rx={3}
+                  fill="rgba(167,139,250,0.04)"
+                  stroke="rgba(167,139,250,0.32)"
+                  strokeWidth={1} />
+                <text x={x + cellW / 2} y={88} textAnchor="middle"
+                  fontSize="15" fontFamily="var(--font-display)"
+                  fontStyle="italic"
+                  fill={isFocused ? '#fff' : 'rgba(255,255,255,0.55)'}>
+                  {ch === ' ' ? '·' : ch}
+                </text>
+              </g>
+            )
+          })}
+        </g>
+
+        {/* ────── Source vector — LN(x) ────── */}
+        <g>
+          {/* Math labels */}
+          <text x={SRC_X + SRC_W / 2} y={SRC_TOP - 50} textAnchor="middle"
+            fontSize="20" fontFamily="var(--font-display)" fontStyle="italic"
+            fill={ACCENT.violet}>
+            LN(x)
+          </text>
+          <text x={SRC_X + SRC_W / 2} y={SRC_TOP - 28} textAnchor="middle"
+            fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim}
+            letterSpacing="0.22em">
+            normalized · ℝ³⁸⁴
+          </text>
+
+          {/* Pulsing halo on source */}
+          <motion.rect
+            x={SRC_X - 6} y={SRC_TOP - 6}
+            width={SRC_W + 12} height={D * SRC_CELL_H + 12}
+            rx={5}
+            fill="rgba(167,139,250,0.06)"
+            stroke={ACCENT.violet}
+            strokeWidth={2.2}
+            strokeOpacity={0.85}
+            initial={{ opacity: 0.7 }}
+            animate={{ opacity: [0.6, 1, 0.6] }}
+            transition={{
+              duration: 3 / speed,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+
+          {/* Cells */}
+          {LN_VALUES.map((v, i) => (
+            <rect
+              key={`src-${i}`}
+              x={SRC_X + 1}
+              y={SRC_TOP + i * SRC_CELL_H + 1}
+              width={SRC_W - 2}
+              height={SRC_CELL_H - 2}
+              fill={colorForVal(v, ACCENT.violet)}
+            />
+          ))}
+
+          {/* "From Scene 9" continuity hint */}
+          <text x={SRC_X + SRC_W / 2} y={SRC_BOT + 24}
+            textAnchor="middle"
+            fontSize="10"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.cyan}
+            opacity={0.65}
+            letterSpacing="0.2em">
+            ◂ from LayerNorm
+          </text>
+        </g>
+
+        {/* ────── Branch fan-out: 3 curved arrows from source to each W matrix ────── */}
+        {[0, 1, 2].map((lane) => {
+          const startX = SRC_X + SRC_W
+          const startY = SRC_TOP + D * SRC_CELL_H / 2
+          const endX = MATRIX_X - 6
+          const endY = LANE_Y[lane]
+          // Curve through a control point
+          const ctrlX = (startX + endX) / 2 + 30
+          const ctrlY = endY
+          const isActive = phase === lane || phase === 3
+          return (
+            <motion.path
+              key={`branch-${lane}`}
+              d={`M ${startX} ${startY} Q ${ctrlX} ${ctrlY}, ${endX} ${endY}`}
+              stroke={ROLE_COLORS[lane]}
+              strokeWidth={isActive ? 2.4 : 1.2}
+              strokeOpacity={isActive ? 0.95 : 0.45}
+              fill="none"
+              strokeLinecap="round"
+              initial={{ pathLength: 0 }}
+              animate={{
+                pathLength: 1,
+                strokeOpacity: isActive ? 0.95 : 0.45,
+              }}
+              transition={{
+                pathLength: { duration: 0.7 / speed, delay: (0.4 + lane * 0.12) / speed },
+                strokeOpacity: { duration: 0.4 / speed },
+              }}
+            />
+          )
+        })}
+
+        {/* ────── Three weight matrices (W_Q, W_K, W_V) ────── */}
+        {[0, 1, 2].map((lane) => {
+          const yCenter = LANE_Y[lane]
+          const yTop = yCenter - MATRIX_H / 2
+          const isActive = phase === lane || phase === 3
+          const accent = ROLE_COLORS[lane]
+          return (
+            <g key={`mat-${lane}`}>
+              {/* Matrix grid — 9 cols × 6 rows */}
+              <motion.g
+                initial={false}
+                animate={{ opacity: isActive ? 1 : 0.55 }}
+                transition={{ duration: 0.4 / speed }}
+              >
+                <rect
+                  x={MATRIX_X}
+                  y={yTop}
+                  width={MATRIX_W}
+                  height={MATRIX_H}
+                  rx={3}
+                  fill={`${accent}10`}
+                  stroke={accent}
+                  strokeWidth={isActive ? 2 : 1.2}
+                  strokeOpacity={isActive ? 0.95 : 0.55}
+                />
+                {/* Cell grid suggestive of the 384×384 matrix shape */}
+                {Array.from({ length: 6 }).map((_, r) =>
+                  Array.from({ length: 9 }).map((_, c) => {
+                    const cw = (MATRIX_W - 8) / 9
+                    const ch = (MATRIX_H - 8) / 6
+                    const seed = (lane * 31 + r * 7 + c * 13) % 100
+                    return (
+                      <rect
+                        key={`${r}-${c}`}
+                        x={MATRIX_X + 4 + c * cw}
+                        y={yTop + 4 + r * ch}
+                        width={cw - 0.5}
+                        height={ch - 0.5}
+                        fill={accent}
+                        opacity={0.10 + (seed % 35) / 200}
+                      />
+                    )
+                  }),
+                )}
+                {/* Matrix label inside */}
+                <text
+                  x={MATRIX_X + MATRIX_W / 2}
+                  y={yCenter + 4}
+                  textAnchor="middle"
+                  fontSize="22"
+                  fontFamily="var(--font-display)"
+                  fontStyle="italic"
+                  fill={accent}
+                  opacity={0.95}
+                >
+                  {W_NAMES[lane]}
+                </text>
+              </motion.g>
+              {/* Shape label below matrix */}
+              <text
+                x={MATRIX_X + MATRIX_W / 2}
+                y={yTop + MATRIX_H + 16}
+                textAnchor="middle"
+                fontSize="9"
+                fontFamily="var(--font-mono)"
+                fill={ACCENT.dim}
+                letterSpacing="0.18em"
+                opacity={isActive ? 0.85 : 0.5}
+              >
+                ℝ³⁸⁴ ˣ ³⁸⁴
+              </text>
+            </g>
+          )
+        })}
+
+        {/* ────── Connectors: matrix → output vector ────── */}
+        {[0, 1, 2].map((lane) => {
+          const startX = MATRIX_X + MATRIX_W
+          const yCenter = LANE_Y[lane]
+          const endX = OUT_X
+          const endY = LANE_Y[lane]
+          const isActive = phase === lane || phase === 3
+          return (
+            <g key={`mat-out-${lane}`}>
+              <motion.path
+                d={`M ${startX + 4} ${yCenter} L ${endX - 14} ${endY}`}
+                stroke={ROLE_COLORS[lane]}
+                strokeWidth={isActive ? 2.4 : 1.2}
+                strokeOpacity={isActive ? 0.95 : 0.45}
+                fill="none"
+                strokeLinecap="round"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{
+                  duration: 0.5 / speed,
+                  delay: (1.0 + lane * 0.12) / speed,
+                }}
+              />
+              {/* Arrowhead */}
+              <path
+                d={`M ${endX - 18} ${endY - 5} L ${endX - 8} ${endY} L ${endX - 18} ${endY + 5}`}
+                stroke={ROLE_COLORS[lane]}
+                strokeWidth={isActive ? 2.2 : 1.2}
+                strokeOpacity={isActive ? 0.95 : 0.55}
+                fill="none"
+                strokeLinecap="round"
+              />
+            </g>
+          )
+        })}
+
+        {/* ────── Output vectors Q, K, V ────── */}
+        {[0, 1, 2].map((lane) => {
+          const yCenter = LANE_Y[lane]
+          const yTop = yCenter - OUT_H / 2
+          const accent = ROLE_COLORS[lane]
+          const values = [Q_VALUES, K_VALUES, V_VALUES][lane]
+          const isActive = phase === lane || phase === 3
+          return (
+            <g key={`out-${lane}`}>
+              {/* Output halo for active */}
+              {isActive && (
+                <motion.rect
+                  x={OUT_X - 8} y={yTop - 8}
+                  width={OUT_W + 16} height={OUT_H + 16}
+                  rx={6}
+                  fill={`${accent}10`}
+                  filter="url(#qkv-glow)"
+                  initial={{ opacity: 0.4 }}
+                  animate={{ opacity: [0.45, 0.85, 0.45] }}
+                  transition={{
+                    duration: 2.4 / speed,
+                    repeat: Infinity,
+                    ease: 'easeInOut',
+                  }}
+                />
+              )}
+              {/* Outline */}
+              <rect
+                x={OUT_X}
+                y={yTop}
+                width={OUT_W}
+                height={OUT_H}
+                rx={3}
+                fill="none"
+                stroke={accent}
+                strokeWidth={isActive ? 2.2 : 1.4}
+                strokeOpacity={isActive ? 1 : 0.6}
+              />
+              {/* Cells */}
+              {values.map((v, i) => (
+                <rect
+                  key={`out-cell-${lane}-${i}`}
+                  x={OUT_X + 1}
+                  y={yTop + i * OUT_CELL_H + 1}
+                  width={OUT_W - 2}
+                  height={OUT_CELL_H - 2}
+                  fill={colorForVal(v, accent)}
+                />
+              ))}
+              {/* Big italic letter overlay (Q, K, V) above the vector */}
+              <text
+                x={OUT_X + OUT_W / 2}
+                y={yTop - 16}
+                textAnchor="middle"
+                fontSize="32"
+                fontFamily="var(--font-display)"
+                fontStyle="italic"
+                fill={accent}
+              >
+                {ROLE_LETTERS[lane]}
+              </text>
+              {/* Shape under the vector */}
+              <text
+                x={OUT_X + OUT_W / 2}
+                y={yTop + OUT_H + 16}
+                textAnchor="middle"
+                fontSize="9"
+                fontFamily="var(--font-mono)"
+                fill={ACCENT.dim}
+                letterSpacing="0.18em"
+                opacity={0.7}
+              >
+                ∈ ℝ³⁸⁴
+              </text>
+            </g>
+          )
+        })}
+
+        {/* ────── Right-side role labels ────── */}
+        {[0, 1, 2].map((lane) => {
+          const yCenter = LANE_Y[lane]
+          const accent = ROLE_COLORS[lane]
+          return (
+            <g key={`label-${lane}`}>
+              {/* "Q = query" */}
+              <text
+                x={LABEL_X}
+                y={yCenter - 18}
+                fontSize="20"
+                fontFamily="var(--font-display)"
+                fontStyle="italic"
+                fill={accent}
+              >
+                {ROLE_LETTERS[lane]}
+              </text>
+              <text
+                x={LABEL_X + 30}
+                y={yCenter - 18}
+                fontSize="13"
+                fontFamily="var(--font-mono)"
+                fill={accent}
+                letterSpacing="0.18em"
+                opacity={0.85}
+              >
+                = {ROLE_NAMES[lane]}
+              </text>
+              {/* Intuitive blurb */}
+              <text
+                x={LABEL_X}
+                y={yCenter + 4}
+                fontSize="12"
+                fontFamily="var(--font-display)"
+                fontStyle="italic"
+                fill="rgba(255,255,255,0.65)"
+              >
+                {ROLE_BLURBS[lane]}
+              </text>
+              {/* Role pipeline summary, quiet */}
+              <text
+                x={LABEL_X}
+                y={yCenter + 24}
+                fontSize="10"
+                fontFamily="var(--font-mono)"
+                fill={ACCENT.dim}
+                letterSpacing="0.18em"
+                opacity={0.6}
+              >
+                LN(x) · {W_NAMES[lane]} = {ROLE_LETTERS[lane]}
+              </text>
+            </g>
+          )
+        })}
+
+        {/* ────── Pipeline summary line at top ────── */}
+        <motion.text
+          x={700}
+          y={170}
+          textAnchor="middle"
+          fontSize="14"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill="rgba(255,255,255,0.78)"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.85 }}
+          transition={{ delay: 0.8 / speed, duration: 0.5 / speed }}
+        >
+          one vector, three learned projections, three different vectors
+        </motion.text>
+
+        {/* ────── Handoff cue at bottom ────── */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: phase >= 3 ? 1 : 0.55 }}
+          transition={{ duration: 0.5 / speed }}
+        >
+          <rect
+            x={400}
+            y={870}
+            width={600}
+            height={50}
+            rx={6}
+            fill="rgba(8,8,11,0.7)"
+            stroke="rgba(167,139,250,0.32)"
+            strokeWidth={1.2}
+          />
+          <text
+            x={700}
+            y={902}
+            textAnchor="middle"
+            fontSize="14"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.violet}
+            letterSpacing="0.22em"
+          >
+            NEXT  →  compare{' '}
+            <tspan fill={COL_Q} fontStyle="italic" fontFamily="var(--font-display)">
+              Q
+            </tspan>
+            {' '}against all{' '}
+            <tspan fill={COL_K} fontStyle="italic" fontFamily="var(--font-display)">
+              K
+            </tspan>
+            {' '}→ attention scores
+          </text>
+        </motion.g>
+
+        {/* ────── Bottom italic caption ────── */}
+        <text
+          x={700}
+          y={970}
+          textAnchor="middle"
+          fontSize="13"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill={ACCENT.dim}
+          opacity={0.85}
+        >
+          Same input. Three different learned matrices. Three vectors with three different jobs.
+        </text>
+      </svg>
+    </div>
+  )
+}
+
+/* ─────────── Scene 10 wrapper ─────────── */
+export function QKVSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 4
+  const phaseLabels = [
+    'projecting Q',
+    'projecting K',
+    'projecting V',
+    'all three ready',
+  ]
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      2400 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  return (
+    <SplitPaneScene
+      viz={<VizQKV />}
+      text={{
+        kicker: ACT2_KICKER,
+        title: 'One vector. Three roles.',
+        subtitle: (
+          <>
+            Three small learned matrices project the same LN(x) into a
+            <span style={{ color: COL_Q }}> query</span>, a
+            <span style={{ color: COL_K }}> key</span>, and a
+            <span style={{ color: COL_V }}> value</span> — three different
+            views of the same token.
+          </>
+        ),
+        accent: ACCENT.violet,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.violet}
+          />
+        ),
+        stats: [
+          { label: 'd_model', value: '384' },
+          { label: 'd_k', value: '64', color: COL_Q },
+          { label: 'heads', value: '6' },
+          { label: 'params/W', value: '147 K' },
+        ],
+        equation: {
+          label: 'three learned projections',
+          body: (
+            <>
+              <span style={{ color: COL_Q }}>Q</span> = LN(x) W
+              <sub style={{ color: COL_Q }}>Q</sub>
+              <br />
+              <span style={{ color: COL_K }}>K</span> = LN(x) W
+              <sub style={{ color: COL_K }}>K</sub>
+              <br />
+              <span style={{ color: COL_V }}>V</span> = LN(x) W
+              <sub style={{ color: COL_V }}>V</sub>
+            </>
+          ),
+        },
+        infoCallout:
+          'Q and K must share dimension (they meet via dot product), but V can encode anything. All three are learned — they start random and the network figures out what each should carry.',
+      }}
+    />
+  )
+}
