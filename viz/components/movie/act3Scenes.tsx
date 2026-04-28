@@ -30,12 +30,13 @@ const ACT3_KICKER = 'ACT III · THE FULL STACK'
  * ====================================================================== */
 
 const BLOCK_COUNT = 6
-const BLOCK_W = 168
-const BLOCK_H = 340
-const BLOCK_Y = 200
+const BLOCK_W = 156
+const BLOCK_H = 320
+const BLOCK_Y = 210
+const BLOCK_DEPTH = 22 // isometric depth offset (up + right)
 const BLOCK_BOTTOM = BLOCK_Y + BLOCK_H
 const STREAM_Y = 600
-const STREAM_H = 26
+const STREAM_H = 30
 const STREAM_X_START = 90
 const STREAM_X_END = 1310
 const STREAM_LEN = STREAM_X_END - STREAM_X_START
@@ -92,6 +93,9 @@ export function VizActIIIntro() {
           <filter id="intro-bloom" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="8" />
           </filter>
+          <filter id="stack-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
           <linearGradient id="intro-stream-grad" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="rgba(34,211,238,0.55)" />
             <stop offset="50%" stopColor="rgba(96,165,250,0.85)" />
@@ -102,7 +106,21 @@ export function VizActIIIntro() {
             <stop offset="50%" stopColor="rgba(96,165,250,1)" />
             <stop offset="100%" stopColor="rgba(236,72,153,1)" />
           </linearGradient>
+          <linearGradient id="intro-tube-light" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
+            <stop offset="32%" stopColor="rgba(255,255,255,0.05)" />
+            <stop offset="68%" stopColor="rgba(0,0,0,0)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,0.45)" />
+          </linearGradient>
+          <linearGradient id="intro-floor" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(96,165,250,0.0)" />
+            <stop offset="100%" stopColor="rgba(96,165,250,0.06)" />
+          </linearGradient>
         </defs>
+
+        {/* Subtle horizon / floor band — depth cue under the blocks */}
+        <rect x={0} y={BLOCK_BOTTOM + 8} width={1400} height={STREAM_Y - BLOCK_BOTTOM - 8}
+          fill="url(#intro-floor)" pointerEvents="none" />
 
         {/* Top kicker */}
         <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
@@ -211,7 +229,9 @@ export function VizActIIIntro() {
           </text>
         </motion.g>
 
-        {/* Residual stream — emerges in phase B, drawing left-to-right */}
+        {/* Residual stream — emerges in phase B, drawing left-to-right
+            Same 3D tube treatment as Scene 17: ground shadow, bloom,
+            color band, cylindrical lighting overlay, top specular. */}
         <motion.g
           initial={{ opacity: 0 }}
           animate={{ opacity: phase >= 1 ? 1 : 0 }}
@@ -223,6 +243,21 @@ export function VizActIIIntro() {
             fill={ACCENT.cyan} letterSpacing="0.22em">
             RESIDUAL STREAM · 384-DIM
           </text>
+          {/* Tube shadow on the floor */}
+          <motion.ellipse
+            cx={STREAM_X_START + STREAM_LEN / 2}
+            cy={STREAM_Y + STREAM_H + 14}
+            ry={5}
+            fill="rgba(0,0,0,0.5)"
+            filter="url(#stack-shadow)"
+            initial={{ rx: 0, opacity: 0 }}
+            animate={{
+              rx: phase >= 1 ? STREAM_LEN / 2 - 30 : 0,
+              opacity: phase >= 1 ? 0.65 : 0,
+            }}
+            transition={{ duration: 1.2 / speed, delay: phase >= 1 ? 1.3 / speed : 0, ease: 'easeOut' }}
+          />
+          {/* Bloom halo */}
           <motion.rect
             x={STREAM_X_START} y={STREAM_Y}
             height={STREAM_H} rx={STREAM_H / 2}
@@ -238,6 +273,7 @@ export function VizActIIIntro() {
               opacity: { duration: 1.5 / speed, delay: phase >= 1 ? 1.3 / speed : 0 },
             }}
           />
+          {/* Inner color band */}
           <motion.rect
             x={STREAM_X_START} y={STREAM_Y + 4}
             height={STREAM_H - 8} rx={(STREAM_H - 8) / 2}
@@ -245,6 +281,25 @@ export function VizActIIIntro() {
             initial={{ width: 0 }}
             animate={{ width: phase >= 1 ? STREAM_LEN : 0 }}
             transition={{ duration: 1.2 / speed, delay: phase >= 1 ? 1.3 / speed : 0, ease: 'easeOut' }}
+          />
+          {/* Cylindrical lighting overlay */}
+          <motion.rect
+            x={STREAM_X_START} y={STREAM_Y + 4}
+            height={STREAM_H - 8} rx={(STREAM_H - 8) / 2}
+            fill="url(#intro-tube-light)"
+            pointerEvents="none"
+            initial={{ width: 0 }}
+            animate={{ width: phase >= 1 ? STREAM_LEN : 0 }}
+            transition={{ duration: 1.2 / speed, delay: phase >= 1 ? 1.3 / speed : 0, ease: 'easeOut' }}
+          />
+          {/* Top specular highlight */}
+          <motion.rect
+            x={STREAM_X_START + 24} y={STREAM_Y + 5}
+            height={3} rx={1.5}
+            fill="rgba(255,255,255,0.42)"
+            initial={{ width: 0 }}
+            animate={{ width: phase >= 1 ? STREAM_LEN - 48 : 0 }}
+            transition={{ duration: 1.2 / speed, delay: phase >= 1 ? 1.4 / speed : 0, ease: 'easeOut' }}
           />
           {/* Endpoint chips */}
           <g transform={`translate(20, ${STREAM_Y - 14})`}>
@@ -433,6 +488,9 @@ export function VizStack() {
           <filter id="stack-bloom" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="6" />
           </filter>
+          <filter id="stack-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
           <linearGradient id="stack-stream-grad" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="rgba(34,211,238,0.55)" />
             <stop offset="50%" stopColor="rgba(96,165,250,0.85)" />
@@ -443,7 +501,22 @@ export function VizStack() {
             <stop offset="50%" stopColor="rgba(96,165,250,1)" />
             <stop offset="100%" stopColor="rgba(236,72,153,1)" />
           </linearGradient>
+          <linearGradient id="stack-tube-light" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
+            <stop offset="32%" stopColor="rgba(255,255,255,0.05)" />
+            <stop offset="68%" stopColor="rgba(0,0,0,0)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,0.45)" />
+          </linearGradient>
+          {/* Subtle floor / horizon — gives the blocks something to sit on */}
+          <linearGradient id="stack-floor" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(96,165,250,0.0)" />
+            <stop offset="100%" stopColor="rgba(96,165,250,0.06)" />
+          </linearGradient>
         </defs>
+
+        {/* Subtle horizon / floor band — depth cue under the blocks */}
+        <rect x={0} y={BLOCK_BOTTOM + 8} width={1400} height={STREAM_Y - BLOCK_BOTTOM - 8}
+          fill="url(#stack-floor)" pointerEvents="none" />
 
         {/* Top kicker */}
         <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
@@ -495,7 +568,10 @@ export function VizStack() {
   )
 }
 
-/* ─────────── Hero residual stream (the visual headliner) ─────────── */
+/* ─────────── Hero residual stream (the visual headliner) ───────────────
+ * Rendered as a 3D-feeling tube: bloom halo, a horizontal color band, a
+ * cylindrical lighting overlay (light up top, shadow down low), and a
+ * soft tube shadow on the "ground" below it. */
 function StackResidualStream({ phase, speed }: { phase: number; speed: number }) {
   const baseOpacity = phase === 1 ? 0.95 : 0.55
   return (
@@ -508,7 +584,16 @@ function StackResidualStream({ phase, speed }: { phase: number; speed: number })
         RESIDUAL STREAM · 384-DIM
       </text>
 
-      {/* Bloom layer for glow */}
+      {/* Tube shadow on the "ground" below the stream */}
+      <ellipse
+        cx={STREAM_X_START + STREAM_LEN / 2}
+        cy={STREAM_Y + STREAM_H + 14}
+        rx={STREAM_LEN / 2 - 30} ry={5}
+        fill="rgba(0,0,0,0.5)"
+        filter="url(#stack-shadow)"
+        opacity={0.7} />
+
+      {/* Bloom halo */}
       <motion.rect
         x={STREAM_X_START} y={STREAM_Y}
         width={STREAM_LEN} height={STREAM_H}
@@ -524,34 +609,92 @@ function StackResidualStream({ phase, speed }: { phase: number; speed: number })
         transition={{ duration: 2.4 / speed, repeat: Infinity, ease: 'easeInOut' }}
       />
 
-      {/* Crisp inner band */}
+      {/* Crisp inner band — horizontal color (cyan→blue→magenta) */}
       <rect
         x={STREAM_X_START} y={STREAM_Y + 4}
         width={STREAM_LEN} height={STREAM_H - 8}
         rx={(STREAM_H - 8) / 2}
         fill="url(#stack-stream-grad)"
       />
+
+      {/* Cylindrical lighting overlay — top-lit, bottom-shadowed */}
+      <rect
+        x={STREAM_X_START} y={STREAM_Y + 4}
+        width={STREAM_LEN} height={STREAM_H - 8}
+        rx={(STREAM_H - 8) / 2}
+        fill="url(#stack-tube-light)"
+        pointerEvents="none"
+      />
+
+      {/* Specular highlight along the very top of the tube */}
+      <rect
+        x={STREAM_X_START + 24} y={STREAM_Y + 5}
+        width={STREAM_LEN - 48} height={3}
+        rx={1.5}
+        fill="rgba(255,255,255,0.42)"
+        opacity={0.9}
+      />
     </g>
   )
 }
 
-/* ─────────── Block body (no entry animation — reused by intro + stack) ─────────── */
+/* ─────────── Block body (no entry animation — reused by intro + stack) ───
+ * Isometric-ish 3D look: front face + lit top face + shadowed right face,
+ * plus a soft ground shadow under the block. The hero block in the intro
+ * scene gets the same body, just transformed (scaled/translated) by its
+ * outer motion wrapper, so the 3D faces scale with it.  */
 function StackBlockBody({ idx, speed }: { idx: number; speed: number }) {
   const cx = BLOCK_CENTERS[idx]
   const x = cx - BLOCK_W / 2
   const y = BLOCK_Y
+  const w = BLOCK_W
+  const h = BLOCK_H
+  const d = BLOCK_DEPTH
+
   const color = blockColor(idx)
-  const dimColor = blockColor(idx, 60, 55, 0.6)
-  const fillColor = blockColor(idx, 70, 50, 0.10)
-  const halfY = y + BLOCK_H / 2
+  const dimColor = blockColor(idx, 60, 55, 0.65)
+  const fillFront = blockColor(idx, 70, 50, 0.12)
+  const fillTop = blockColor(idx, 70, 65, 0.26)   // lit face — brighter
+  const fillRight = blockColor(idx, 70, 35, 0.14) // shadowed face — darker
+  const halfY = y + h / 2
+
+  // Polygon points for the 3D faces (depth offset goes up-and-right)
+  const topFace = `${x},${y} ${x + w},${y} ${x + w + d},${y - d} ${x + d},${y - d}`
+  const rightFace = `${x + w},${y} ${x + w + d},${y - d} ${x + w + d},${y + h - d} ${x + w},${y + h}`
 
   return (
     <g>
-      {/* Block frame */}
-      <rect x={x} y={y} width={BLOCK_W} height={BLOCK_H} rx={8}
-        fill={fillColor}
+      {/* Ground shadow — drawn first so block sits on it */}
+      <ellipse
+        cx={cx + d / 2} cy={y + h + 18}
+        rx={w * 0.46} ry={7}
+        fill="rgba(0,0,0,0.5)"
+        filter="url(#stack-shadow)" />
+
+      {/* Right face (in shadow) — drawn behind */}
+      <polygon points={rightFace}
+        fill={fillRight}
+        stroke={dimColor}
+        strokeWidth={1}
+        strokeOpacity={0.55} />
+
+      {/* Top face (lit) */}
+      <polygon points={topFace}
+        fill={fillTop}
+        stroke={dimColor}
+        strokeWidth={1}
+        strokeOpacity={0.55} />
+
+      {/* Front face (the main visible face) */}
+      <rect x={x} y={y} width={w} height={h} rx={2}
+        fill={fillFront}
         stroke={dimColor}
         strokeWidth={1.6} />
+
+      {/* Subtle top-edge highlight along the front face */}
+      <line x1={x + 4} x2={x + w - 4}
+        y1={y + 2} y2={y + 2}
+        stroke="rgba(255,255,255,0.22)" strokeWidth={0.8} />
 
       {/* Block label */}
       <text x={cx} y={y + 26} textAnchor="middle"
@@ -570,13 +713,13 @@ function StackBlockBody({ idx, speed }: { idx: number; speed: number }) {
       {Array.from({ length: 5 }).map((_, q) =>
         Array.from({ length: 5 }).map((_, k) => {
           if (k > q) return null
-          const cellSize = 16
+          const cellSize = 15
           const startX = cx - 2.5 * cellSize
           return (
             <motion.rect
               key={`attn-${idx}-${q}-${k}`}
               x={startX + k * cellSize}
-              y={y + 68 + q * cellSize}
+              y={y + 66 + q * cellSize}
               width={cellSize - 1}
               height={cellSize - 1}
               rx={1}
@@ -595,30 +738,30 @@ function StackBlockBody({ idx, speed }: { idx: number; speed: number }) {
       )}
 
       {/* Mid divider */}
-      <line x1={x + 16} x2={x + BLOCK_W - 16}
-        y1={halfY + 4} y2={halfY + 4}
+      <line x1={x + 16} x2={x + w - 16}
+        y1={halfY + 2} y2={halfY + 2}
         stroke={ACCENT.rule} strokeWidth={0.6} strokeDasharray="2,3" />
 
       {/* Bottom-half label — FFN */}
-      <text x={cx} y={halfY + 28} textAnchor="middle"
+      <text x={cx} y={halfY + 24} textAnchor="middle"
         fontSize="10" fontFamily="var(--font-mono)"
         fill={ACCENT.dim} letterSpacing="0.22em">
         FFN
       </text>
       {/* FFN motif: 6 amber bars that breathe */}
       {Array.from({ length: 6 }).map((_, bi) => {
-        const barW = 14
+        const barW = 13
         const barX = cx - 3 * (barW + 2) + bi * (barW + 2)
         return (
           <motion.rect
             key={`ffn-${idx}-${bi}`}
             x={barX}
-            y={halfY + 42}
+            y={halfY + 38}
             width={barW}
             rx={2}
             fill={ACCENT.amber}
             initial={{ height: 18, opacity: 0.20 }}
-            animate={{ height: [18, 78, 18], opacity: [0.20, 0.85, 0.20] }}
+            animate={{ height: [18, 72, 18], opacity: [0.20, 0.85, 0.20] }}
             transition={{
               duration: 1.5 / speed,
               delay: (idx * 0.1 + bi * 0.08) / speed,
@@ -630,7 +773,7 @@ function StackBlockBody({ idx, speed }: { idx: number; speed: number }) {
       })}
 
       {/* Block readout — "attn + ffn → Δi" */}
-      <text x={cx} y={y + BLOCK_H - 14} textAnchor="middle"
+      <text x={cx} y={y + h - 14} textAnchor="middle"
         fontSize="11" fontFamily="var(--font-mono)"
         fill={dimColor} fontStyle="italic">
         attn + ffn → Δ{idx}
