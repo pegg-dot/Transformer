@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { useSpeed } from './speedContext'
 import { usePrompt } from './promptContext'
@@ -2175,6 +2175,1927 @@ export function QKVSplitPane() {
         },
         infoCallout:
           'Q and K must share dimension (they meet via dot product), but V can encode anything. All three are learned — they start random and the network figures out what each should carry.',
+      }}
+    />
+  )
+}
+
+
+/* =========================================================================
+ * Scene 11 — attn: "Attention — 4 sub-phases."
+ *
+ * Visual story per design feedback:
+ *   - Same focused token (position 4 = ',') persists across all 4 phases
+ *     so continuity is unmistakable.
+ *   - Left side: small persistent "INSIDE A BLOCK" anchor diagram that
+ *     subtly responds to the current sub-phase (different highlights in
+ *     the attention compartment).
+ *   - Right side: big phase-specific teaching graphic that switches every
+ *     ~10s. Each phase reads as one beat of attention:
+ *       A  one query looks backward  (causal, backward arcs)
+ *       B  full Q·Kᵀ matrix          (rows=queries, cols=keys, masked)
+ *       C  row-wise softmax           (raw scores → weights summing to 1)
+ *       D  weights pull from V        (weighted sum → output vector)
+ *   - Q = amber, K = blue, V = mint (continuity with Scene 10 colors).
+ * ====================================================================== */
+
+const COL_Q_ATT = '#f59e0b'
+const COL_K_ATT = '#60a5fa'
+const COL_V_ATT = '#34d399'
+
+export function VizAttention() {
+  const speed = useSpeed()
+  const { prompt } = usePrompt()
+  const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
+  const T = tokens.length
+  const FOCUSED = Math.min(4, T - 1)
+
+  // 4 phases, each ~10s
+  const PHASES = 4
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      9500 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // Deterministic raw scores for the focused row (position FOCUSED)
+  // Earlier positions get real values; future positions are -∞ (masked)
+  const rawScoresRow = Array.from({ length: T }).map((_, j) => {
+    if (j > FOCUSED) return -Infinity
+    return Math.sin(j * 1.3 + 0.7) * 1.2 + Math.cos(j * 0.5) * 0.4
+  })
+  // Softmax of the row
+  const softmaxRow = (() => {
+    const visible = rawScoresRow.filter((v) => v !== -Infinity)
+    const maxV = Math.max(...visible)
+    const exps = rawScoresRow.map((v) =>
+      v === -Infinity ? 0 : Math.exp(v - maxV),
+    )
+    const sum = exps.reduce((a, b) => a + b, 0)
+    return exps.map((e) => e / sum)
+  })()
+
+  return (
+    <div className="relative h-full w-full">
+      <svg viewBox="0 0 1400 1000" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="attn-glow"><feGaussianBlur stdDeviation="2.5" /></filter>
+          <filter id="attn-bloom" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="5" />
+          </filter>
+        </defs>
+
+        {/* ────── Top kicker + token strip ────── */}
+        <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.32em">
+          BLOCK 0 · ATTENTION · 4 SUB-PHASES
+        </text>
+        <AttentionTokenStrip tokens={tokens} focused={FOCUSED} speed={speed} />
+
+        {/* ────── Persistent left anchor: "INSIDE A BLOCK" ────── */}
+        <BlockAnchor
+          tokens={tokens}
+          focused={FOCUSED}
+          phase={phase}
+          speed={speed}
+        />
+
+        {/* ────── Phase-specific teaching viz on the right ────── */}
+        <g>
+          {phase === 0 && (
+            <PhaseA tokens={tokens} focused={FOCUSED} speed={speed} />
+          )}
+          {phase === 1 && (
+            <PhaseB
+              tokens={tokens}
+              focused={FOCUSED}
+              speed={speed}
+              rawScoresRow={rawScoresRow}
+            />
+          )}
+          {phase === 2 && (
+            <PhaseC
+              tokens={tokens}
+              focused={FOCUSED}
+              speed={speed}
+              rawScoresRow={rawScoresRow}
+              softmaxRow={softmaxRow}
+            />
+          )}
+          {phase === 3 && (
+            <PhaseD
+              tokens={tokens}
+              focused={FOCUSED}
+              speed={speed}
+              softmaxRow={softmaxRow}
+            />
+          )}
+        </g>
+
+        {/* ────── Phase summary strip at bottom (active letter highlighted) ────── */}
+        <PhaseSummary phase={phase} />
+      </svg>
+    </div>
+  )
+}
+
+/* ─────────── Token strip (top of canvas) ─────────── */
+function AttentionTokenStrip({
+  tokens,
+  focused,
+  speed,
+}: {
+  tokens: string[]
+  focused: number
+  speed: number
+}) {
+  const cellW = 32
+  const startX = 80
+  return (
+    <g>
+      <text x={20} y={84} fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.violet} letterSpacing="0.22em" opacity={0.85}>
+        TOKENS ▸
+      </text>
+      {tokens.map((ch, i) => {
+        const x = startX + i * (cellW + 4)
+        const isFocused = i === focused
+        return (
+          <g key={`tok-${i}`}>
+            {isFocused && (
+              <motion.rect
+                x={x - 2} y={64} width={cellW + 4} height={36} rx={4}
+                fill="rgba(96,165,250,0.22)"
+                stroke={COL_K_ATT}
+                strokeWidth={1.8}
+                initial={{ opacity: 0.6 }}
+                animate={{ opacity: [0.6, 1, 0.6] }}
+                transition={{
+                  duration: 2 / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+              />
+            )}
+            <rect x={x} y={66} width={cellW} height={32} rx={3}
+              fill="rgba(167,139,250,0.04)"
+              stroke="rgba(167,139,250,0.22)"
+              strokeWidth={1} />
+            <text x={x + cellW / 2} y={88} textAnchor="middle"
+              fontSize="14" fontFamily="var(--font-display)"
+              fontStyle="italic"
+              fill={isFocused ? '#fff' : 'rgba(255,255,255,0.55)'}>
+              {ch === ' ' ? '·' : ch}
+            </text>
+            {/* Position number under each cell */}
+            <text x={x + cellW / 2} y={114} textAnchor="middle"
+              fontSize="9" fontFamily="var(--font-mono)"
+              fill={isFocused ? COL_K_ATT : ACCENT.dim}>
+              {i}
+            </text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/* ─────────── Persistent left anchor: "INSIDE A BLOCK" diagram ─────────── */
+function BlockAnchor({
+  tokens,
+  focused,
+  phase,
+  speed,
+}: {
+  tokens: string[]
+  focused: number
+  phase: number
+  speed: number
+}) {
+  // Geometry — small diagram on the left side of the viewBox
+  const X = 20
+  const Y = 180
+  const W = 360
+  const H = 540
+
+  // Phase-specific caption
+  const captions = [
+    "One query looking backward at earlier keys.",
+    "All query-key pairs scored at once (Q·Kᵀ).",
+    "One row's scores normalized into weights.",
+    "Weights pulling V vectors into one output.",
+  ]
+
+  // Mini token row at top of the block — active token highlighted
+  const miniTokenW = 16
+  const miniTokenStart = X + 30
+  const miniTokenY = Y + 50
+
+  return (
+    <g>
+      {/* Outer frame */}
+      <rect x={X} y={Y} width={W} height={H} rx={8}
+        fill="rgba(167,139,250,0.025)"
+        stroke="rgba(167,139,250,0.32)"
+        strokeWidth={1.6} />
+
+      {/* Header */}
+      <text x={X + W / 2} y={Y + 22} textAnchor="middle"
+        fontSize="11" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.24em">
+        INSIDE A BLOCK
+      </text>
+      <text x={X + W / 2} y={Y + 50} textAnchor="middle"
+        fontSize="22" fontFamily="var(--font-display)"
+        fontStyle="italic" fill="rgba(255,255,255,0.92)">
+        Attention
+      </text>
+
+      {/* Mini token row */}
+      <g transform={`translate(0, 32)`}>
+        {tokens.slice(0, 12).map((ch, i) => {
+          const x = miniTokenStart + i * miniTokenW
+          const isFocused = i === focused
+          return (
+            <rect
+              key={`mt-${i}`}
+              x={x}
+              y={miniTokenY}
+              width={miniTokenW - 1}
+              height={20}
+              rx={1.5}
+              fill={isFocused
+                ? 'rgba(96,165,250,0.40)'
+                : 'rgba(167,139,250,0.08)'}
+              stroke={isFocused ? COL_K_ATT : 'rgba(167,139,250,0.35)'}
+              strokeWidth={isFocused ? 1.4 : 0.6}
+            />
+          )
+        })}
+        {/* Q^K label above active */}
+        <text
+          x={miniTokenStart + focused * miniTokenW + miniTokenW / 2}
+          y={miniTokenY - 8}
+          textAnchor="middle"
+          fontSize="11"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill={COL_Q_ATT}
+        >
+          Q
+          <tspan fontSize="8" dy="-3">K</tspan>
+        </text>
+        <text
+          x={miniTokenStart + focused * miniTokenW + miniTokenW / 2}
+          y={miniTokenY + 32}
+          textAnchor="middle"
+          fontSize="10"
+          fontFamily="var(--font-mono)"
+          fill={COL_K_ATT}
+        >
+          ↓
+        </text>
+      </g>
+
+      {/* Backward arcs from focused token to earlier tokens */}
+      {Array.from({ length: focused }).map((_, j) => {
+        const fromX = miniTokenStart + focused * miniTokenW + miniTokenW / 2
+        const fromY = miniTokenY + 18
+        const toX = miniTokenStart + j * miniTokenW + miniTokenW / 2
+        const toY = miniTokenY + 18
+        const ctrlY = miniTokenY - 32 - (focused - j) * 4
+        return (
+          <motion.path
+            key={`anchor-arc-${j}`}
+            d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
+            stroke={COL_Q_ATT}
+            strokeWidth={1.2}
+            strokeOpacity={0.7}
+            fill="none"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{
+              duration: 0.6 / speed,
+              delay: (j * 0.05) / speed,
+            }}
+          />
+        )
+      })}
+
+      {/* Three-zone interior: Layer Input | Attention/MLP | Residual Stream */}
+      {(() => {
+        const zoneY = Y + 200
+        const zoneH = 240
+        const layerInputX = X + 16
+        const layerInputW = 36
+        const attMlpX = layerInputX + layerInputW + 12
+        const attMlpW = 200
+        const residualX = attMlpX + attMlpW + 12
+        const residualW = 80
+
+        // Phase-driven highlight: which inner subarea glows?
+        // A: query token (already shown above)
+        // B: scoring grid inside Attention compartment
+        // C: softmax row
+        // D: residual stream / V mixing
+
+        return (
+          <>
+            {/* Layer Input strip (left) — red/amber stack */}
+            <g>
+              {Array.from({ length: 6 }).map((_, k) => {
+                const cellH = zoneH / 6 - 2
+                return (
+                  <rect
+                    key={`li-${k}`}
+                    x={layerInputX}
+                    y={zoneY + k * (cellH + 2)}
+                    width={layerInputW}
+                    height={cellH}
+                    rx={1}
+                    fill="rgba(248,113,113,0.30)"
+                  />
+                )
+              })}
+              <text
+                x={layerInputX + layerInputW / 2}
+                y={zoneY + zoneH + 18}
+                textAnchor="middle"
+                fontSize="9"
+                fontFamily="var(--font-mono)"
+                fill={ACCENT.dim}
+                letterSpacing="0.14em"
+              >
+                Layer
+              </text>
+              <text
+                x={layerInputX + layerInputW / 2}
+                y={zoneY + zoneH + 30}
+                textAnchor="middle"
+                fontSize="9"
+                fontFamily="var(--font-mono)"
+                fill={ACCENT.dim}
+                letterSpacing="0.14em"
+              >
+                Input
+              </text>
+            </g>
+
+            {/* Attention/MLP compartment */}
+            <g>
+              <rect
+                x={attMlpX}
+                y={zoneY}
+                width={attMlpW}
+                height={zoneH}
+                rx={3}
+                fill="rgba(255,255,255,0.018)"
+                stroke={
+                  phase === 1
+                    ? COL_K_ATT
+                    : 'rgba(167,139,250,0.22)'
+                }
+                strokeWidth={phase === 1 ? 1.8 : 1}
+              />
+              {/* Inside: phase-specific overlay */}
+              {phase === 0 && (
+                <text
+                  x={attMlpX + attMlpW / 2}
+                  y={zoneY + zoneH / 2 + 6}
+                  textAnchor="middle"
+                  fontSize="13"
+                  fontFamily="var(--font-mono)"
+                  fill={ACCENT.dim}
+                  opacity={0.8}
+                >
+                  MLP
+                </text>
+              )}
+              {phase === 1 && (
+                <g>
+                  {/* Mini score grid */}
+                  <text
+                    x={attMlpX + 8}
+                    y={zoneY + 16}
+                    fontSize="8"
+                    fontFamily="var(--font-mono)"
+                    fill={COL_K_ATT}
+                    letterSpacing="0.18em"
+                  >
+                    Q · Kᵀ SCORES
+                  </text>
+                  {Array.from({ length: 6 }).map((_, r) =>
+                    Array.from({ length: 8 }).map((_, c) => {
+                      const cw = (attMlpW - 16) / 8
+                      const ch = (zoneH - 30) / 6
+                      const masked = c > r
+                      return (
+                        <rect
+                          key={`scgrid-${r}-${c}`}
+                          x={attMlpX + 8 + c * cw}
+                          y={zoneY + 22 + r * ch}
+                          width={cw - 0.5}
+                          height={ch - 0.5}
+                          fill={masked
+                            ? 'rgba(248,113,113,0.10)'
+                            : 'rgba(96,165,250,0.18)'}
+                          stroke={masked ? 'rgba(248,113,113,0.18)' : 'rgba(96,165,250,0.32)'}
+                          strokeWidth={0.5}
+                        />
+                      )
+                    }),
+                  )}
+                </g>
+              )}
+              {phase === 2 && (
+                <g>
+                  <text
+                    x={attMlpX + attMlpW / 2}
+                    y={zoneY + 14}
+                    textAnchor="middle"
+                    fontSize="8"
+                    fontFamily="var(--font-mono)"
+                    fill={COL_Q_ATT}
+                    letterSpacing="0.18em"
+                  >
+                    SOFTMAX
+                  </text>
+                  {/* Top: raw row */}
+                  <g transform={`translate(${attMlpX + 12}, ${zoneY + 30})`}>
+                    {Array.from({ length: 8 }).map((_, c) => (
+                      <rect
+                        key={`raw-${c}`}
+                        x={c * 22}
+                        y={0}
+                        width={20}
+                        height={20}
+                        fill="rgba(96,165,250,0.18)"
+                        stroke="rgba(96,165,250,0.45)"
+                        strokeWidth={0.6}
+                      />
+                    ))}
+                  </g>
+                  {/* Arrow */}
+                  <text
+                    x={attMlpX + attMlpW / 2}
+                    y={zoneY + 78}
+                    textAnchor="middle"
+                    fontSize="14"
+                    fill={COL_Q_ATT}
+                  >↓</text>
+                  {/* Bottom: weights row */}
+                  <g transform={`translate(${attMlpX + 12}, ${zoneY + 92})`}>
+                    {Array.from({ length: 8 }).map((_, c) => {
+                      const w = 0.05 + Math.abs(Math.sin(c * 0.9)) * 0.4
+                      return (
+                        <rect
+                          key={`wt-${c}`}
+                          x={c * 22}
+                          y={0}
+                          width={20}
+                          height={20}
+                          fill={`rgba(245,158,11,${w})`}
+                          stroke={`rgba(245,158,11,${0.4 + w * 0.3})`}
+                          strokeWidth={0.6}
+                        />
+                      )
+                    })}
+                  </g>
+                  <text
+                    x={attMlpX + attMlpW / 2}
+                    y={zoneY + 144}
+                    textAnchor="middle"
+                    fontSize="9"
+                    fontFamily="var(--font-mono)"
+                    fill={ACCENT.dim}
+                  >
+                    sum = 1.00
+                  </text>
+                </g>
+              )}
+              {phase === 3 && (
+                <g>
+                  <text
+                    x={attMlpX + attMlpW / 2}
+                    y={zoneY + 14}
+                    textAnchor="middle"
+                    fontSize="8"
+                    fontFamily="var(--font-mono)"
+                    fill={COL_V_ATT}
+                    letterSpacing="0.18em"
+                  >
+                    V WEIGHTED SUM
+                  </text>
+                  {/* Vectors flowing into output */}
+                  {Array.from({ length: 5 }).map((_, k) => {
+                    const yLane = zoneY + 30 + k * 28
+                    return (
+                      <g key={`vmix-${k}`}>
+                        <line
+                          x1={attMlpX + 12}
+                          x2={attMlpX + attMlpW - 12}
+                          y1={yLane + 8}
+                          y2={yLane + 8}
+                          stroke={COL_V_ATT}
+                          strokeOpacity={0.4 + k * 0.1}
+                          strokeWidth={1.4}
+                        />
+                        <text
+                          x={attMlpX + attMlpW - 8}
+                          y={yLane + 12}
+                          fontSize="9"
+                          fontFamily="var(--font-mono)"
+                          fill={COL_V_ATT}
+                          opacity={0.6}
+                        >
+                          ▸
+                        </text>
+                      </g>
+                    )
+                  })}
+                </g>
+              )}
+            </g>
+
+            {/* Residual Stream column (right) */}
+            <g>
+              <rect
+                x={residualX}
+                y={zoneY}
+                width={residualW}
+                height={zoneH}
+                rx={3}
+                fill={
+                  phase === 3
+                    ? 'rgba(52,211,153,0.10)'
+                    : 'rgba(255,255,255,0.018)'
+                }
+                stroke={
+                  phase === 3
+                    ? COL_V_ATT
+                    : 'rgba(167,139,250,0.22)'
+                }
+                strokeWidth={phase === 3 ? 1.8 : 1}
+              />
+              <text
+                x={residualX + residualW / 2}
+                y={zoneY + zoneH / 2 - 8}
+                textAnchor="middle"
+                fontSize="10"
+                fontFamily="var(--font-mono)"
+                fill={
+                  phase === 3 ? COL_V_ATT : ACCENT.dim
+                }
+                letterSpacing="0.18em"
+              >
+                Residual
+              </text>
+              <text
+                x={residualX + residualW / 2}
+                y={zoneY + zoneH / 2 + 6}
+                textAnchor="middle"
+                fontSize="10"
+                fontFamily="var(--font-mono)"
+                fill={
+                  phase === 3 ? COL_V_ATT : ACCENT.dim
+                }
+                letterSpacing="0.18em"
+              >
+                Stream
+              </text>
+            </g>
+          </>
+        )
+      })()}
+
+      {/* Bottom caption — phase-driven */}
+      <motion.text
+        key={`anchor-cap-${phase}`}
+        x={X + W / 2}
+        y={Y + H - 18}
+        textAnchor="middle"
+        fontSize="11"
+        fontFamily="var(--font-display)"
+        fontStyle="italic"
+        fill="rgba(255,255,255,0.7)"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4 / speed }}
+      >
+        {captions[phase]}
+      </motion.text>
+    </g>
+  )
+}
+
+/* ─────────── Phase A — one-query backward arcs ─────────── */
+function PhaseA({
+  tokens,
+  focused,
+  speed,
+}: {
+  tokens: string[]
+  focused: number
+  speed: number
+}) {
+  const T = tokens.length
+  // Token row geometry (right-side viz area)
+  const X0 = 460
+  const X1 = 1380
+  const ROW_Y = 480
+  const cellW = (X1 - X0 - 20) / T
+  const cellH = 60
+  const tokX = (i: number) => X0 + i * cellW + cellW / 2
+
+  return (
+    <g>
+      <PhaseHeader
+        phase="A"
+        title="One query looks backward."
+        sub="The query at position i compares against all keys at positions ≤ i."
+      />
+
+      {/* "KEYS (≤ i)" bracket label above earlier tokens */}
+      <g>
+        <line
+          x1={X0 + 8}
+          x2={tokX(focused) - cellW / 2 - 6}
+          y1={ROW_Y - 60}
+          y2={ROW_Y - 60}
+          stroke={COL_Q_ATT}
+          strokeWidth={1.4}
+          strokeOpacity={0.7}
+        />
+        <text
+          x={(X0 + tokX(focused) - cellW / 2) / 2 + 80}
+          y={ROW_Y - 70}
+          textAnchor="middle"
+          fontSize="10"
+          fontFamily="var(--font-mono)"
+          fill={COL_Q_ATT}
+          letterSpacing="0.22em"
+        >
+          KEYS (≤ i)
+        </text>
+      </g>
+
+      {/* Q label above the focused token */}
+      <text
+        x={tokX(focused)}
+        y={ROW_Y - 60}
+        textAnchor="middle"
+        fontSize="20"
+        fontFamily="var(--font-display)"
+        fontStyle="italic"
+        fill={COL_K_ATT}
+      >
+        Q
+      </text>
+      {/* Down arrow into the focused token */}
+      <path
+        d={`M ${tokX(focused)} ${ROW_Y - 50} L ${tokX(focused)} ${ROW_Y - cellH / 2 - 4} M ${tokX(focused) - 6} ${ROW_Y - cellH / 2 - 12} L ${tokX(focused)} ${ROW_Y - cellH / 2 - 4} L ${tokX(focused) + 6} ${ROW_Y - cellH / 2 - 12}`}
+        stroke={COL_K_ATT}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        fill="none"
+      />
+
+      {/* Token row */}
+      {tokens.map((ch, i) => {
+        const x = tokX(i)
+        const isFocused = i === focused
+        const isKey = i < focused
+        return (
+          <g key={`a-tok-${i}`}>
+            <rect
+              x={x - cellW / 2 + 2}
+              y={ROW_Y - cellH / 2}
+              width={cellW - 4}
+              height={cellH}
+              rx={4}
+              fill={
+                isFocused
+                  ? 'rgba(96,165,250,0.20)'
+                  : isKey
+                    ? 'rgba(245,158,11,0.06)'
+                    : 'rgba(255,255,255,0.015)'
+              }
+              stroke={
+                isFocused
+                  ? COL_K_ATT
+                  : isKey
+                    ? COL_Q_ATT
+                    : 'rgba(255,255,255,0.18)'
+              }
+              strokeWidth={isFocused ? 2 : isKey ? 1.4 : 0.8}
+              strokeOpacity={isFocused ? 1 : isKey ? 0.7 : 0.4}
+            />
+            <text
+              x={x}
+              y={ROW_Y + 8}
+              textAnchor="middle"
+              fontSize="20"
+              fontFamily="var(--font-display)"
+              fontStyle="italic"
+              fill={isFocused ? '#fff' : isKey ? '#fff' : 'rgba(255,255,255,0.4)'}
+            >
+              {ch === ' ' ? '·' : ch}
+            </text>
+            <text
+              x={x}
+              y={ROW_Y + cellH / 2 + 18}
+              textAnchor="middle"
+              fontSize="10"
+              fontFamily="var(--font-mono)"
+              fill={isFocused ? COL_K_ATT : isKey ? COL_Q_ATT : ACCENT.dim}
+            >
+              {i}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* Backward arcs from focused token to each earlier key */}
+      {Array.from({ length: focused }).map((_, j) => {
+        const fromX = tokX(focused)
+        const fromY = ROW_Y - cellH / 2
+        const toX = tokX(j)
+        const toY = ROW_Y - cellH / 2
+        const arcHeight = 70 + (focused - j) * 8
+        const ctrlY = fromY - arcHeight
+        return (
+          <motion.g key={`arc-${j}`}>
+            <motion.path
+              d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
+              stroke={COL_Q_ATT}
+              strokeWidth={2}
+              strokeOpacity={0.85}
+              fill="none"
+              filter="url(#attn-glow)"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{
+                duration: 0.6 / speed,
+                delay: (0.4 + j * 0.12) / speed,
+              }}
+            />
+            {/* Arrowhead near the key */}
+            <motion.path
+              d={`M ${toX - 5} ${toY - 8} L ${toX} ${toY - 2} L ${toX + 5} ${toY - 8}`}
+              stroke={COL_Q_ATT}
+              strokeWidth={2}
+              strokeOpacity={0.9}
+              fill="none"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: (1.0 + j * 0.12) / speed }}
+            />
+          </motion.g>
+        )
+      })}
+
+      {/* "POSITIONS" label */}
+      <text
+        x={X0 + 12}
+        y={ROW_Y + cellH / 2 + 50}
+        fontSize="10"
+        fontFamily="var(--font-mono)"
+        fill={ACCENT.dim}
+        letterSpacing="0.22em"
+      >
+        POSITIONS
+      </text>
+
+      {/* Bottom caption box */}
+      <PhaseFooter>
+        <tspan>
+          Query at position{' '}
+          <tspan fill={COL_K_ATT} fontStyle="italic">i</tspan>
+          {' '}(here{' '}
+          <tspan fill={COL_K_ATT} fontStyle="italic">i</tspan>
+          {' = '}
+          <tspan fill={COL_K_ATT}>{focused}</tspan>
+          ) compares with keys at positions{' '}
+          <tspan fill={COL_Q_ATT}>0</tspan>
+          ..
+          <tspan fill={COL_Q_ATT} fontStyle="italic">i</tspan>
+          .
+        </tspan>
+      </PhaseFooter>
+    </g>
+  )
+}
+
+/* ─────────── Phase B — full Q·Kᵀ matrix ─────────── */
+function PhaseB({
+  tokens,
+  focused,
+  speed,
+  rawScoresRow,
+}: {
+  tokens: string[]
+  focused: number
+  speed: number
+  rawScoresRow: number[]
+}) {
+  const T = tokens.length
+  // Show condensed: 7 row labels visible (T, o, b, e, ',', o, ⋮, last)
+  const X0 = 460
+  const X1 = 1380
+  const matrixX = X0 + 80
+  const matrixY = 290
+  const visibleRows = Math.min(7, T)
+  const cellW = (X1 - matrixX - 30) / T
+  const cellH = 30
+  const matrixW = T * cellW
+  const matrixH = (visibleRows + 1) * cellH // +1 for the ellipsis row
+
+  return (
+    <g>
+      <PhaseHeader
+        phase="B"
+        title="Every query-key pair gets a score."
+        sub={
+          <>
+            We compute the raw attention scores:{' '}
+            <tspan fill={COL_K_ATT} fontStyle="italic">S = Q · Kᵀ</tspan>
+            {' '}(scaled).
+          </>
+        }
+      />
+
+      {/* KEYS bracket header */}
+      <line
+        x1={matrixX}
+        x2={matrixX + matrixW}
+        y1={matrixY - 36}
+        y2={matrixY - 36}
+        stroke={COL_K_ATT}
+        strokeWidth={1.4}
+        strokeOpacity={0.7}
+      />
+      <text
+        x={matrixX + matrixW / 2}
+        y={matrixY - 48}
+        textAnchor="middle"
+        fontSize="10"
+        fontFamily="var(--font-mono)"
+        fill={COL_K_ATT}
+        letterSpacing="0.22em"
+      >
+        KEYS (columns)
+      </text>
+
+      {/* Column labels (KEYS) */}
+      {tokens.map((ch, j) => (
+        <g key={`b-col-${j}`}>
+          <text
+            x={matrixX + j * cellW + cellW / 2}
+            y={matrixY - 16}
+            textAnchor="middle"
+            fontSize="13"
+            fontFamily="var(--font-display)"
+            fontStyle="italic"
+            fill={
+              j <= focused
+                ? 'rgba(255,255,255,0.85)'
+                : 'rgba(255,255,255,0.35)'
+            }
+          >
+            {ch === ' ' ? '·' : ch}
+          </text>
+          <text
+            x={matrixX + j * cellW + cellW / 2}
+            y={matrixY - 4}
+            textAnchor="middle"
+            fontSize="8"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.dim}
+          >
+            {j}
+          </text>
+        </g>
+      ))}
+
+      {/* QUERIES label (rows) */}
+      <text
+        x={matrixX - 36}
+        y={matrixY + visibleRows * cellH / 2}
+        textAnchor="middle"
+        fontSize="10"
+        fontFamily="var(--font-mono)"
+        fill={COL_Q_ATT}
+        letterSpacing="0.22em"
+      >
+        QUERIES
+      </text>
+      <text
+        x={matrixX - 36}
+        y={matrixY + visibleRows * cellH / 2 + 14}
+        textAnchor="middle"
+        fontSize="9"
+        fontFamily="var(--font-mono)"
+        fill={ACCENT.dim}
+      >
+        (rows)
+      </text>
+
+      {/* Matrix rows (7 visible + ellipsis row at bottom) */}
+      {Array.from({ length: visibleRows }).map((_, r) => {
+        const ch = tokens[r]
+        const isFocusedRow = r === focused
+        return (
+          <g key={`b-row-${r}`}>
+            {/* Row label */}
+            <text
+              x={matrixX - 14}
+              y={matrixY + r * cellH + cellH / 2 + 4}
+              textAnchor="end"
+              fontSize="13"
+              fontFamily="var(--font-display)"
+              fontStyle="italic"
+              fill={isFocusedRow ? '#fff' : 'rgba(255,255,255,0.7)'}
+            >
+              {ch === ' ' ? '·' : ch}
+            </text>
+            <text
+              x={matrixX - 4}
+              y={matrixY + r * cellH + cellH / 2 + 4}
+              textAnchor="end"
+              fontSize="9"
+              fontFamily="var(--font-mono)"
+              fill={isFocusedRow ? COL_K_ATT : ACCENT.dim}
+            >
+              {r}
+            </text>
+
+            {/* Active row arrow indicator */}
+            {isFocusedRow && (
+              <text
+                x={matrixX - 56}
+                y={matrixY + r * cellH + cellH / 2 + 5}
+                fontSize="14"
+                fill={COL_K_ATT}
+              >
+                →
+              </text>
+            )}
+
+            {/* Cells */}
+            {tokens.map((_, c) => {
+              const masked = c > r
+              const score = masked
+                ? null
+                : rawScoresRow[c] !== undefined && r === focused
+                  ? rawScoresRow[c]
+                  : Math.sin(r * 1.1 + c * 0.7) * 1.1
+              return (
+                <g key={`b-cell-${r}-${c}`}>
+                  <rect
+                    x={matrixX + c * cellW}
+                    y={matrixY + r * cellH}
+                    width={cellW - 1}
+                    height={cellH - 1}
+                    fill={
+                      masked
+                        ? 'rgba(248,113,113,0.10)'
+                        : isFocusedRow
+                          ? 'rgba(96,165,250,0.18)'
+                          : 'rgba(96,165,250,0.06)'
+                    }
+                    stroke={
+                      masked
+                        ? 'rgba(248,113,113,0.45)'
+                        : isFocusedRow
+                          ? COL_K_ATT
+                          : 'rgba(96,165,250,0.20)'
+                    }
+                    strokeWidth={isFocusedRow ? 1.4 : 0.6}
+                    strokeDasharray={masked ? '3 3' : undefined}
+                  />
+                  <text
+                    x={matrixX + c * cellW + cellW / 2}
+                    y={matrixY + r * cellH + cellH / 2 + 4}
+                    textAnchor="middle"
+                    fontSize="10"
+                    fontFamily="var(--font-mono)"
+                    fill={
+                      masked
+                        ? 'rgba(248,113,113,0.6)'
+                        : isFocusedRow
+                          ? '#fff'
+                          : 'rgba(255,255,255,0.55)'
+                    }
+                  >
+                    {masked ? '—' : score!.toFixed(2)}
+                  </text>
+                </g>
+              )
+            })}
+          </g>
+        )
+      })}
+
+      {/* Ellipsis row */}
+      <g>
+        {tokens.map((_, c) => (
+          <text
+            key={`ellipsis-${c}`}
+            x={matrixX + c * cellW + cellW / 2}
+            y={matrixY + visibleRows * cellH + 16}
+            textAnchor="middle"
+            fontSize="11"
+            fontFamily="var(--font-mono)"
+            fill={ACCENT.dim}
+          >
+            ⋮
+          </text>
+        ))}
+      </g>
+
+      {/* Last row */}
+      <g>
+        <text
+          x={matrixX - 14}
+          y={matrixY + matrixH + 12}
+          textAnchor="end"
+          fontSize="13"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill="rgba(255,255,255,0.7)"
+        >
+          {tokens[T - 1]}
+        </text>
+        <text
+          x={matrixX - 4}
+          y={matrixY + matrixH + 12}
+          textAnchor="end"
+          fontSize="9"
+          fontFamily="var(--font-mono)"
+          fill={ACCENT.dim}
+        >
+          {T - 1}
+        </text>
+        {tokens.map((_, c) => {
+          const score = Math.sin((T - 1) * 1.1 + c * 0.7) * 1.1
+          return (
+            <g key={`last-${c}`}>
+              <rect
+                x={matrixX + c * cellW}
+                y={matrixY + matrixH}
+                width={cellW - 1}
+                height={cellH - 1}
+                fill="rgba(96,165,250,0.06)"
+                stroke="rgba(96,165,250,0.20)"
+                strokeWidth={0.6}
+              />
+              <text
+                x={matrixX + c * cellW + cellW / 2}
+                y={matrixY + matrixH + cellH / 2 + 4}
+                textAnchor="middle"
+                fontSize="9"
+                fontFamily="var(--font-mono)"
+                fill="rgba(255,255,255,0.55)"
+              >
+                {score.toFixed(2)}
+              </text>
+            </g>
+          )
+        })}
+      </g>
+
+      {/* Footer caption */}
+      <PhaseFooter>
+        <tspan>
+          Rows are queries. Columns are keys. Each cell is a raw score{' '}
+          <tspan fill={COL_K_ATT} fontStyle="italic">(Q_i · K_j / √d_k)</tspan>
+          . The red upper triangle is masked (future positions are not visible).
+        </tspan>
+      </PhaseFooter>
+    </g>
+  )
+}
+
+/* ─────────── Phase C — row-wise softmax ─────────── */
+function PhaseC({
+  tokens,
+  focused,
+  speed,
+  rawScoresRow,
+  softmaxRow,
+}: {
+  tokens: string[]
+  focused: number
+  speed: number
+  rawScoresRow: number[]
+  softmaxRow: number[]
+}) {
+  const T = tokens.length
+  const X0 = 460
+  const X1 = 1380
+  const cellW = (X1 - X0 - 20) / T
+  const RAW_Y = 320
+  const WTS_Y = 540
+  const cellH = 50
+
+  return (
+    <g>
+      <PhaseHeader
+        phase="C"
+        title="Scores become attention weights."
+        sub={
+          <>
+            We normalize the score row for the active query (position{' '}
+            <tspan fill={COL_K_ATT} fontStyle="italic">{focused}</tspan>).
+          </>
+        }
+      />
+
+      {/* RAW SCORES label */}
+      <text x={X0 + 12} y={RAW_Y - 16}
+        fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
+        RAW ATTENTION SCORES (POSITION{' '}
+        <tspan fill={COL_K_ATT}>{focused}</tspan>)
+      </text>
+
+      {/* Raw scores row */}
+      {tokens.map((_, j) => {
+        const x = X0 + 12 + j * cellW
+        const isMasked = j > focused
+        const isFocused = j === focused
+        const v = isMasked ? '-∞' : rawScoresRow[j].toFixed(2)
+        return (
+          <g key={`raw-${j}`}>
+            <rect
+              x={x}
+              y={RAW_Y}
+              width={cellW - 2}
+              height={cellH}
+              rx={3}
+              fill={
+                isFocused
+                  ? 'rgba(96,165,250,0.22)'
+                  : isMasked
+                    ? 'rgba(255,255,255,0.02)'
+                    : 'rgba(96,165,250,0.06)'
+              }
+              stroke={
+                isFocused
+                  ? COL_K_ATT
+                  : isMasked
+                    ? 'rgba(255,255,255,0.10)'
+                    : 'rgba(96,165,250,0.30)'
+              }
+              strokeWidth={isFocused ? 2 : 1}
+            />
+            <text
+              x={x + cellW / 2 - 1}
+              y={RAW_Y + cellH / 2 + 5}
+              textAnchor="middle"
+              fontSize="11"
+              fontFamily="var(--font-mono)"
+              fill={
+                isFocused
+                  ? '#fff'
+                  : isMasked
+                    ? 'rgba(248,113,113,0.5)'
+                    : 'rgba(255,255,255,0.85)'
+              }
+            >
+              {v}
+            </text>
+            <text
+              x={x + cellW / 2 - 1}
+              y={RAW_Y + cellH + 16}
+              textAnchor="middle"
+              fontSize="9"
+              fontFamily="var(--font-mono)"
+              fill={isFocused ? COL_K_ATT : ACCENT.dim}
+            >
+              {j}
+            </text>
+          </g>
+        )
+      })}
+
+      <text x={X1 - 30} y={RAW_Y + cellH + 30}
+        textAnchor="end"
+        fontSize="9" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.18em" opacity={0.8}>
+        (masked future positions)
+      </text>
+
+      {/* Big SOFTMAX arrow */}
+      <motion.g
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.6 / speed, duration: 0.5 / speed }}
+      >
+        <text
+          x={X0 + 12 + (T * cellW) / 2 - 30}
+          y={(RAW_Y + cellH + WTS_Y) / 2 + 5}
+          textAnchor="middle"
+          fontSize="13"
+          fontFamily="var(--font-mono)"
+          fill={COL_Q_ATT}
+          letterSpacing="0.32em"
+        >
+          SOFTMAX
+        </text>
+        <path
+          d={`M ${X0 + 12 + (T * cellW) / 2 + 50} ${RAW_Y + cellH + 20} L ${X0 + 12 + (T * cellW) / 2 + 50} ${WTS_Y - 12} M ${X0 + 12 + (T * cellW) / 2 + 50 - 8} ${WTS_Y - 20} L ${X0 + 12 + (T * cellW) / 2 + 50} ${WTS_Y - 12} L ${X0 + 12 + (T * cellW) / 2 + 50 + 8} ${WTS_Y - 20}`}
+          stroke={COL_Q_ATT}
+          strokeWidth={2}
+          fill="none"
+          strokeLinecap="round"
+        />
+      </motion.g>
+
+      {/* WEIGHTS label */}
+      <text x={X0 + 12} y={WTS_Y - 16}
+        fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim} letterSpacing="0.22em">
+        ATTENTION WEIGHTS (POSITION{' '}
+        <tspan fill={COL_K_ATT}>{focused}</tspan>)
+      </text>
+
+      {/* Weights row */}
+      {tokens.map((_, j) => {
+        const x = X0 + 12 + j * cellW
+        const w = softmaxRow[j] || 0
+        const isFocused = j === focused
+        return (
+          <g key={`wts-${j}`}>
+            <rect
+              x={x}
+              y={WTS_Y}
+              width={cellW - 2}
+              height={cellH}
+              rx={3}
+              fill={`rgba(245,158,11,${0.05 + w * 1.6})`}
+              stroke={isFocused ? COL_K_ATT : `rgba(245,158,11,${0.4 + w * 0.5})`}
+              strokeWidth={isFocused ? 2 : 1}
+            />
+            <text
+              x={x + cellW / 2 - 1}
+              y={WTS_Y + cellH / 2 + 5}
+              textAnchor="middle"
+              fontSize="11"
+              fontFamily="var(--font-mono)"
+              fill="rgba(255,255,255,0.95)"
+            >
+              {w.toFixed(3)}
+            </text>
+            <text
+              x={x + cellW / 2 - 1}
+              y={WTS_Y + cellH + 16}
+              textAnchor="middle"
+              fontSize="9"
+              fontFamily="var(--font-mono)"
+              fill={isFocused ? COL_K_ATT : ACCENT.dim}
+            >
+              {j}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* sum = 1.00 underline */}
+      <line
+        x1={X0 + 12}
+        x2={X0 + 12 + T * cellW - 2}
+        y1={WTS_Y + cellH + 32}
+        y2={WTS_Y + cellH + 32}
+        stroke={COL_Q_ATT}
+        strokeWidth={1.2}
+        strokeOpacity={0.7}
+      />
+      <text
+        x={X0 + 12 + (T * cellW) / 2}
+        y={WTS_Y + cellH + 50}
+        textAnchor="middle"
+        fontSize="13"
+        fontFamily="var(--font-mono)"
+        fill={COL_Q_ATT}
+        letterSpacing="0.18em"
+      >
+        sum = 1.00
+      </text>
+
+      {/* Footer caption */}
+      <PhaseFooter>
+        <tspan>
+          Softmax turns raw compatibility scores into a probability distribution
+          over keys. All weights are{' '}
+          <tspan fill={COL_Q_ATT}>≥ 0</tspan>
+          {' and sum to '}
+          <tspan fill={COL_Q_ATT}>1</tspan>
+          , so they can be used to take a weighted average.
+        </tspan>
+      </PhaseFooter>
+    </g>
+  )
+}
+
+/* ─────────── Phase D — value mixing ─────────── */
+function PhaseD({
+  tokens,
+  focused,
+  speed,
+  softmaxRow,
+}: {
+  tokens: string[]
+  focused: number
+  speed: number
+  softmaxRow: number[]
+}) {
+  // Show 7 rows + ellipsis (top 6 indices + last)
+  const visibleIdx = [0, 1, 2, 3, 4, 5, tokens.length - 1]
+  const X0 = 460
+  const Y_TOP = 220
+  const ROW_H = 46
+  const COL_W_LABEL = 130 // weight label column
+  const COL_W_VEC = 220 // V vector display column
+  const COL_W_MULT = 90 // × multiplier column
+  const COL_W_OUT = 220 // weighted output column
+
+  const X_WT = X0 + 30
+  const X_VEC = X_WT + COL_W_LABEL + 30
+  const X_MULT = X_VEC + COL_W_VEC + 20
+  const X_OUT = X_MULT + COL_W_MULT + 10
+
+  // Generate fake V vectors (16 cells each, signed values, palette tint per row)
+  const D_V = 16
+  const vColors = [
+    '#a78bfa', '#7c5dd6', '#22d3ee', '#34d399',
+    '#a78bfa', '#22d3ee', '#a78bfa', '#7c5dd6',
+    '#22d3ee', '#34d399', '#f59e0b', '#7c5dd6',
+    '#a78bfa', '#22d3ee', '#34d399', '#a78bfa',
+    '#7c5dd6', '#22d3ee', '#34d399',
+  ]
+  const vCellFill = (rowIdx: number, cellIdx: number): string => {
+    const tint = vColors[rowIdx % vColors.length]
+    const v = Math.sin(rowIdx * 1.1 + cellIdx * 0.6 + 0.4)
+    const a = Math.round((0.20 + Math.abs(v) * 0.55) * 255)
+      .toString(16)
+      .padStart(2, '0')
+    return `${tint}${a}`
+  }
+
+  return (
+    <g>
+      <PhaseHeader
+        phase="D"
+        title="Weights pull from value vectors."
+        sub={
+          <>
+            For the selected query at position{' '}
+            <tspan fill={COL_K_ATT} fontStyle="italic">i = {focused}</tspan>{' '}
+            (the comma):
+          </>
+        }
+      />
+
+      {/* Column headers */}
+      <text x={X_WT} y={Y_TOP - 30} fontSize="10"
+        fontFamily="var(--font-mono)" fill={ACCENT.dim}
+        letterSpacing="0.22em">
+        ATTENTION WEIGHTS
+      </text>
+      <text x={X_WT} y={Y_TOP - 14} fontSize="10"
+        fontFamily="var(--font-mono)" fill={ACCENT.dim}
+        letterSpacing="0.22em">
+        FROM <tspan fill={COL_K_ATT} fontStyle="italic">q_i</tspan>
+      </text>
+
+      <text x={X_VEC} y={Y_TOP - 14} fontSize="10"
+        fontFamily="var(--font-mono)" fill={ACCENT.dim}
+        letterSpacing="0.22em">
+        VALUE VECTORS (V[j])
+      </text>
+
+      <text x={X_OUT} y={Y_TOP - 14} fontSize="10"
+        fontFamily="var(--font-mono)" fill={ACCENT.dim}
+        letterSpacing="0.22em">
+        WEIGHTED SUM
+      </text>
+
+      {/* Rows: weight | × | V[j] | = | weighted V */}
+      {visibleIdx.map((j, rowIdx) => {
+        const w = softmaxRow[j] || 0
+        const yRow = Y_TOP + rowIdx * ROW_H
+        const isHero = j === 3 // mockup highlights w[i,3]
+        const isEllipsis = rowIdx === 6 && visibleIdx[6] === tokens.length - 1
+        return (
+          <g key={`d-row-${j}`}>
+            {/* Weight label box */}
+            <rect
+              x={X_WT}
+              y={yRow}
+              width={COL_W_LABEL}
+              height={32}
+              rx={3}
+              fill={isHero ? 'rgba(96,165,250,0.15)' : 'rgba(255,255,255,0.02)'}
+              stroke={isHero ? COL_K_ATT : 'rgba(255,255,255,0.12)'}
+              strokeWidth={isHero ? 1.6 : 0.8}
+            />
+            {isHero && (
+              <text x={X_WT - 12} y={yRow + 22}
+                textAnchor="middle" fontSize="14" fill={COL_K_ATT}>
+                ▸
+              </text>
+            )}
+            <text
+              x={X_WT + 12}
+              y={yRow + 22}
+              fontSize="11"
+              fontFamily="var(--font-mono)"
+              fill="rgba(255,255,255,0.9)"
+            >
+              w[i,{j}]
+            </text>
+            <text
+              x={X_WT + COL_W_LABEL - 12}
+              y={yRow + 22}
+              textAnchor="end"
+              fontSize="13"
+              fontFamily="var(--font-mono)"
+              fill={isHero ? COL_K_ATT : COL_Q_ATT}
+              fontWeight={isHero ? 600 : 400}
+            >
+              {w.toFixed(2)}
+            </text>
+
+            {/* Arrow → V */}
+            <path
+              d={`M ${X_WT + COL_W_LABEL + 4} ${yRow + 16} L ${X_VEC - 6} ${yRow + 16}`}
+              stroke={ACCENT.dim}
+              strokeWidth={1}
+              fill="none"
+            />
+
+            {/* V vector cells (16 mini cells) */}
+            <g>
+              {Array.from({ length: D_V }).map((_, c) => {
+                const cellW = (COL_W_VEC - 4) / D_V
+                return (
+                  <rect
+                    key={`v-${j}-${c}`}
+                    x={X_VEC + c * cellW}
+                    y={yRow}
+                    width={cellW - 0.5}
+                    height={32}
+                    fill={vCellFill(j, c)}
+                  />
+                )
+              })}
+              <rect
+                x={X_VEC - 1}
+                y={yRow - 1}
+                width={COL_W_VEC + 2}
+                height={34}
+                rx={1}
+                fill="none"
+                stroke="rgba(255,255,255,0.18)"
+                strokeWidth={0.8}
+              />
+              <text
+                x={X_VEC - 4}
+                y={yRow + 22}
+                textAnchor="end"
+                fontSize="10"
+                fontFamily="var(--font-mono)"
+                fill={ACCENT.dim}
+              >
+                V[{j}]
+              </text>
+            </g>
+
+            {/* × multiplier */}
+            <text
+              x={X_MULT}
+              y={yRow + 22}
+              fontSize="13"
+              fontFamily="var(--font-mono)"
+              fill={isHero ? '#fff' : 'rgba(255,255,255,0.65)'}
+            >
+              ×
+            </text>
+            <text
+              x={X_MULT + 22}
+              y={yRow + 22}
+              fontSize="13"
+              fontFamily="var(--font-mono)"
+              fill={isHero ? COL_K_ATT : COL_Q_ATT}
+            >
+              {w.toFixed(2)}
+            </text>
+
+            {/* Arrow into output */}
+            <path
+              d={`M ${X_MULT + COL_W_MULT - 12} ${yRow + 16} L ${X_OUT - 6} ${yRow + 16}`}
+              stroke={ACCENT.dim}
+              strokeWidth={1}
+              fill="none"
+            />
+
+            {/* Weighted V cells (mint-tinted by weight) */}
+            <g>
+              {Array.from({ length: D_V }).map((_, c) => {
+                const cellW = (COL_W_VEC - 4) / D_V
+                return (
+                  <rect
+                    key={`wv-${j}-${c}`}
+                    x={X_OUT + c * cellW}
+                    y={yRow}
+                    width={cellW - 0.5}
+                    height={32}
+                    fill={`rgba(52,211,153,${Math.min(0.85, 0.04 + w * 1.7)})`}
+                  />
+                )
+              })}
+              <rect
+                x={X_OUT - 1}
+                y={yRow - 1}
+                width={COL_W_VEC + 2}
+                height={34}
+                rx={1}
+                fill="none"
+                stroke={isHero ? COL_V_ATT : 'rgba(52,211,153,0.25)'}
+                strokeWidth={isHero ? 1.4 : 0.8}
+              />
+            </g>
+
+            {/* Ellipsis row spacer between row index 5 and last */}
+            {rowIdx === 5 && (
+              <g>
+                <text
+                  x={X_WT + COL_W_LABEL / 2}
+                  y={yRow + 60}
+                  textAnchor="middle"
+                  fontSize="14"
+                  fontFamily="var(--font-mono)"
+                  fill={ACCENT.dim}
+                >
+                  ⋯
+                </text>
+                <text
+                  x={X_VEC + COL_W_VEC / 2}
+                  y={yRow + 60}
+                  textAnchor="middle"
+                  fontSize="14"
+                  fontFamily="var(--font-mono)"
+                  fill={ACCENT.dim}
+                >
+                  ⋯
+                </text>
+                <text
+                  x={X_OUT + COL_W_VEC / 2}
+                  y={yRow + 60}
+                  textAnchor="middle"
+                  fontSize="14"
+                  fontFamily="var(--font-mono)"
+                  fill={ACCENT.dim}
+                >
+                  ⋯
+                </text>
+              </g>
+            )}
+          </g>
+        )
+      })}
+
+      {/* Summation node + formula + output vector */}
+      {(() => {
+        const yFooter = Y_TOP + visibleIdx.length * ROW_H + 80
+        return (
+          <g>
+            {/* Formula card */}
+            <rect
+              x={X0 + 30}
+              y={yFooter}
+              width={300}
+              height={50}
+              rx={4}
+              fill="rgba(8,8,11,0.7)"
+              stroke={COL_V_ATT}
+              strokeOpacity={0.5}
+              strokeWidth={1.2}
+            />
+            <text
+              x={X0 + 180}
+              y={yFooter + 30}
+              textAnchor="middle"
+              fontSize="14"
+              fontFamily="var(--font-display)"
+              fontStyle="italic"
+              fill="rgba(255,255,255,0.95)"
+            >
+              out
+              <tspan fontSize="10" dy="3">i</tspan>
+              <tspan dy="-3"> = </tspan>
+              <tspan fontSize="20">Σ</tspan>
+              <tspan> w[i,j] · V[j]</tspan>
+            </text>
+
+            {/* Arrow to output */}
+            <path
+              d={`M ${X0 + 340} ${yFooter + 25} L ${X0 + 380} ${yFooter + 25}`}
+              stroke={COL_V_ATT}
+              strokeWidth={1.6}
+              strokeOpacity={0.85}
+              fill="none"
+            />
+            <path
+              d={`M ${X0 + 372} ${yFooter + 19} L ${X0 + 380} ${yFooter + 25} L ${X0 + 372} ${yFooter + 31}`}
+              stroke={COL_V_ATT}
+              strokeWidth={1.6}
+              fill="none"
+            />
+
+            {/* Attention output label */}
+            <text
+              x={X0 + 400}
+              y={yFooter - 4}
+              fontSize="10"
+              fontFamily="var(--font-mono)"
+              fill={ACCENT.dim}
+              letterSpacing="0.22em"
+            >
+              ATTENTION OUTPUT FOR{' '}
+              <tspan fill={COL_K_ATT} fontStyle="italic">q_i</tspan>
+            </text>
+
+            {/* Final output vector — mint, glowing */}
+            <motion.rect
+              x={X0 + 400}
+              y={yFooter + 8}
+              width={460}
+              height={36}
+              rx={3}
+              fill="rgba(52,211,153,0.35)"
+              stroke={COL_V_ATT}
+              strokeWidth={2}
+              filter="url(#attn-bloom)"
+              animate={{ opacity: [0.7, 1, 0.7] }}
+              transition={{
+                duration: 2.4 / speed,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
+            {/* Output vector cells */}
+            {Array.from({ length: 24 }).map((_, c) => (
+              <rect
+                key={`out-${c}`}
+                x={X0 + 402 + c * (456 / 24)}
+                y={yFooter + 10}
+                width={456 / 24 - 0.5}
+                height={32}
+                fill={`rgba(52,211,153,${0.4 + Math.abs(Math.sin(c * 0.7)) * 0.5})`}
+              />
+            ))}
+          </g>
+        )
+      })()}
+
+      <PhaseFooter>
+        <tspan>
+          The attention output is an updated representation for position{' '}
+          <tspan fill={COL_K_ATT} fontStyle="italic">i</tspan>
+          . It will be added back to the residual stream in the next step.
+        </tspan>
+      </PhaseFooter>
+    </g>
+  )
+}
+
+/* ─────────── Reusable phase header (kicker + title + sub) ─────────── */
+function PhaseHeader({
+  phase,
+  title,
+  sub,
+}: {
+  phase: 'A' | 'B' | 'C' | 'D'
+  title: string
+  sub: ReactNode
+}) {
+  const subTitleByPhase: Record<typeof phase, string> = {
+    A: 'one-query zoom',
+    B: 'full Q·Kᵀ matrix',
+    C: 'row-wise softmax',
+    D: 'value mixing',
+  }
+  return (
+    <g>
+      {/* Phase chip pill */}
+      <rect
+        x={460}
+        y={140}
+        width={300}
+        height={36}
+        rx={18}
+        fill="rgba(167,139,250,0.06)"
+        stroke="rgba(167,139,250,0.45)"
+        strokeWidth={1.2}
+      />
+      <text
+        x={476}
+        y={163}
+        fontSize="13"
+        fontFamily="var(--font-mono)"
+        fill={ACCENT.violet}
+        letterSpacing="0.18em"
+      >
+        sub-phase {phase}  ·  {subTitleByPhase[phase]}
+      </text>
+
+      {/* Phase tag label */}
+      <text
+        x={460}
+        y={200}
+        fontSize="11"
+        fontFamily="var(--font-mono)"
+        fill={ACCENT.dim}
+        letterSpacing="0.32em"
+      >
+        SUB-PHASE {phase}
+      </text>
+
+      {/* Big italic title */}
+      <text
+        x={460}
+        y={244}
+        fontSize="34"
+        fontFamily="var(--font-display)"
+        fontStyle="italic"
+        fill="rgba(255,255,255,0.95)"
+      >
+        {title}
+      </text>
+
+      {/* Sub */}
+      <text
+        x={460}
+        y={275}
+        fontSize="14"
+        fontFamily="var(--font-display)"
+        fill="rgba(255,255,255,0.72)"
+      >
+        {sub}
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Reusable phase footer (info callout) ─────────── */
+function PhaseFooter({ children }: { children: ReactNode }) {
+  return (
+    <g>
+      <rect
+        x={460}
+        y={830}
+        width={920}
+        height={68}
+        rx={6}
+        fill="rgba(8,8,11,0.7)"
+        stroke="rgba(167,139,250,0.32)"
+        strokeWidth={1.2}
+      />
+      <circle
+        cx={490}
+        cy={864}
+        r={11}
+        fill="none"
+        stroke={ACCENT.violet}
+        strokeOpacity={0.6}
+        strokeWidth={1.2}
+      />
+      <text
+        x={490}
+        y={868}
+        textAnchor="middle"
+        fontSize="11"
+        fontFamily="var(--font-mono)"
+        fill={ACCENT.violet}
+      >
+        ⓘ
+      </text>
+      <text
+        x={514}
+        y={862}
+        fontSize="13"
+        fontFamily="var(--font-display)"
+        fontStyle="italic"
+        fill="rgba(255,255,255,0.85)"
+      >
+        {children}
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Phase summary strip at bottom ─────────── */
+function PhaseSummary({ phase }: { phase: number }) {
+  const segs: { letter: string; text: string }[] = [
+    { letter: 'A', text: 'one query at a time.' },
+    { letter: 'B', text: 'full Q·Kᵀ matrix cell-by-cell.' },
+    { letter: 'C', text: 'row-wise softmax.' },
+    { letter: 'D', text: 'weighted sum over value vectors.' },
+  ]
+  return (
+    <g>
+      <text
+        x={700}
+        y={950}
+        textAnchor="middle"
+        fontSize="11"
+        fontFamily="var(--font-display)"
+        fontStyle="italic"
+        fill="rgba(255,255,255,0.5)"
+      >
+        {segs.map((s, i) => (
+          <tspan
+            key={s.letter}
+            fill={
+              i === phase
+                ? COL_K_ATT
+                : 'rgba(255,255,255,0.4)'
+            }
+            fontWeight={i === phase ? 600 : 400}
+          >
+            ({s.letter}) {s.text}
+            {i < segs.length - 1 ? '  ' : ''}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Scene 11 wrapper ─────────── */
+export function AttentionSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 4
+  const phaseLabels = [
+    'one-query zoom',
+    'full Q·Kᵀ matrix',
+    'row-wise softmax',
+    'value mixing',
+  ]
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      9500 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  return (
+    <SplitPaneScene
+      viz={<VizAttention />}
+      text={{
+        kicker: ACT2_KICKER,
+        title: 'Attention — 4 sub-phases.',
+        subtitle: (
+          <>
+            Same query token across all four phases. Watch one query learn
+            who to listen to, then pull from their values.
+          </>
+        ),
+        accent: ACCENT.violet,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.violet}
+          />
+        ),
+        stats: [
+          { label: 'T', value: '19', color: COL_K_ATT },
+          { label: 'd_k', value: '64', color: COL_Q_ATT },
+          { label: 'scale', value: '1/√64', color: COL_Q_ATT },
+          { label: 'mask', value: 'causal' },
+        ],
+        equation: {
+          label: 'attention',
+          body: (
+            <>
+              Attn(<tspan style={{ color: COL_Q_ATT }}>Q</tspan>,
+              {' '}<tspan style={{ color: COL_K_ATT }}>K</tspan>,
+              {' '}<tspan style={{ color: COL_V_ATT }}>V</tspan>) ={' '}
+              softmax(QKᵀ / √d_k) V
+            </>
+          ),
+        },
+        infoCallout:
+          'Causal masking sets future positions to −∞ before softmax, which makes their weights exactly 0. Each row sums to 1 — a clean probability distribution over the visible keys.',
       }}
     />
   )

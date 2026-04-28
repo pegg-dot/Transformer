@@ -63,6 +63,7 @@ import {
   Act2IntroSplitPane,
   LayerNormSplitPane,
   QKVSplitPane,
+  AttentionSplitPane,
 } from './act2Scenes'
 
 const ACCENT = {
@@ -293,7 +294,8 @@ All three are learned. Nothing special about the split — they start as random 
 The output at position i is a weighted sum of everyone else's V vectors, weighted by how well i's question (Q_i) matched their key (K_j). If nothing matches, attention falls back on itself. If something matches strongly, that token dominates.
 
 This is the mechanism that lets "the animal didn't cross the street because IT was tired" resolve "it" to "animal" rather than "street" — the network learns to attend from "it" back to the right antecedent.`,
-    render: () => <PanelThenScene panel={<PanelAttention />} scene={<SceneAttention />} />,
+    render: () => <AttentionSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'multi',
