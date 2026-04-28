@@ -5358,6 +5358,1027 @@ function Phase2HeadContent({
 }
 
 /* ─────────── Scene 12 wrapper ─────────── */
+/* =========================================================================
+ * Scene 13 — ffn: "Expand. Fire. Compress."
+ *
+ * Single animated pipeline (NOT five stacked rows). One central FFN chamber
+ * with one focused-token vector flowing through five beats:
+ *   1. input          — x ∈ R^384 enters
+ *   2. W1 expand      — 384 → 1536 (vector swells into a 4× wider feature bank)
+ *   3. GELU fire      — many cells dim, active cells glow/pulse amber
+ *   4. W2 compress    — 1536 → 384 (output vector emerges)
+ *   5. residual add   — x_out = x_in + FFN(LN(x_in))
+ *
+ * Persistent overlay reminds the viewer this is per-token (no token mixing).
+ * ====================================================================== */
+
+const COL_FFN_X = ACCENT.cyan      // residual stream (in/out)
+const COL_FFN_W1 = ACCENT.blue     // W1 gate
+const COL_FFN_W2 = ACCENT.mint     // W2 gate
+const COL_FFN_FIRE = ACCENT.amber  // GELU activation
+
+// GELU approximation — gpt-2 / bert tanh form
+function gelu(z: number): number {
+  return 0.5 * z * (1 + Math.tanh(Math.sqrt(2 / Math.PI) * (z + 0.044715 * z * z * z)))
+}
+
+export function VizFFN() {
+  const speed = useSpeed()
+  const { prompt } = usePrompt()
+  const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
+  const T = tokens.length
+  const FOCUSED = Math.min(3, T - 1)
+
+  // 5 phases, ~3.2s each
+  const PHASES = 5
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      3200 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // ── Math: deterministic vectors ─────────────────────────────────────
+  const DIN = 16     // 384 dims rendered as 16 cells
+  const DHID = 64    // 1536 dims rendered as 64 cells (4× wider)
+  const xIn = Array.from({ length: DIN }).map(
+    (_, i) => Math.sin(i * 1.27 + 0.7) * 0.95 + Math.cos(i * 0.42) * 0.25,
+  )
+  const hPre = Array.from({ length: DHID }).map(
+    (_, i) => Math.sin(i * 0.41 + 1.1) * 1.35 + Math.cos(i * 0.27 - 0.6) * 0.55,
+  )
+  const hPost = hPre.map(gelu)
+  const xDelta = Array.from({ length: DIN }).map(
+    (_, i) => Math.sin(i * 0.83 - 0.3) * 0.55 + Math.cos(i * 0.51) * 0.22,
+  )
+  const xOut = xIn.map((v, i) => v + xDelta[i])
+
+  // ── Color helpers ───────────────────────────────────────────────────
+  const colorRes = (v: number): string => {
+    const m = Math.max(-1.5, Math.min(1.5, v)) / 1.5
+    if (m >= 0) return `rgba(34,211,238,${0.18 + m * 0.62})`
+    return `rgba(248,113,113,${0.18 + -m * 0.5})`
+  }
+  const colorAmberFire = (v: number): string => {
+    // active = positive post-GELU value; dim = near-zero/negative
+    const a = 0.08 + Math.min(1, Math.max(0, v / 1.4)) * 0.92
+    return `rgba(245,158,11,${a})`
+  }
+
+  return (
+    <div className="relative h-full w-full">
+      <svg viewBox="0 0 1400 1000" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="ffn-glow"><feGaussianBlur stdDeviation="2.5" /></filter>
+          <filter id="ffn-bloom" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
+          <linearGradient id="ffn-w1-grad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="rgba(96,165,250,0.05)" />
+            <stop offset="50%" stopColor="rgba(96,165,250,0.55)" />
+            <stop offset="100%" stopColor="rgba(96,165,250,0.05)" />
+          </linearGradient>
+          <linearGradient id="ffn-w2-grad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="rgba(52,211,153,0.05)" />
+            <stop offset="50%" stopColor="rgba(52,211,153,0.55)" />
+            <stop offset="100%" stopColor="rgba(52,211,153,0.05)" />
+          </linearGradient>
+        </defs>
+
+        {/* ────── Top kicker ────── */}
+        <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.32em">
+          BLOCK 0 · FFN · EXPAND → FIRE → COMPRESS → ADD
+        </text>
+
+        {/* ────── Token strip with focused token ────── */}
+        <FFNTokenStrip tokens={tokens} focused={FOCUSED} speed={speed} />
+
+        {/* ────── Per-token reminder banner ────── */}
+        <g>
+          <rect x={490} y={150} width={420} height={28} rx={14}
+            fill="rgba(245,158,11,0.06)"
+            stroke="rgba(245,158,11,0.35)" strokeWidth={1} />
+          <text x={700} y={169} textAnchor="middle"
+            fontSize="11" fontFamily="var(--font-mono)"
+            fill={ACCENT.amber} letterSpacing="0.18em">
+            PER-TOKEN MLP · NO TOKEN MIXING HERE
+          </text>
+        </g>
+
+        {/* ────── Chamber outline ────── */}
+        <FFNChamber phase={phase} speed={speed} />
+
+        {/* ────── Persistent labels along the pipeline ────── */}
+        <FFNStationLabels phase={phase} />
+
+        {/* ────── Phase-specific pipeline content ────── */}
+        <motion.g
+          key={`ffn-phase-${phase}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.45 / speed, ease: 'easeOut' }}
+        >
+          {phase === 0 && (
+            <FFNPhase0Input xIn={xIn} colorRes={colorRes} speed={speed} />
+          )}
+          {phase === 1 && (
+            <FFNPhase1Expand
+              xIn={xIn}
+              hPre={hPre}
+              colorRes={colorRes}
+              colorAmberFire={colorAmberFire}
+              speed={speed}
+            />
+          )}
+          {phase === 2 && (
+            <FFNPhase2Fire
+              xIn={xIn}
+              hPre={hPre}
+              hPost={hPost}
+              colorRes={colorRes}
+              colorAmberFire={colorAmberFire}
+              speed={speed}
+            />
+          )}
+          {phase === 3 && (
+            <FFNPhase3Compress
+              xIn={xIn}
+              hPost={hPost}
+              xDelta={xDelta}
+              colorRes={colorRes}
+              colorAmberFire={colorAmberFire}
+              speed={speed}
+            />
+          )}
+          {phase === 4 && (
+            <FFNPhase4Residual
+              xIn={xIn}
+              xDelta={xDelta}
+              xOut={xOut}
+              colorRes={colorRes}
+              speed={speed}
+            />
+          )}
+        </motion.g>
+
+        {/* ────── Phase summary footer ────── */}
+        <FFNPhaseSummary phase={phase} />
+      </svg>
+    </div>
+  )
+}
+
+/* ─────────── Token strip (top, focused token highlighted) ─────────── */
+function FFNTokenStrip({
+  tokens,
+  focused,
+  speed,
+}: {
+  tokens: string[]
+  focused: number
+  speed: number
+}) {
+  const cellW = 32
+  const startX = 80
+  return (
+    <g>
+      <text x={20} y={84} fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.amber} letterSpacing="0.22em" opacity={0.85}>
+        TOKENS ▸
+      </text>
+      {tokens.map((ch, i) => {
+        const x = startX + i * (cellW + 4)
+        const isFocused = i === focused
+        return (
+          <g key={`ffn-tok-${i}`}>
+            {isFocused && (
+              <motion.rect
+                x={x - 2} y={64} width={cellW + 4} height={36} rx={4}
+                fill="rgba(245,158,11,0.20)"
+                stroke={ACCENT.amber}
+                strokeWidth={1.8}
+                initial={{ opacity: 0.6 }}
+                animate={{ opacity: [0.6, 1, 0.6] }}
+                transition={{
+                  duration: 2.2 / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+              />
+            )}
+            <rect x={x} y={66} width={cellW} height={32} rx={3}
+              fill="rgba(245,158,11,0.04)"
+              stroke="rgba(245,158,11,0.22)"
+              strokeWidth={1} />
+            <text x={x + cellW / 2} y={88} textAnchor="middle"
+              fontSize="14" fontFamily="var(--font-display)"
+              fontStyle="italic"
+              fill={isFocused ? '#fff' : 'rgba(255,255,255,0.55)'}>
+              {ch === ' ' ? '·' : ch}
+            </text>
+            <text x={x + cellW / 2} y={114} textAnchor="middle"
+              fontSize="9" fontFamily="var(--font-mono)"
+              fill={isFocused ? ACCENT.amber : ACCENT.dim}>
+              {i}
+            </text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/* ─────────── Chamber outline + corner brackets ─────────── */
+function FFNChamber({ phase, speed }: { phase: number; speed: number }) {
+  const X = 80, Y = 220, W = 1240, H = 600
+  const brk = 24 // corner bracket length
+  // Pulse the chamber outline gently while idle, brighter on phase 2 (fire)
+  const pulseOpacity = phase === 2 ? 0.55 : 0.28
+  return (
+    <g>
+      {/* Soft chamber background */}
+      <rect x={X} y={Y} width={W} height={H} rx={18}
+        fill="rgba(245,158,11,0.025)"
+        stroke="rgba(245,158,11,0.18)" strokeWidth={1} />
+      {/* corner brackets */}
+      {[
+        [X, Y, 1, 1], [X + W, Y, -1, 1],
+        [X, Y + H, 1, -1], [X + W, Y + H, -1, -1],
+      ].map(([cx, cy, sx, sy], i) => (
+        <motion.path
+          key={`brk-${i}`}
+          d={`M ${cx} ${cy + sy * brk} L ${cx} ${cy} L ${cx + sx * brk} ${cy}`}
+          stroke={ACCENT.amber}
+          strokeWidth={2}
+          fill="none"
+          strokeLinecap="round"
+          initial={{ opacity: 0.3 }}
+          animate={{ opacity: [pulseOpacity, pulseOpacity + 0.25, pulseOpacity] }}
+          transition={{ duration: 2.4 / speed, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      ))}
+      {/* Chamber title */}
+      <text x={X + 18} y={Y + 24} fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.amber} letterSpacing="0.32em" opacity={0.7}>
+        FFN CHAMBER · 384 → 1536 → 384
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Persistent station labels (W1, GELU, W2) ─────────── */
+function FFNStationLabels({ phase }: { phase: number }) {
+  // x-axis stations: input | W1 | hidden | W2 | output
+  const labels: { x: number; label: string; sub: string; color: string; activeAt: number }[] = [
+    { x: 200, label: 'x', sub: '384-d in', color: COL_FFN_X, activeAt: 0 },
+    { x: 380, label: 'W₁', sub: '384 → 1536', color: COL_FFN_W1, activeAt: 1 },
+    { x: 700, label: 'hidden', sub: '1536-d', color: COL_FFN_FIRE, activeAt: 2 },
+    { x: 1020, label: 'W₂', sub: '1536 → 384', color: COL_FFN_W2, activeAt: 3 },
+    { x: 1200, label: 'Δx', sub: '384-d out', color: COL_FFN_W2, activeAt: 3 },
+  ]
+  return (
+    <g>
+      {labels.map((s, i) => {
+        const active = phase >= s.activeAt
+        return (
+          <g key={`label-${i}`} opacity={active ? 1 : 0.35}>
+            <text x={s.x} y={870} textAnchor="middle"
+              fontSize="14" fontFamily="var(--font-mono)"
+              fill={active ? s.color : ACCENT.dim}>
+              {s.label}
+            </text>
+            <text x={s.x} y={888} textAnchor="middle"
+              fontSize="10" fontFamily="var(--font-mono)"
+              fill={ACCENT.dim}>
+              {s.sub}
+            </text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/* ─────────── Geometry shared by phases ─────────── */
+const FFN_GEOM = {
+  // input vector column
+  inX: 192, inY: 290, cellW: 16, cellH: 22,           // DIN=16 → 16w × 352h
+  // W1 gate
+  w1X: 360, w1Y: 320, w1W: 60, w1H: 280,
+  // hidden block (4 cols × 16 rows = 64 cells, each 22×22 → 88w × 352h)
+  hidX: 612, hidY: 290, hidColW: 22, hidColH: 22, hidCols: 4, hidRows: 16,
+  // W2 gate
+  w2X: 1000, w2Y: 320, w2W: 60, w2H: 280,
+  // output vector column
+  outX: 1192, outY: 290, outCellW: 16, outCellH: 22,
+}
+
+/* Input column renderer (used in multiple phases) */
+function FFNInputColumn({
+  values,
+  colorRes,
+  ghost = false,
+}: {
+  values: number[]
+  colorRes: (v: number) => string
+  ghost?: boolean
+}) {
+  const { inX, inY, cellW, cellH } = FFN_GEOM
+  return (
+    <g opacity={ghost ? 0.35 : 1}>
+      {values.map((v, i) => (
+        <rect
+          key={`in-${i}`}
+          x={inX} y={inY + i * cellH}
+          width={cellW} height={cellH - 2} rx={2}
+          fill={colorRes(v)}
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth={0.5}
+        />
+      ))}
+      <text x={inX + cellW / 2} y={inY - 14} textAnchor="middle"
+        fontSize="13" fontFamily="var(--font-display)" fontStyle="italic"
+        fill={COL_FFN_X}>
+        x
+      </text>
+      <text x={inX + cellW / 2} y={inY + 16 * cellH + 16} textAnchor="middle"
+        fontSize="9" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        ∈ R³⁸⁴
+      </text>
+    </g>
+  )
+}
+
+/* Hidden block renderer with optional GELU mask */
+function FFNHiddenBlock({
+  hPre,
+  hPost,
+  fireMask = false,
+  speed,
+  colorRes,
+  colorAmberFire,
+  staggerEntry = false,
+}: {
+  hPre: number[]
+  hPost: number[]
+  fireMask?: boolean
+  speed: number
+  colorRes: (v: number) => string
+  colorAmberFire: (v: number) => string
+  staggerEntry?: boolean
+}) {
+  const { hidX, hidY, hidColW, hidColH, hidCols, hidRows } = FFN_GEOM
+  return (
+    <g>
+      {Array.from({ length: hidCols * hidRows }).map((_, idx) => {
+        const r = idx % hidRows
+        const c = Math.floor(idx / hidRows)
+        const cx = hidX + c * hidColW
+        const cy = hidY + r * hidColH
+        const v = fireMask ? hPost[idx] : hPre[idx]
+        const isActive = fireMask && hPost[idx] > 0.15
+        const fill = fireMask ? colorAmberFire(hPost[idx]) : colorRes(v / 1.5)
+        return (
+          <motion.rect
+            key={`hid-${idx}`}
+            x={cx} y={cy} width={hidColW - 2} height={hidColH - 2} rx={2}
+            fill={fill}
+            stroke={isActive ? 'rgba(245,158,11,0.55)' : 'rgba(255,255,255,0.05)'}
+            strokeWidth={isActive ? 1 : 0.5}
+            initial={staggerEntry ? { opacity: 0, scale: 0.6 } : { opacity: 1, scale: 1 }}
+            animate={
+              isActive
+                ? { opacity: [0.7, 1, 0.7], scale: [1, 1.06, 1] }
+                : { opacity: 1, scale: 1 }
+            }
+            transition={
+              isActive
+                ? { duration: 1.6 / speed, repeat: Infinity, ease: 'easeInOut', delay: (idx % 8) * 0.04 }
+                : staggerEntry
+                ? { duration: 0.35 / speed, delay: (idx * 0.005) / speed }
+                : { duration: 0.3 / speed }
+            }
+          />
+        )
+      })}
+      <text x={hidX + (hidCols * hidColW) / 2} y={hidY - 14} textAnchor="middle"
+        fontSize="13" fontFamily="var(--font-display)" fontStyle="italic"
+        fill={fireMask ? COL_FFN_FIRE : 'rgba(255,255,255,0.85)'}>
+        {fireMask ? 'GELU(W₁x)' : 'W₁x'}
+      </text>
+      <text x={hidX + (hidCols * hidColW) / 2}
+        y={hidY + hidRows * hidColH + 16} textAnchor="middle"
+        fontSize="9" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        ∈ R¹⁵³⁶ (4× wider feature bank)
+      </text>
+    </g>
+  )
+}
+
+/* Output column renderer */
+function FFNOutputColumn({
+  values,
+  colorRes,
+  staggerEntry = false,
+  speed,
+}: {
+  values: number[]
+  colorRes: (v: number) => string
+  staggerEntry?: boolean
+  speed: number
+}) {
+  const { outX, outY, outCellW, outCellH } = FFN_GEOM
+  return (
+    <g>
+      {values.map((v, i) => (
+        <motion.rect
+          key={`out-${i}`}
+          x={outX} y={outY + i * outCellH}
+          width={outCellW} height={outCellH - 2} rx={2}
+          fill={colorRes(v)}
+          stroke="rgba(255,255,255,0.08)" strokeWidth={0.5}
+          initial={staggerEntry ? { opacity: 0, x: outX - 30 } : { opacity: 1, x: outX }}
+          animate={{ opacity: 1, x: outX }}
+          transition={{ duration: 0.35 / speed, delay: (i * 0.025) / speed }}
+        />
+      ))}
+      <text x={outX + outCellW / 2} y={outY - 14} textAnchor="middle"
+        fontSize="13" fontFamily="var(--font-display)" fontStyle="italic"
+        fill={COL_FFN_W2}>
+        Δx
+      </text>
+      <text x={outX + outCellW / 2} y={outY + 16 * outCellH + 16}
+        textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim}>
+        ∈ R³⁸⁴
+      </text>
+    </g>
+  )
+}
+
+/* W1 gate visual */
+function FFNGateW1({ active, speed }: { active: boolean; speed: number }) {
+  const { w1X, w1Y, w1W, w1H } = FFN_GEOM
+  return (
+    <g>
+      <motion.rect
+        x={w1X} y={w1Y} width={w1W} height={w1H} rx={8}
+        fill="url(#ffn-w1-grad)"
+        stroke={COL_FFN_W1}
+        strokeWidth={active ? 2 : 1}
+        initial={{ opacity: 0.4 }}
+        animate={{ opacity: active ? [0.7, 1, 0.7] : 0.5 }}
+        transition={{
+          duration: 1.6 / speed,
+          repeat: active ? Infinity : 0,
+          ease: 'easeInOut',
+        }}
+      />
+      <text x={w1X + w1W / 2} y={w1Y + w1H / 2 - 6}
+        textAnchor="middle" fontSize="22" fontFamily="var(--font-display)"
+        fontStyle="italic" fill={COL_FFN_W1}>
+        W₁
+      </text>
+      <text x={w1X + w1W / 2} y={w1Y + w1H / 2 + 16}
+        textAnchor="middle" fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim}>
+        expand 4×
+      </text>
+    </g>
+  )
+}
+
+/* W2 gate visual */
+function FFNGateW2({ active, speed }: { active: boolean; speed: number }) {
+  const { w2X, w2Y, w2W, w2H } = FFN_GEOM
+  return (
+    <g>
+      <motion.rect
+        x={w2X} y={w2Y} width={w2W} height={w2H} rx={8}
+        fill="url(#ffn-w2-grad)"
+        stroke={COL_FFN_W2}
+        strokeWidth={active ? 2 : 1}
+        initial={{ opacity: 0.4 }}
+        animate={{ opacity: active ? [0.7, 1, 0.7] : 0.5 }}
+        transition={{
+          duration: 1.6 / speed,
+          repeat: active ? Infinity : 0,
+          ease: 'easeInOut',
+        }}
+      />
+      <text x={w2X + w2W / 2} y={w2Y + w2H / 2 - 6}
+        textAnchor="middle" fontSize="22" fontFamily="var(--font-display)"
+        fontStyle="italic" fill={COL_FFN_W2}>
+        W₂
+      </text>
+      <text x={w2X + w2W / 2} y={w2Y + w2H / 2 + 16}
+        textAnchor="middle" fontSize="10" fontFamily="var(--font-mono)"
+        fill={ACCENT.dim}>
+        compress
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Phase 0 — Input ─────────── */
+function FFNPhase0Input({
+  xIn, colorRes, speed,
+}: {
+  xIn: number[]
+  colorRes: (v: number) => string
+  speed: number
+}) {
+  const { inX, inY, cellH } = FFN_GEOM
+  return (
+    <g>
+      {/* Token-to-vector arrival arc */}
+      <motion.path
+        d={`M 80 90 Q 130 200 ${inX} ${inY + cellH * 8}`}
+        fill="none" stroke={COL_FFN_X} strokeWidth={1.5}
+        strokeDasharray="3,3" opacity={0.55}
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 0.9 / speed, ease: 'easeInOut' }}
+      />
+      <FFNInputColumn values={xIn} colorRes={colorRes} />
+      <FFNGateW1 active={false} speed={speed} />
+      <FFNGateW2 active={false} speed={speed} />
+
+      {/* Center caption */}
+      <text x={700} y={500} textAnchor="middle"
+        fontSize="20" fontFamily="var(--font-display)" fontStyle="italic"
+        fill="rgba(255,255,255,0.92)">
+        one focused token enters
+      </text>
+      <text x={700} y={528} textAnchor="middle"
+        fontSize="13" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        attention already mixed tokens — now each one is processed alone
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Phase 1 — W1 Expand 384 → 1536 ─────────── */
+function FFNPhase1Expand({
+  xIn, hPre, colorRes, colorAmberFire, speed,
+}: {
+  xIn: number[]
+  hPre: number[]
+  colorRes: (v: number) => string
+  colorAmberFire: (v: number) => string
+  speed: number
+}) {
+  const { inX, inY, cellW, cellH, w1X, w1W, hidX, hidY, hidColW, hidColH, hidRows } = FFN_GEOM
+  // Flow particles from input → W1 → hidden
+  const PARTICLES = 14
+  return (
+    <g>
+      <FFNInputColumn values={xIn} colorRes={colorRes} />
+      <FFNGateW1 active={true} speed={speed} />
+
+      {/* Beam from input through W1 to hidden */}
+      {Array.from({ length: PARTICLES }).map((_, i) => {
+        const startY = inY + Math.random() * cellH * 16
+        const endY = hidY + Math.random() * hidRows * hidColH
+        return (
+          <motion.circle
+            key={`p1-${i}`}
+            r={2.4}
+            fill={COL_FFN_W1}
+            initial={{ cx: inX + cellW, cy: startY, opacity: 0 }}
+            animate={{
+              cx: [inX + cellW, w1X, w1X + w1W, hidX],
+              cy: [startY, startY, (startY + endY) / 2, endY],
+              opacity: [0, 0.9, 0.9, 0],
+            }}
+            transition={{
+              duration: 1.4 / speed,
+              delay: (i * 0.08) / speed,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+        )
+      })}
+
+      {/* Hidden block — pre-activation, stagger entry */}
+      <FFNHiddenBlock
+        hPre={hPre}
+        hPost={hPre}
+        fireMask={false}
+        speed={speed}
+        colorRes={colorRes}
+        colorAmberFire={colorAmberFire}
+        staggerEntry={true}
+      />
+
+      <FFNGateW2 active={false} speed={speed} />
+
+      {/* Big "4×" expansion cue between input and hidden */}
+      <motion.text
+        x={510} y={250} textAnchor="middle"
+        fontSize="18" fontFamily="var(--font-mono)"
+        fill={COL_FFN_W1}
+        initial={{ opacity: 0, y: 240 }}
+        animate={{ opacity: 1, y: 250 }}
+        transition={{ duration: 0.5 / speed, delay: 0.4 / speed }}
+      >
+        384 → 1536  (4× wider)
+      </motion.text>
+
+      <text x={700} y={840} textAnchor="middle"
+        fontSize="13" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        the thin vector swells into a wide bank of candidate features
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Phase 2 — GELU Fire ─────────── */
+function FFNPhase2Fire({
+  xIn, hPre, hPost, colorRes, colorAmberFire, speed,
+}: {
+  xIn: number[]
+  hPre: number[]
+  hPost: number[]
+  colorRes: (v: number) => string
+  colorAmberFire: (v: number) => string
+  speed: number
+}) {
+  const { hidX, hidY, hidColW, hidColH, hidCols, hidRows } = FFN_GEOM
+  return (
+    <g>
+      <FFNInputColumn values={xIn} colorRes={colorRes} ghost={true} />
+      <FFNGateW1 active={false} speed={speed} />
+
+      {/* Hidden block with GELU mask — active cells glow */}
+      <FFNHiddenBlock
+        hPre={hPre}
+        hPost={hPost}
+        fireMask={true}
+        speed={speed}
+        colorRes={colorRes}
+        colorAmberFire={colorAmberFire}
+      />
+
+      {/* Bloom glow over the hidden block */}
+      <rect
+        x={hidX - 6} y={hidY - 6}
+        width={hidCols * hidColW + 12}
+        height={hidRows * hidColH + 12}
+        rx={6}
+        fill="rgba(245,158,11,0.10)"
+        filter="url(#ffn-bloom)"
+        pointerEvents="none"
+      />
+
+      <FFNGateW2 active={false} speed={speed} />
+
+      {/* GELU label and curve */}
+      <g transform="translate(380, 600)">
+        <text x={0} y={0} fontSize="14" fontFamily="var(--font-mono)"
+          fill={COL_FFN_FIRE}>
+          GELU(z) = z · Φ(z)
+        </text>
+        {/* Tiny GELU curve */}
+        <g transform="translate(0, 14)">
+          <path
+            d={`M 0 60 ${Array.from({ length: 60 }).map((_, i) => {
+              const z = -3 + (i / 59) * 6
+              const y = 60 - (gelu(z) + 0.5) * 22
+              const x = i * 2.5
+              return `L ${x} ${y}`
+            }).join(' ')}`}
+            stroke={COL_FFN_FIRE} strokeWidth={1.6} fill="none" />
+          <line x1={0} y1={60} x2={150} y2={60}
+            stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} />
+          <line x1={75} y1={20} x2={75} y2={80}
+            stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} />
+        </g>
+      </g>
+
+      {/* Center caption */}
+      <text x={700} y={840} textAnchor="middle"
+        fontSize="14" fontFamily="var(--font-mono)" fill={COL_FFN_FIRE}>
+        many candidates dim — selected features fire
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Phase 3 — W2 Compress 1536 → 384 ─────────── */
+function FFNPhase3Compress({
+  xIn, hPost, xDelta, colorRes, colorAmberFire, speed,
+}: {
+  xIn: number[]
+  hPost: number[]
+  xDelta: number[]
+  colorRes: (v: number) => string
+  colorAmberFire: (v: number) => string
+  speed: number
+}) {
+  const { hidX, hidY, hidColW, hidColH, hidCols, hidRows, w2X, w2W, outX, outY, outCellH } = FFN_GEOM
+  const PARTICLES = 14
+  return (
+    <g>
+      <FFNInputColumn values={xIn} colorRes={colorRes} ghost={true} />
+      <FFNGateW1 active={false} speed={speed} />
+
+      {/* Hidden block holds steady, fire still */}
+      <FFNHiddenBlock
+        hPre={hPost}
+        hPost={hPost}
+        fireMask={true}
+        speed={speed}
+        colorRes={colorRes}
+        colorAmberFire={colorAmberFire}
+      />
+
+      <FFNGateW2 active={true} speed={speed} />
+
+      {/* Beam from hidden → W2 → output */}
+      {Array.from({ length: PARTICLES }).map((_, i) => {
+        const startX = hidX + hidCols * hidColW
+        const startY = hidY + Math.random() * hidRows * hidColH
+        const endY = outY + Math.random() * 16 * outCellH
+        return (
+          <motion.circle
+            key={`p3-${i}`}
+            r={2.4}
+            fill={COL_FFN_W2}
+            initial={{ cx: startX, cy: startY, opacity: 0 }}
+            animate={{
+              cx: [startX, w2X, w2X + w2W, outX],
+              cy: [startY, (startY + endY) / 2, (startY + endY) / 2, endY],
+              opacity: [0, 0.9, 0.9, 0],
+            }}
+            transition={{
+              duration: 1.4 / speed,
+              delay: (i * 0.08) / speed,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+        )
+      })}
+
+      {/* Output column emerging */}
+      <FFNOutputColumn values={xDelta} colorRes={colorRes} staggerEntry={true} speed={speed} />
+
+      {/* Compression cue */}
+      <motion.text
+        x={900} y={250} textAnchor="middle"
+        fontSize="18" fontFamily="var(--font-mono)"
+        fill={COL_FFN_W2}
+        initial={{ opacity: 0, y: 240 }}
+        animate={{ opacity: 1, y: 250 }}
+        transition={{ duration: 0.5 / speed, delay: 0.4 / speed }}
+      >
+        1536 → 384  (compress)
+      </motion.text>
+
+      <text x={700} y={840} textAnchor="middle"
+        fontSize="13" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+        active features collapse back into a slim 384-d update vector
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Phase 4 — Residual Add ─────────── */
+function FFNPhase4Residual({
+  xIn, xDelta, xOut, colorRes, speed,
+}: {
+  xIn: number[]
+  xDelta: number[]
+  xOut: number[]
+  colorRes: (v: number) => string
+  speed: number
+}) {
+  const { inX, inY, cellW, cellH, outX, outY, outCellW, outCellH } = FFN_GEOM
+  // Position the merged output in the middle, lower
+  const mergeX = 700 - cellW / 2
+  const mergeY = 450
+  return (
+    <g>
+      {/* Original residual (left) */}
+      <FFNInputColumn values={xIn} colorRes={colorRes} />
+
+      {/* Δx (right) */}
+      <FFNOutputColumn values={xDelta} colorRes={colorRes} speed={speed} />
+
+      {/* Plus operator (centered) */}
+      <motion.text
+        x={700} y={300} textAnchor="middle"
+        fontSize="56" fontFamily="var(--font-display)"
+        fill={ACCENT.amber}
+        initial={{ opacity: 0, scale: 0.6 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4 / speed }}
+      >
+        +
+      </motion.text>
+
+      {/* Arrows: x and Δx flow down to merged column */}
+      <motion.path
+        d={`M ${inX + cellW / 2} ${inY + 16 * cellH + 30}
+            Q ${inX + cellW / 2} ${mergeY - 30}, ${mergeX + cellW / 2} ${mergeY - 10}`}
+        fill="none" stroke={COL_FFN_X} strokeWidth={1.5}
+        opacity={0.55} strokeDasharray="3,3"
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 0.7 / speed }}
+      />
+      <motion.path
+        d={`M ${outX + outCellW / 2} ${outY + 16 * outCellH + 30}
+            Q ${outX + outCellW / 2} ${mergeY - 30}, ${mergeX + outCellW / 2} ${mergeY - 10}`}
+        fill="none" stroke={COL_FFN_W2} strokeWidth={1.5}
+        opacity={0.55} strokeDasharray="3,3"
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 0.7 / speed, delay: 0.15 / speed }}
+      />
+
+      {/* Updated residual stream (merged) */}
+      <g>
+        <text x={mergeX + cellW / 2} y={mergeY - 16}
+          textAnchor="middle" fontSize="13"
+          fontFamily="var(--font-display)" fontStyle="italic"
+          fill={ACCENT.amber}>
+          x ← x + Δx
+        </text>
+        {xOut.map((v, i) => (
+          <motion.rect
+            key={`merged-${i}`}
+            x={mergeX} y={mergeY + i * cellH}
+            width={cellW} height={cellH - 2} rx={2}
+            fill={colorRes(v / 1.6)}
+            stroke="rgba(245,158,11,0.45)"
+            strokeWidth={0.8}
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 / speed, delay: 0.3 / speed + (i * 0.018) / speed }}
+          />
+        ))}
+        {/* Halo */}
+        <motion.rect
+          x={mergeX - 6} y={mergeY - 6}
+          width={cellW + 12} height={16 * cellH + 12} rx={4}
+          fill="none" stroke={ACCENT.amber} strokeWidth={1.5}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 0.7, 0.4] }}
+          transition={{ duration: 1.2 / speed, delay: 0.6 / speed }}
+        />
+        <text x={mergeX + cellW / 2} y={mergeY + 16 * cellH + 18}
+          textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim}>
+          updated residual
+        </text>
+      </g>
+
+      <text x={700} y={840} textAnchor="middle"
+        fontSize="14" fontFamily="var(--font-mono)" fill={ACCENT.amber}>
+        the FFN update folds back into the residual stream
+      </text>
+    </g>
+  )
+}
+
+/* ─────────── Phase summary footer ─────────── */
+function FFNPhaseSummary({ phase }: { phase: number }) {
+  const beats = ['input', 'expand', 'fire', 'compress', 'add']
+  return (
+    <g transform="translate(700, 940)">
+      {beats.map((b, i) => {
+        const w = 100
+        const x = (i - beats.length / 2) * w + w / 2
+        const active = i === phase
+        const done = i < phase
+        return (
+          <g key={`sum-${i}`} transform={`translate(${x}, 0)`}>
+            <rect x={-w / 2 + 6} y={-14} width={w - 12} height={28} rx={14}
+              fill={active ? 'rgba(245,158,11,0.18)' : 'transparent'}
+              stroke={active ? ACCENT.amber : ACCENT.rule}
+              strokeWidth={active ? 1.5 : 1} />
+            <text x={0} y={4} textAnchor="middle"
+              fontSize="11" fontFamily="var(--font-mono)"
+              fill={active ? ACCENT.amber : done ? 'rgba(255,255,255,0.5)' : ACCENT.dim}
+              letterSpacing="0.16em">
+              {(i + 1)}.{b.toUpperCase()}
+            </text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/* ─────────── FFN split-pane wrapper ─────────── */
+export function FFNSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 5
+  const phaseLabels = [
+    'one token enters',
+    'W₁ expand 4×',
+    'GELU fire',
+    'W₂ compress',
+    'residual add',
+  ]
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      3200 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      One focused token leaves attention and arrives at the FFN. From here
+      every token is processed <em>independently</em> — no more mixing.
+    </>,
+    <>
+      W₁ projects the 384-d vector into a much wider 1536-d space. Think of
+      it as a bank of <em>candidate features</em> the model could detect.
+    </>,
+    <>
+      GELU keeps the strong activations and softly silences the rest. This
+      is where the network <em>chooses</em> which features matter for this token.
+    </>,
+    <>
+      W₂ collapses the 1536-d activated vector back down to 384-d — a focused
+      update that lives in the same space as the residual stream.
+    </>,
+    <>
+      The FFN's update is added back to the original residual stream:
+      x ← x + FFN(LN(x)). The token vector now carries the new information.
+    </>,
+  ]
+
+  const equationByPhase: { label: string; body: ReactNode }[] = [
+    {
+      label: 'per-token MLP',
+      body: <>FFN(x) applied independently at every position</>,
+    },
+    {
+      label: 'expand',
+      body: <>h = W₁ x &nbsp;·&nbsp; R³⁸⁴ → R¹⁵³⁶</>,
+    },
+    {
+      label: 'activate',
+      body: <>h̃ = GELU(h)</>,
+    },
+    {
+      label: 'compress',
+      body: <>Δx = W₂ h̃ &nbsp;·&nbsp; R¹⁵³⁶ → R³⁸⁴</>,
+    },
+    {
+      label: 'residual update',
+      body: <>x ← x + W₂ · GELU(W₁ · LN(x))</>,
+    },
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'Attention mixed information across tokens. The FFN does the opposite — it processes each token in isolation. Same parameters at every position.',
+    'Most of the model\'s parameters live in W₁ and W₂. A GPT-2 block has ~25M params in FFN vs ~6M in attention. Wider FFN = more facts the model can store.',
+    'GELU is smoother than ReLU — small negatives leak through, so gradients keep flowing. Modern models use GELU (GPT) or Swish (LLaMA via SwiGLU).',
+    'W₂ is 1536 × 384 — it\'s how the model decides which combination of fired features to project back as an update to the residual stream.',
+    'The residual connection means the FFN never replaces the token vector — it only adds a correction. Each block nudges the stream a little closer to the answer.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizFFN />}
+      text={{
+        kicker: ACT2_KICKER,
+        title: 'Expand. Fire. Compress.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.amber,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.amber}
+          />
+        ),
+        stats: [
+          { label: 'd_model', value: '384', color: COL_FFN_X },
+          { label: 'd_hidden', value: '1536', color: COL_FFN_FIRE },
+          { label: 'expansion', value: '4×' },
+          { label: 'activation', value: 'GELU' },
+        ],
+        equation: equationByPhase[phase],
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}
+
 export function MultiHeadSplitPane() {
   const speed = useSpeed()
   const PHASES = 3

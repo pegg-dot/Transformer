@@ -65,6 +65,7 @@ import {
   QKVSplitPane,
   AttentionSplitPane,
   MultiHeadSplitPane,
+  FFNSplitPane,
 } from './act2Scenes'
 
 const ACCENT = {
@@ -331,7 +332,7 @@ Empirically, the heads DO specialize. Different heads attend to different kinds 
     title: 'Expand. Fire. Compress.',
     subGroup: { label: 'FFN · structure', index: 1, total: 3, color: ACCENT.amber },
     caption:
-      'Expand 4× wider (1536 dims), ReLU zeros the negatives, compress back to 384, add to residual.',
+      'Expand 4× wider (1536 dims), GELU fires on selected features, compress back to 384, add to residual.',
     accent: ACCENT.amber,
     durationMs: 19000,  // 5 × 3.2s
     part: 'ffn',
@@ -340,7 +341,8 @@ Empirically, the heads DO specialize. Different heads attend to different kinds 
 Most of the model's parameters live here. A GPT-2 XL block has ~25M params in FFN versus ~6M in attention. If you want a model to know more facts, make the FFN wider.
 
 Attention moves information BETWEEN tokens. FFN processes information WITHIN a single token. Both are needed.`,
-    render: () => <PanelThenScene panel={<PanelFFN />} scene={<SceneFFN />} />,
+    render: () => <FFNSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'ffn-feature',
