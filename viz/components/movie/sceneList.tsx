@@ -22,7 +22,6 @@ import {
   SceneQKV,
   SceneRoPE,
   SceneSample,
-  SceneStack,
   SceneTokenization,
   SceneTraining,
 } from './scenes'
@@ -41,7 +40,6 @@ import {
   PanelOutput,
   PanelAttention,
   PanelMulti,
-  PanelStack,
   PanelLoss,
   PanelBackprop,
   PanelRope,
@@ -66,6 +64,7 @@ import {
   FFNFeatureSplitPane,
   FFNGeluSplitPane,
 } from './act2Scenes'
+import { StackSplitPane } from './act3Scenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -427,7 +426,8 @@ Modern LLMs (LLaMA, PaLM, Mistral) push further with gated variants like SwiGLU:
 Every block uses the residual stream pattern: its output is ADDED to the input, not replaced. This means early features survive all the way to the top, and gradients can flow straight from the final loss back to block 0 without getting attenuated through many multiplications.
 
 Each block asks "given what I just read, what's a better representation?" and nudges the running vector in that direction. Stacking more blocks = more nudges = more complex reasoning.`,
-    render: () => <PanelThenScene panel={<PanelStack />} scene={<SceneStack />} />,
+    render: () => <StackSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'sample',
