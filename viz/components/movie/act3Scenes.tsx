@@ -536,7 +536,7 @@ export function VizStack() {
           same recipe, six times — every block adds to the same running stream
         </text>
 
-        {/* Hero residual stream — drawn early so blocks overlay above */}
+        {/* Hero residual stream */}
         <StackResidualStream phase={phase} speed={speed} />
 
         {/* Six transformer blocks */}
@@ -544,24 +544,31 @@ export function VizStack() {
           <StackBlock key={`blk-${i}`} idx={i} phase={phase} speed={speed} />
         ))}
 
-        {/* Delta injections from each block down into the stream */}
+        {/* Per-block highlight halos — only in CLIMBING phase, sequenced
+            with hero pulse arrival so each block lights up in turn */}
+        {phase === 1 && Array.from({ length: BLOCK_COUNT }).map((_, i) => (
+          <StackBlockHighlight key={`halo-${i}`} idx={i} speed={speed} />
+        ))}
+
+        {/* Delta injections — connectors + labels always visible (dim);
+            pulse landings only fire in CLIMBING phase */}
         {Array.from({ length: BLOCK_COUNT }).map((_, i) => (
           <StackDeltaInjection key={`delta-${i}`} idx={i} phase={phase} speed={speed} />
         ))}
 
-        {/* Continuous ambient flow particles */}
+        {/* Ambient stream particles — always running, subtle */}
         <StackFlowParticles speed={speed} />
 
-        {/* Hero pulse — single bright orb climbing the stream */}
-        <StackHeroPulse speed={speed} />
+        {/* Hero pulse — only in CLIMBING phase; color-shifts as it travels */}
+        {phase === 1 && <StackHeroPulse speed={speed} />}
 
         {/* Input and output chips */}
         <StackInputOutput speed={speed} />
 
-        {/* Bottom payoff */}
+        {/* Bottom payoff — clean editorial text, no panel */}
         <StackPayoff phase={phase} />
 
-        {/* Phase summary */}
+        {/* Phase summary footer */}
         <StackPhaseSummary phase={phase} />
       </svg>
     </div>
@@ -639,10 +646,11 @@ function StackResidualStream({ phase, speed }: { phase: number; speed: number })
 }
 
 /* ─────────── Block body (no entry animation — reused by intro + stack) ───
- * Isometric-ish 3D look: front face + lit top face + shadowed right face,
- * plus a soft ground shadow under the block. The hero block in the intro
- * scene gets the same body, just transformed (scaled/translated) by its
- * outer motion wrapper, so the 3D faces scale with it.  */
+ * Minimal isometric slab: 3 faces (front + lit top + shadowed right) and
+ * a soft ground shadow underneath. Inside, only two abstract motifs:
+ *   top   — tiny 3×3 lower-triangular grid (attention)
+ *   bottom — three amber bars (FFN)
+ * One label: "BLOCK i". The motifs speak for themselves; no extra text.  */
 function StackBlockBody({ idx, speed }: { idx: number; speed: number }) {
   const cx = BLOCK_CENTERS[idx]
   const x = cx - BLOCK_W / 2
@@ -671,7 +679,7 @@ function StackBlockBody({ idx, speed }: { idx: number; speed: number }) {
         fill="rgba(0,0,0,0.5)"
         filter="url(#stack-shadow)" />
 
-      {/* Right face (in shadow) — drawn behind */}
+      {/* Right face (in shadow) */}
       <polygon points={rightFace}
         fill={fillRight}
         stroke={dimColor}
@@ -685,50 +693,44 @@ function StackBlockBody({ idx, speed }: { idx: number; speed: number }) {
         strokeWidth={1}
         strokeOpacity={0.55} />
 
-      {/* Front face (the main visible face) */}
+      {/* Front face */}
       <rect x={x} y={y} width={w} height={h} rx={2}
         fill={fillFront}
         stroke={dimColor}
         strokeWidth={1.6} />
 
-      {/* Subtle top-edge highlight along the front face */}
+      {/* Subtle top-edge highlight */}
       <line x1={x + 4} x2={x + w - 4}
         y1={y + 2} y2={y + 2}
         stroke="rgba(255,255,255,0.22)" strokeWidth={0.8} />
 
-      {/* Block label */}
-      <text x={cx} y={y + 26} textAnchor="middle"
-        fontSize="12" fontFamily="var(--font-mono)"
-        fill={color} letterSpacing="0.24em">
+      {/* Block label — only text in the block */}
+      <text x={cx} y={y + 30} textAnchor="middle"
+        fontSize="13" fontFamily="var(--font-mono)"
+        fill={color} letterSpacing="0.26em">
         BLOCK {idx}
       </text>
 
-      {/* Top-half label — ATTN */}
-      <text x={cx} y={y + 54} textAnchor="middle"
-        fontSize="10" fontFamily="var(--font-mono)"
-        fill={ACCENT.dim} letterSpacing="0.22em">
-        ATTN
-      </text>
-      {/* Attention motif: 5×5 lower-triangular grid */}
-      {Array.from({ length: 5 }).map((_, q) =>
-        Array.from({ length: 5 }).map((_, k) => {
+      {/* Attention motif — minimal 3×3 lower-triangular (6 cells) */}
+      {Array.from({ length: 3 }).map((_, q) =>
+        Array.from({ length: 3 }).map((_, k) => {
           if (k > q) return null
-          const cellSize = 15
-          const startX = cx - 2.5 * cellSize
+          const cellSize = 18
+          const startX = cx - 1.5 * cellSize
           return (
             <motion.rect
               key={`attn-${idx}-${q}-${k}`}
               x={startX + k * cellSize}
-              y={y + 66 + q * cellSize}
-              width={cellSize - 1}
-              height={cellSize - 1}
-              rx={1}
+              y={y + 76 + q * cellSize}
+              width={cellSize - 2}
+              height={cellSize - 2}
+              rx={2}
               fill={color}
-              initial={{ opacity: 0.18 }}
-              animate={{ opacity: [0.18, 0.85, 0.18] }}
+              initial={{ opacity: 0.28 }}
+              animate={{ opacity: [0.28, 0.9, 0.28] }}
               transition={{
-                duration: 1.7 / speed,
-                delay: (idx * 0.08 + q * 0.07 + k * 0.05) / speed,
+                duration: 1.8 / speed,
+                delay: (idx * 0.08 + q * 0.06 + k * 0.05) / speed,
                 repeat: Infinity,
                 ease: 'easeInOut',
               }}
@@ -737,48 +739,72 @@ function StackBlockBody({ idx, speed }: { idx: number; speed: number }) {
         })
       )}
 
-      {/* Mid divider */}
-      <line x1={x + 16} x2={x + w - 16}
-        y1={halfY + 2} y2={halfY + 2}
+      {/* Mid divider — very subtle visual separator */}
+      <line x1={x + 28} x2={x + w - 28}
+        y1={halfY + 6} y2={halfY + 6}
         stroke={ACCENT.rule} strokeWidth={0.6} strokeDasharray="2,3" />
 
-      {/* Bottom-half label — FFN */}
-      <text x={cx} y={halfY + 24} textAnchor="middle"
-        fontSize="10" fontFamily="var(--font-mono)"
-        fill={ACCENT.dim} letterSpacing="0.22em">
-        FFN
-      </text>
-      {/* FFN motif: 6 amber bars that breathe */}
-      {Array.from({ length: 6 }).map((_, bi) => {
-        const barW = 13
-        const barX = cx - 3 * (barW + 2) + bi * (barW + 2)
+      {/* FFN motif — minimal 3 amber bars */}
+      {Array.from({ length: 3 }).map((_, bi) => {
+        const barW = 22
+        const gap = 8
+        const totalW = 3 * barW + 2 * gap
+        const barX = cx - totalW / 2 + bi * (barW + gap)
         return (
           <motion.rect
             key={`ffn-${idx}-${bi}`}
             x={barX}
-            y={halfY + 38}
+            y={halfY + 52}
             width={barW}
             rx={2}
             fill={ACCENT.amber}
-            initial={{ height: 18, opacity: 0.20 }}
-            animate={{ height: [18, 72, 18], opacity: [0.20, 0.85, 0.20] }}
+            initial={{ height: 26, opacity: 0.32 }}
+            animate={{ height: [26, 70, 26], opacity: [0.32, 0.9, 0.32] }}
             transition={{
-              duration: 1.5 / speed,
-              delay: (idx * 0.1 + bi * 0.08) / speed,
+              duration: 1.6 / speed,
+              delay: (idx * 0.1 + bi * 0.09) / speed,
               repeat: Infinity,
               ease: 'easeInOut',
             }}
           />
         )
       })}
-
-      {/* Block readout — "attn + ffn → Δi" */}
-      <text x={cx} y={y + h - 14} textAnchor="middle"
-        fontSize="11" fontFamily="var(--font-mono)"
-        fill={dimColor} fontStyle="italic">
-        attn + ffn → Δ{idx}
-      </text>
     </g>
+  )
+}
+
+/* ─────────── Per-block "lights up" halo — only fires in climbing phase ─── */
+function StackBlockHighlight({ idx, speed }: { idx: number; speed: number }) {
+  const cx = BLOCK_CENTERS[idx]
+  const x = cx - BLOCK_W / 2
+  const y = BLOCK_Y
+  const w = BLOCK_W
+  const h = BLOCK_H
+  const d = BLOCK_DEPTH
+
+  const blockOffsetT = (cx - STREAM_X_START) / STREAM_LEN
+  const arrivalDelay = blockOffsetT * HERO_DURATION
+  const color = blockColor(idx)
+
+  return (
+    <motion.rect
+      x={x - 6} y={y - d - 6}
+      width={w + d + 12} height={h + d + 12}
+      rx={6}
+      fill="none"
+      stroke={color}
+      strokeWidth={2.2}
+      filter="url(#stack-glow)"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: [0, 0.95, 0] }}
+      transition={{
+        duration: 0.95 / speed,
+        delay: arrivalDelay / speed,
+        repeat: Infinity,
+        repeatDelay: (HERO_DURATION - 0.95) / speed,
+        ease: 'easeOut',
+      }}
+    />
   )
 }
 
@@ -796,8 +822,9 @@ function StackBlock({ idx, phase, speed }: { idx: number; phase: number; speed: 
 }
 
 /* ─────────── Delta injection: dashed stem from block bottom into stream ───
- * The pulse on the stream lights up exactly when the hero pulse passes by,
- * so the eye sees one signal climbing and a chain of deltas firing in turn. */
+ * Connector stem and "+Δi" label are always visible (dim in orient phase,
+ * stronger in climbing). The pulse landing on the stream only fires in the
+ * climbing phase, synchronized with hero pulse arrival. */
 function StackDeltaInjection({
   idx, phase, speed,
 }: { idx: number; phase: number; speed: number }) {
@@ -806,7 +833,8 @@ function StackDeltaInjection({
   const toY = STREAM_Y + 2
   const blockOffsetT = (cx - STREAM_X_START) / STREAM_LEN
   const arrivalDelay = blockOffsetT * HERO_DURATION
-  const stemOpacity = phase === 1 ? 0.55 : 0.30
+  const stemOpacity = phase === 1 ? 0.6 : 0.28
+  const labelOpacity = phase === 1 ? 1 : 0.55
 
   return (
     <g>
@@ -826,74 +854,101 @@ function StackDeltaInjection({
         fill="none" stroke={ACCENT.amber}
         strokeWidth={1.5} strokeOpacity={0.7} />
 
-      {/* Delta pulse landing on the stream — synced with hero pulse arrival */}
-      <motion.circle
-        cx={cx} cy={STREAM_Y + STREAM_H / 2}
-        r={6}
-        fill={ACCENT.amber}
-        filter="url(#stack-glow)"
-        initial={{ opacity: 0, scale: 0.5 }}
-        animate={{
-          opacity: [0, 1, 0],
-          scale: [0.5, 1.7, 0.5],
-        }}
-        transition={{
-          duration: 0.95 / speed,
-          delay: arrivalDelay / speed,
-          repeat: Infinity,
-          repeatDelay: (HERO_DURATION - 0.95) / speed,
-          ease: 'easeOut',
-        }}
-      />
+      {/* Delta pulse landing on the stream — only fires in CLIMBING phase */}
+      {phase === 1 && (
+        <motion.circle
+          cx={cx} cy={STREAM_Y + STREAM_H / 2}
+          r={6}
+          fill={ACCENT.amber}
+          filter="url(#stack-glow)"
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{
+            opacity: [0, 1, 0],
+            scale: [0.5, 1.8, 0.5],
+          }}
+          transition={{
+            duration: 0.95 / speed,
+            delay: arrivalDelay / speed,
+            repeat: Infinity,
+            repeatDelay: (HERO_DURATION - 0.95) / speed,
+            ease: 'easeOut',
+          }}
+        />
+      )}
 
-      {/* "+ Δi" label below stream */}
-      <text x={cx} y={STREAM_Y + STREAM_H + 22}
+      {/* "+Δi" label below stream */}
+      <motion.text
+        x={cx} y={STREAM_Y + STREAM_H + 22}
         textAnchor="middle"
-        fontSize="11" fontFamily="var(--font-mono)"
-        fill={ACCENT.amber}>
-        + Δ{idx}
-      </text>
+        fontSize="12" fontFamily="var(--font-mono)"
+        fill={ACCENT.amber}
+        initial={{ opacity: 0.5 }}
+        animate={{ opacity: labelOpacity }}
+        transition={{ duration: 0.4 / speed }}
+      >
+        +Δ{idx}
+      </motion.text>
     </g>
   )
 }
 
-/* ─────────── Hero pulse: a single bright orb traversing the full stream ─── */
+/* ─────────── Hero pulse: bright orb climbing the stream, visibly enriching ─
+ * Color-shifts from cyan (start) through blue and violet to magenta (end),
+ * and grows slightly with each delta merge so the eye reads the signal as
+ * accumulating refinements as it climbs. */
 function StackHeroPulse({ speed }: { speed: number }) {
+  const cyY = STREAM_Y + STREAM_H / 2
   return (
     <g>
-      {/* Trailing glow (slightly behind, softer) */}
+      {/* Trailing soft glow */}
       <motion.circle
-        r={5}
-        fill="rgba(167,139,250,0.55)"
+        r={6}
         filter="url(#stack-glow)"
-        initial={{ cx: STREAM_X_START, cy: STREAM_Y + STREAM_H / 2, opacity: 0 }}
+        initial={{ cx: STREAM_X_START, cy: cyY, opacity: 0 }}
         animate={{
           cx: [STREAM_X_START, STREAM_X_END],
-          opacity: [0, 0.55, 0.55, 0.55, 0],
+          opacity: [0, 0.5, 0.55, 0.6, 0.65, 0.7, 0],
+          fill: [
+            'rgba(34,211,238,0.6)',
+            'rgba(96,165,250,0.65)',
+            'rgba(96,165,250,0.7)',
+            'rgba(167,139,250,0.7)',
+            'rgba(236,72,153,0.7)',
+            'rgba(236,72,153,0.7)',
+            'rgba(236,72,153,0)',
+          ],
         }}
         transition={{
           duration: HERO_DURATION / speed,
-          delay: 0.18 / speed,
+          delay: 0.22 / speed,
           repeat: Infinity,
           ease: 'linear',
         }}
       />
-      {/* Hero orb — bright white-ish, grows slightly as it climbs */}
+      {/* Hero orb — bright, color-shifts cyan→magenta, grows with each Δ merge */}
       <motion.circle
         r={9}
-        fill="rgba(255,255,255,0.95)"
         filter="url(#stack-bloom)"
-        initial={{ cx: STREAM_X_START, cy: STREAM_Y + STREAM_H / 2, opacity: 0 }}
+        initial={{ cx: STREAM_X_START, cy: cyY, opacity: 0, scale: 0.8 }}
         animate={{
           cx: [STREAM_X_START, STREAM_X_END],
-          opacity: [0, 1, 1, 1, 0],
-          scale: [0.85, 1, 1.12, 1.28, 1.4],
+          opacity: [0, 1, 1, 1, 1, 1, 0],
+          scale: [0.85, 1.0, 1.1, 1.2, 1.3, 1.42, 1.5],
+          fill: [
+            'rgba(180,235,255,1)',
+            'rgba(120,210,255,1)',
+            'rgba(96,165,250,1)',
+            'rgba(140,150,250,1)',
+            'rgba(180,140,240,1)',
+            'rgba(220,110,200,1)',
+            'rgba(236,72,153,1)',
+          ],
         }}
         transition={{
           duration: HERO_DURATION / speed,
           repeat: Infinity,
           ease: 'linear',
-          times: [0, 0.05, 0.4, 0.85, 1],
+          times: [0, 0.04, 0.22, 0.42, 0.62, 0.82, 1],
         }}
       />
     </g>
@@ -963,26 +1018,25 @@ function StackInputOutput({ speed }: { speed: number }) {
   )
 }
 
-/* ─────────── Bottom payoff: the equation + the message ─────────── */
+/* ─────────── Bottom payoff: clean editorial text, no panel border ─────── */
 function StackPayoff({ phase }: { phase: number }) {
   return (
     <g>
-      {/* Subtle wrap panel so the payoff doesn't float */}
-      <rect x={120} y={696} width={1160} height={142} rx={12}
-        fill="rgba(34,211,238,0.025)"
-        stroke="rgba(34,211,238,0.18)" strokeWidth={1} />
-      <text x={700} y={732} textAnchor="middle"
+      {/* Italic caption */}
+      <text x={700} y={742} textAnchor="middle"
         fontSize="22" fontFamily="var(--font-display)"
         fontStyle="italic" fill="rgba(255,255,255,0.95)">
         every block <tspan fill={ACCENT.amber}>adds</tspan> to the stream — never overwrites
       </text>
-      <text x={700} y={780} textAnchor="middle"
-        fontSize="28" fontFamily="var(--font-mono)"
+      {/* Equation */}
+      <text x={700} y={790} textAnchor="middle"
+        fontSize="30" fontFamily="var(--font-mono)"
         fill={ACCENT.cyan}>
         x ← x + block(x)
       </text>
-      <text x={700} y={818} textAnchor="middle"
-        fontSize="12" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
+      {/* Tiny helper line */}
+      <text x={700} y={822} textAnchor="middle"
+        fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
         each block reads x · computes Δ (attn + ffn) · adds it back · skip-connections preserve early features
       </text>
     </g>
