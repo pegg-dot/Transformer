@@ -4681,21 +4681,28 @@ const GD_VB_W = 1400
 const GD_VB_H = 1000
 
 // 3D loss-surface zone (left)
-const GD_SURF_OX = 360 // surface origin x in screen coords
+const GD_SURF_OX = 470 // surface origin x in screen coords (centered)
 const GD_SURF_OY = 480 // surface origin y in screen coords
-const GD_SURF_SCALE = 145
-const GD_SURF_H_SCALE = 78 // height scale (loss → screen y)
+const GD_SURF_SCALE = 150
+const GD_SURF_H_SCALE = 80 // height scale (loss → screen y)
 const GD_GRID = 16 // wireframe resolution
 
-// Loss surface — a clean bowl. Min at (0.5, -0.5). Loss is 0 at the
-// minimum, growing quadratically outward.
+// Loss surface — an ANISOTROPIC bowl: the wy axis is ~2.5× stiffer than
+// the wx axis. That means descent does NOT go in a straight line — it
+// drops fast along wy first, then curves to slide along the shallow wx
+// direction toward the basin. Min at (0.3, -0.3).
+const GD_BASIN_WX = 0.3
+const GD_BASIN_WY = -0.3
+const GD_K_X = 0.4 // 1/2 · (eigenvalue of Hessian along wx)
+const GD_K_Y = 1.0 // 1/2 · (eigenvalue of Hessian along wy) — much stiffer
+
 function gdLoss(wx: number, wy: number): number {
-  const a = wx - 0.5
-  const b = wy + 0.5
-  return 0.70 * (a * a + b * b)
+  const a = wx - GD_BASIN_WX
+  const b = wy - GD_BASIN_WY
+  return GD_K_X * a * a + GD_K_Y * b * b
 }
 function gdGradient(wx: number, wy: number): [number, number] {
-  return [1.40 * (wx - 0.5), 1.40 * (wy + 0.5)]
+  return [2 * GD_K_X * (wx - GD_BASIN_WX), 2 * GD_K_Y * (wy - GD_BASIN_WY)]
 }
 
 // Project (world x, world y, loss) → screen (x, y) using a simple
@@ -4708,14 +4715,15 @@ function gdProject(wx: number, wy: number, z: number): [number, number] {
   return [sx, sy]
 }
 
-// Trail: 32 steps of actual gradient descent from start (-0.7, 0.7)
-// (high loss, far from basin) to minimum at (0.5, -0.5). Uses η = 0.10
-// for a smooth, visibly progressive path.
+// Trail: 32 steps of actual gradient descent from start (-0.7, 0.7) to
+// minimum at (GD_BASIN_WX, GD_BASIN_WY). On the anisotropic bowl this
+// path visibly CURVES: wy collapses fast along the steep direction,
+// then the path slides toward the basin along the shallow wx axis.
 const GD_TRAIL: Array<{ wx: number; wy: number; loss: number; sx: number; sy: number }> = (() => {
   const out: Array<{ wx: number; wy: number; loss: number; sx: number; sy: number }> = []
   let wx = -0.70
   let wy = 0.70
-  const eta = 0.10
+  const eta = 0.18
   for (let k = 0; k <= 32; k++) {
     const z = gdLoss(wx, wy)
     const [sx, sy] = gdProject(wx, wy, z)
@@ -4735,11 +4743,11 @@ const GD_CMAP_H = 360
 const GD_CMAP_CX = GD_CMAP_X + GD_CMAP_W / 2
 const GD_CMAP_CY = GD_CMAP_Y + GD_CMAP_H / 2
 
-// Project (wx, wy) into top-down contour map coords. Basin (0.5, -0.5)
-// maps to map center; world wx ∈ [-1, 1] maps across the map width.
+// Project (wx, wy) into top-down contour map coords. Basin maps to map
+// center; world wx ∈ [-1, 1] maps across the map width.
 function gdCmapPoint(wx: number, wy: number): [number, number] {
-  const u = (wx - 0.5) / 1.5
-  const v = (wy + 0.5) / 1.5
+  const u = (wx - GD_BASIN_WX) / 1.4
+  const v = (wy - GD_BASIN_WY) / 1.4
   const cx = GD_CMAP_CX + u * (GD_CMAP_W / 2)
   const cy = GD_CMAP_CY + v * (GD_CMAP_H / 2)
   return [cx, cy]
@@ -5154,20 +5162,29 @@ export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx:
           strokeWidth={1}
         />
 
-        {/* Concentric ovals (warm to cool toward center) */}
-        {[1.5, 1.2, 0.9, 0.6, 0.3].map((scale, i) => (
-          <ellipse
-            key={`contour-${i}`}
-            cx={GD_CMAP_CX}
-            cy={GD_CMAP_CY}
-            rx={(GD_CMAP_W / 2) * scale * 0.8}
-            ry={(GD_CMAP_H / 2) * scale * 0.55}
-            fill="none"
-            stroke={i < 2 ? ACCENT.amber : i < 4 ? ACCENT.dim : ACCENT.cyan}
-            strokeOpacity={0.45}
-            strokeWidth={1}
-          />
-        ))}
+        {/* Concentric level-set ellipses for the actual anisotropic loss
+            L = K_X·(wx-bx)² + K_Y·(wy-by)². At level k the contour is an
+            ellipse with x-radius √(k/K_X) and y-radius √(k/K_Y) in
+            world coords; we scale by the same 1/1.4 used by gdCmapPoint
+            so the ellipses align with the dot path. Smaller k → tighter
+            ellipse, cooler colour. */}
+        {[1.4, 0.95, 0.55, 0.25, 0.08].map((k, i) => {
+          const xR = (Math.sqrt(k / GD_K_X) / 1.4) * (GD_CMAP_W / 2)
+          const yR = (Math.sqrt(k / GD_K_Y) / 1.4) * (GD_CMAP_H / 2)
+          return (
+            <ellipse
+              key={`contour-${i}`}
+              cx={GD_CMAP_CX}
+              cy={GD_CMAP_CY}
+              rx={xR}
+              ry={yR}
+              fill="none"
+              stroke={i < 2 ? ACCENT.amber : i < 4 ? ACCENT.dim : ACCENT.cyan}
+              strokeOpacity={0.45}
+              strokeWidth={1}
+            />
+          )
+        })}
 
         {/* Path (yellow dotted) */}
         {GD_TRAIL.slice(0, stepIdx + 1).map((t, i) => {
