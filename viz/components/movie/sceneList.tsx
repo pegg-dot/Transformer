@@ -8,7 +8,6 @@ import {
   SceneBackpropAccumulation,
   SceneBackpropJacobian,
   SceneCELossBatch,
-  SceneCELossSeqParallel,
   SceneEmbedding,
   SceneGDAdam,
   SceneGDRavine,
@@ -63,7 +62,11 @@ import {
   SampleSplitPane,
   KVCacheSplitPane,
 } from './act3Scenes'
-import { Act4IntroSplitPane, CrossEntropySplitPane } from './act4Scenes'
+import {
+  Act4IntroSplitPane,
+  CELossSeqSplitPane,
+  CrossEntropySplitPane,
+} from './act4Scenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -515,7 +518,8 @@ This scalar is the only number backprop cares about. Every weight in the model g
 This is called "teacher forcing" during training. The model sees the true tokens at positions 0..i−1 and is asked to predict position i. Then the loss for position i gets averaged with losses for every other position in the sequence.
 
 Result: one scalar loss per sequence, computed efficiently in a single forward pass.`,
-    render: () => <SceneCELossSeqParallel />,
+    render: () => <CELossSeqSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'loss-batch',

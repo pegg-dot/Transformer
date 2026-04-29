@@ -1307,3 +1307,551 @@ export function CrossEntropySplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 22 — loss-seq: "Every position gets its own loss."
+ *
+ * One canvas, three beats:
+ *
+ *   beat 0 — single column hero. One position, like Scene 21: input token
+ *            at the top, an arrow down, the next-token target below it,
+ *            and one loss bar. This is the unit pattern.
+ *   beat 1 — multiply across the sequence. The other 8 columns pop in.
+ *            A copy of the input row slides in below and shifts LEFT by
+ *            one to become the target row, so column i's target is the
+ *            input at column i+1. Diagonal "next-token" arrows light up.
+ *   beat 2 — collect the per-position losses. Every loss bar fills,
+ *            then thin amber lines flow from each bar down into the
+ *            central L_seq mean box, which pulses with the average.
+ * ====================================================================== */
+
+const CELS_VB_W = 1400
+const CELS_VB_H = 1000
+
+// 9 input positions → 9 next-token targets. Reads "The cat sa" → predicting
+// "he cat sat".
+const CELS_INPUTS = ['T', 'h', 'e', ' ', 'c', 'a', 't', ' ', 's']
+const CELS_TARGETS = ['h', 'e', ' ', 'c', 'a', 't', ' ', 's', 'a']
+const CELS_T = CELS_INPUTS.length
+
+// Per-position losses (deterministic). Mostly low with a few hot spots so
+// the mean is realistic and the per-column variance reads.
+const CELS_LOSSES = [0.62, 0.41, 0.55, 1.18, 0.38, 0.49, 1.92, 0.71, 1.34]
+const CELS_MEAN = +(CELS_LOSSES.reduce((a, b) => a + b, 0) / CELS_T).toFixed(2)
+
+const CELS_COL_W = 96
+const CELS_COL_GAP = 22
+const CELS_COL_PITCH = CELS_COL_W + CELS_COL_GAP
+const CELS_GRID_W = CELS_T * CELS_COL_W + (CELS_T - 1) * CELS_COL_GAP
+const CELS_GRID_X = (CELS_VB_W - CELS_GRID_W) / 2
+
+const CELS_INPUT_Y = 220
+const CELS_TARGET_Y = 360
+const CELS_TOKEN_H = 78
+const CELS_BAR_TOP_Y = 510
+const CELS_BAR_MAX_H = 160
+const CELS_BAR_BASE_Y = CELS_BAR_TOP_Y + CELS_BAR_MAX_H
+
+const CELS_MEAN_BOX_X = (CELS_VB_W - 360) / 2
+const CELS_MEAN_BOX_Y = 770
+const CELS_MEAN_BOX_W = 360
+const CELS_MEAN_BOX_H = 130
+
+function celsLossColor(loss: number): string {
+  if (loss < 0.7) return ACCENT.mint
+  if (loss < 1.5) return ACCENT.amber
+  return ACCENT.red
+}
+
+function celsTokDisplay(t: string): string {
+  return t === ' ' ? '␣' : t
+}
+
+export function VizCELossSeq({ phase }: { phase: number }) {
+  const speed = useSpeed()
+
+  // beat 0 — hero column shows its full unit pattern (input → target →
+  //          loss → mini-mean equal to that single loss). Other columns
+  //          hidden.
+  // beat 1 — all 9 columns appear, target row reveals across all of them,
+  //          shift caption surfaces. Losses still hidden.
+  // beat 2 — every loss bar fills, collector lines flow into the mean
+  //          box, mean lights up to L_seq.
+  const showAllCols = phase >= 1
+  const heroAlwaysOn = true
+  const showTargetsAll = phase >= 1
+  const showLossesAll = phase >= 2
+  const showMean = phase >= 0
+  const meanIsFull = phase >= 2
+
+  // Mean value displayed. Beat 0 = just the hero loss. Beat 1 = same
+  // (targets are revealing but losses haven't fired yet). Beat 2 = full
+  // L_seq.
+  const displayedMean = meanIsFull ? CELS_MEAN : CELS_LOSSES[0]
+
+  return (
+    <svg viewBox={`0 0 ${CELS_VB_W} ${CELS_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="cels-input-fill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={ACCENT.blue} stopOpacity="0.30" />
+          <stop offset="100%" stopColor={ACCENT.blue} stopOpacity="0.10" />
+        </linearGradient>
+        <linearGradient id="cels-target-fill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={ACCENT.mint} stopOpacity="0.30" />
+          <stop offset="100%" stopColor={ACCENT.mint} stopOpacity="0.10" />
+        </linearGradient>
+        <filter id="cels-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* ===================== HEADER ===================== */}
+      <text
+        x={CELS_VB_W / 2}
+        y={70}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="13"
+        letterSpacing="0.32em"
+        fill={ACCENT.dim}
+      >
+        ONE FORWARD PASS · T NEXT-TOKEN GUESSES IN PARALLEL
+      </text>
+      <text
+        x={CELS_VB_W / 2}
+        y={108}
+        textAnchor="middle"
+        fontFamily="var(--font-display, Georgia, serif)"
+        fontStyle="italic"
+        fontSize="26"
+        fill="rgba(255,255,255,0.85)"
+      >
+        Every position predicts its own next token. Every guess gets its own loss.
+      </text>
+
+      {/* ===================== ROW LABELS ===================== */}
+      <text
+        x={CELS_GRID_X - 22}
+        y={CELS_INPUT_Y + CELS_TOKEN_H / 2 + 4}
+        textAnchor="end"
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={ACCENT.blue}
+      >
+        INPUT
+      </text>
+      <motion.text
+        x={CELS_GRID_X - 22}
+        y={CELS_TARGET_Y + CELS_TOKEN_H / 2 + 4}
+        textAnchor="end"
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={ACCENT.mint}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: showAllCols ? 1 : 0 }}
+        transition={{ duration: 0.5 / speed }}
+      >
+        TARGET (NEXT TOKEN)
+      </motion.text>
+      <motion.text
+        x={CELS_GRID_X - 22}
+        y={CELS_BAR_BASE_Y - CELS_BAR_MAX_H / 2 + 4}
+        textAnchor="end"
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={ACCENT.amber}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: showLossesAll ? 1 : 0 }}
+        transition={{ duration: 0.5 / speed }}
+      >
+        LOSS
+      </motion.text>
+
+      {/* ===================== COLUMNS ===================== */}
+      {CELS_INPUTS.map((tok, i) => {
+        const isHero = i === 0
+        // Hero column reveals targets and losses in beat 0 already, so
+        // the unit pattern is on screen before we multiply across.
+        const showThisInput = isHero ? heroAlwaysOn : showAllCols
+        const showThisTarget = isHero ? phase >= 0 : showAllCols
+        const showThisLoss = isHero ? phase >= 0 : showLossesAll
+        const x = CELS_GRID_X + i * CELS_COL_PITCH
+        const colCenterX = x + CELS_COL_W / 2
+
+        // Per-column appear delay so the columns cascade in (beat 1).
+        // Keep small to stay snappy and to render reliably in screenshots.
+        const colDelay = 0
+        const lossDelay = isHero ? 0 : 0.04 * i
+
+        const lossH = (CELS_LOSSES[i] / 2.5) * CELS_BAR_MAX_H
+
+        return (
+          <g key={`col-${i}`}>
+            {/* Hero column has a faint highlight band to mark it as the
+                "one we just learned in Scene 21". */}
+            {isHero && (
+              <rect
+                x={x - 8}
+                y={CELS_INPUT_Y - 14}
+                width={CELS_COL_W + 16}
+                height={CELS_BAR_BASE_Y - CELS_INPUT_Y + 50}
+                rx={10}
+                fill={ACCENT.blue}
+                opacity={0.05}
+              />
+            )}
+
+            {/* Input box */}
+            <g
+              transform={`translate(${x}, ${CELS_INPUT_Y})`}
+              style={{
+                opacity: showThisInput ? 1 : 0,
+                transition: `opacity ${0.4 / speed}s ease ${colDelay / speed}s`,
+              }}
+            >
+              <rect
+                width={CELS_COL_W}
+                height={CELS_TOKEN_H}
+                rx={5}
+                fill="url(#cels-input-fill)"
+                stroke={ACCENT.blue}
+                strokeOpacity={0.55}
+                strokeWidth={1}
+              />
+              <text
+                x={CELS_COL_W / 2}
+                y={CELS_TOKEN_H / 2 + 12}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="34"
+                fill={ACCENT.blue}
+                fontWeight={500}
+              >
+                {celsTokDisplay(tok)}
+              </text>
+              <text
+                x={CELS_COL_W / 2}
+                y={CELS_TOKEN_H + 14}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="10"
+                fill={ACCENT.dim}
+                letterSpacing="0.1em"
+              >
+                pos {i}
+              </text>
+            </g>
+
+            {/* "predicts" arrow input → target */}
+            <g
+              style={{
+                opacity: showThisTarget ? 0.9 : 0,
+                transition: `opacity ${0.4 / speed}s ease ${(0.4 + colDelay) / speed}s`,
+              }}
+            >
+              <line
+                x1={colCenterX}
+                x2={colCenterX}
+                y1={CELS_INPUT_Y + CELS_TOKEN_H + 18}
+                y2={CELS_TARGET_Y - 8}
+                stroke={ACCENT.mint}
+                strokeOpacity={0.55}
+                strokeWidth={1.4}
+                strokeDasharray="4 4"
+              />
+              <polyline
+                points={`${colCenterX - 5},${CELS_TARGET_Y - 14} ${colCenterX},${CELS_TARGET_Y - 4} ${colCenterX + 5},${CELS_TARGET_Y - 14}`}
+                fill="none"
+                stroke={ACCENT.mint}
+                strokeWidth={1.4}
+              />
+            </g>
+
+            {/* Target box */}
+            <g
+              transform={`translate(${x}, ${CELS_TARGET_Y})`}
+              style={{
+                opacity: showThisTarget ? 1 : 0,
+                transition: `opacity ${0.5 / speed}s ease ${(0.2 + colDelay) / speed}s`,
+              }}
+            >
+              <rect
+                width={CELS_COL_W}
+                height={CELS_TOKEN_H}
+                rx={5}
+                fill="url(#cels-target-fill)"
+                stroke={ACCENT.mint}
+                strokeOpacity={0.55}
+                strokeWidth={1}
+              />
+              <text
+                x={CELS_COL_W / 2}
+                y={CELS_TOKEN_H / 2 + 12}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="34"
+                fill={ACCENT.mint}
+                fontWeight={500}
+              >
+                {celsTokDisplay(CELS_TARGETS[i])}
+              </text>
+            </g>
+
+            {/* Loss bar (frame + fill + value) */}
+            <g
+              style={{
+                opacity: showThisLoss ? 1 : 0,
+                transition: `opacity ${0.4 / speed}s ease ${lossDelay / speed}s`,
+              }}
+            >
+              {/* Frame */}
+              <rect
+                x={x}
+                y={CELS_BAR_TOP_Y}
+                width={CELS_COL_W}
+                height={CELS_BAR_MAX_H}
+                rx={4}
+                fill="rgba(255,255,255,0.02)"
+                stroke={ACCENT.rule}
+                strokeWidth={1}
+              />
+              {/* Fill */}
+              <rect
+                x={x + 6}
+                y={showThisLoss ? CELS_BAR_BASE_Y - lossH - 4 : CELS_BAR_BASE_Y - 4}
+                width={CELS_COL_W - 12}
+                height={showThisLoss ? lossH : 0}
+                rx={3}
+                fill={celsLossColor(CELS_LOSSES[i])}
+                opacity={0.55}
+                style={{
+                  transition: `y ${0.6 / speed}s ease ${(lossDelay + 0.2) / speed}s, height ${0.6 / speed}s ease ${(lossDelay + 0.2) / speed}s`,
+                }}
+              />
+              {/* Numeric loss */}
+              <text
+                x={colCenterX}
+                y={CELS_BAR_BASE_Y + 26}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="14"
+                fill={celsLossColor(CELS_LOSSES[i])}
+                fontWeight={600}
+              >
+                {CELS_LOSSES[i].toFixed(2)}
+              </text>
+            </g>
+
+            {/* Collector line — flows from each loss bar's number into the
+                central mean box. Only in beat 2. */}
+            <motion.path
+              d={`M ${colCenterX} ${CELS_BAR_BASE_Y + 34}
+                  Q ${colCenterX} ${CELS_MEAN_BOX_Y - 30}
+                    ${CELS_MEAN_BOX_X + CELS_MEAN_BOX_W / 2} ${CELS_MEAN_BOX_Y}`}
+              fill="none"
+              stroke={ACCENT.amber}
+              strokeWidth={1}
+              strokeDasharray="3 5"
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{
+                pathLength: meanIsFull ? 1 : 0,
+                opacity: meanIsFull ? 0.5 : 0,
+              }}
+              transition={{
+                duration: 0.9 / speed,
+                delay: (1.2 + lossDelay * 0.5) / speed,
+              }}
+            />
+          </g>
+        )
+      })}
+
+      {/* ===================== "T = 9" + shift caption ===================== */}
+      <motion.text
+        x={CELS_VB_W / 2}
+        y={CELS_TARGET_Y + CELS_TOKEN_H + 36}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={ACCENT.dim}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: showAllCols ? 1 : 0 }}
+        transition={{ duration: 0.5 / speed, delay: 0.8 / speed }}
+      >
+        TARGETS = INPUTS SHIFTED BY ONE
+      </motion.text>
+
+      {/* ===================== MEAN BOX ===================== */}
+      <motion.g
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: showMean ? 1 : 0.15, y: 0 }}
+        transition={{ duration: 0.5 / speed }}
+      >
+        <rect
+          x={CELS_MEAN_BOX_X}
+          y={CELS_MEAN_BOX_Y}
+          width={CELS_MEAN_BOX_W}
+          height={CELS_MEAN_BOX_H}
+          rx={10}
+          fill="rgba(245,158,11,0.10)"
+          stroke={ACCENT.amber}
+          strokeWidth={1.6}
+        />
+        <text
+          x={CELS_MEAN_BOX_X + 20}
+          y={CELS_MEAN_BOX_Y + 28}
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.amber}
+        >
+          MEAN ACROSS POSITIONS · L_SEQ
+        </text>
+        <text
+          x={CELS_MEAN_BOX_X + 20}
+          y={CELS_MEAN_BOX_Y + 50}
+          fontFamily="var(--font-mono)"
+          fontSize="12"
+          fill="rgba(255,255,255,0.55)"
+        >
+          (1/T) · Σₜ −log p(target_t)
+        </text>
+        <motion.text
+          key={`mean-${phase}`}
+          x={CELS_MEAN_BOX_X + CELS_MEAN_BOX_W / 2}
+          y={CELS_MEAN_BOX_Y + CELS_MEAN_BOX_H - 22}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="46"
+          fill={ACCENT.amber}
+          filter="url(#cels-glow)"
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: showMean ? 1.6 / speed : 0, type: 'spring', stiffness: 160, damping: 18 }}
+        >
+          {displayedMean.toFixed(2)}
+        </motion.text>
+      </motion.g>
+
+      {/* ===================== BEAT INDICATOR ===================== */}
+      <g transform={`translate(${CELS_VB_W / 2}, ${CELS_VB_H - 50})`}>
+        {(['one column', 'shift the target row', 'collect into L_seq'] as const).map((label, i) => {
+          const w = 240
+          const gap = 18
+          const total = 3 * w + 2 * gap
+          const startX = -total / 2
+          const cx = startX + i * (w + gap) + w / 2
+          const active = i === phase
+          return (
+            <g key={`beat-${i}`} transform={`translate(${cx}, 0)`}>
+              <rect
+                x={-w / 2}
+                y={-18}
+                width={w}
+                height={36}
+                rx={18}
+                fill={active ? 'rgba(245,158,11,0.18)' : 'rgba(255,255,255,0.02)'}
+                stroke={active ? ACCENT.amber : ACCENT.rule}
+                strokeWidth={1.4}
+                style={{ transition: `fill ${0.3 / speed}s ease, stroke ${0.3 / speed}s ease` }}
+              />
+              <text
+                x={0}
+                y={4}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="12"
+                letterSpacing="0.18em"
+                fill={active ? ACCENT.amber : ACCENT.dim}
+                style={{ transition: `fill ${0.3 / speed}s ease` }}
+              >
+                {label.toUpperCase()}
+              </text>
+            </g>
+          )
+        })}
+      </g>
+    </svg>
+  )
+}
+
+export function CELossSeqSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 3
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      5500 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const phaseLabels = ['one column', 'shift the target row', 'collect into L_seq']
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      Scene 21 showed a single prediction → a single loss. A real sequence
+      runs that same calculation at <em>every</em> position in parallel —
+      one forward pass, T predictions.
+    </>,
+    <>
+      The targets are just the input sequence shifted one step right.
+      Position 0 should predict position 1, position 1 should predict
+      position 2, and so on. Causal masking guarantees the model can&apos;t
+      cheat by peeking ahead.
+    </>,
+    <>
+      Each position has its own −log p(target). Average them and you get
+      one scalar per sequence: <em>L_seq</em>. That is what backprop runs
+      on (still not the final number — the next scene averages across the
+      batch).
+    </>,
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'This is the unit pattern: input → next-token target → cross-entropy → one loss number. Hold this in mind — the rest of the scene is just T copies of it firing at once.',
+    'This is called teacher forcing during training. The model sees the true tokens at positions 0..i−1 and is asked to predict position i. The shift is what turns one sequence into T independent training problems.',
+    `For this 9-position fragment, the per-position losses average to ${CELS_MEAN.toFixed(2)} nats. Real training sequences are 1k–8k tokens long, so each forward pass is solving thousands of next-token problems in parallel.`,
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizCELossSeq phase={phase} />}
+      text={{
+        kicker: 'ACT IV · LOSS · PER-SEQUENCE',
+        title: 'Every position gets its own loss.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.amber,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.amber}
+          />
+        ),
+        stats: [
+          { label: 'sequence length', value: `T = ${CELS_T}`, color: ACCENT.blue },
+          { label: 'predictions / pass', value: `${CELS_T}`, color: ACCENT.mint },
+          { label: 'per-pos losses', value: 'T scalars' },
+          { label: 'sequence loss', value: `L_seq = ${CELS_MEAN.toFixed(2)}`, color: ACCENT.amber },
+        ],
+        equation: {
+          label: 'one rule, T positions',
+          body: <>L_seq = (1/T) · Σₜ − log p(target_t)</>,
+        },
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}
