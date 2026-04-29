@@ -6,7 +6,6 @@ import {
   SceneBPE,
   SceneEmbedding,
   SceneGDAdam,
-  SceneGDRavine,
   SceneLayerNorm,
   SceneModern,
   SceneMultiHead,
@@ -64,6 +63,7 @@ import {
   CELossBatchSplitPane,
   CELossSeqSplitPane,
   CrossEntropySplitPane,
+  GdRavineSplitPane,
   GradientDescentSplitPane,
 } from './act4Scenes'
 
@@ -635,7 +635,8 @@ The loss landscape is wildly non-convex — it has billions of dimensions, saddl
 Reducing the learning rate helps in the steep direction but slows progress down the length of the ravine. You want different learning rates in different directions — which plain GD can't provide.
 
 This is exactly what motivated Adam and other adaptive optimizers.`,
-    render: () => <SceneGDRavine />,
+    render: () => <GdRavineSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'gd-adam',

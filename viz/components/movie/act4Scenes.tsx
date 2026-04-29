@@ -5489,3 +5489,746 @@ export function GradientDescentSplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 28 — gd-ravine: "Why vanilla GD zig-zags."
+ *
+ * Counter to Scene 27's clean bowl: a NARROW ravine. The loss is steep
+ * in one direction (w₂) and shallow in the other (w₁), so a single
+ * fixed learning rate is too big for the steep axis (overshoots,
+ * bounces off the walls) and too small for the shallow axis (crawls
+ * forward). The trajectory zig-zags across the valley while making slow
+ * progress along it.
+ *
+ * Three beats:
+ *
+ *   beat 0 — set the geometry. Ravine visible, current pink point at
+ *            the start. Axis labels Loss / w₁ / w₂. Caption: "narrow
+ *            ravine — steep across, shallow along."
+ *   beat 1 — annotate the asymmetry. "steep across · large curvature
+ *            · → overshoot" pointer at the steep wall, "slow along ·
+ *            small curvature · → tiny progress" pointer along the
+ *            valley.
+ *   beat 2 — take many tiny steps. The pink dot zig-zags from start
+ *            to near minimum (real GD path). Contour map mirrors the
+ *            zig-zag through narrow horizontal ellipses. Slider on the
+ *            right shows current η in the "oscillating · just right"
+ *            zone.
+ * ====================================================================== */
+
+const GR_VB_W = 1400
+const GR_VB_H = 1000
+
+// Ravine loss. w₁ is the SHALLOW (along-valley) axis; w₂ is the STEEP
+// (across-valley) axis. Anisotropy ratio chosen so the gradient
+// direction is dominated by w₂, producing classic zig-zag.
+const GR_K_SHALLOW = 0.02 // along w₁
+const GR_K_STEEP = 1.0 // along w₂
+const GR_BASIN_W1 = 0
+const GR_BASIN_W2 = 0
+
+function grLoss(w1: number, w2: number): number {
+  const a = w1 - GR_BASIN_W1
+  const b = w2 - GR_BASIN_W2
+  return GR_K_SHALLOW * a * a + GR_K_STEEP * b * b
+}
+function grGradient(w1: number, w2: number): [number, number] {
+  return [2 * GR_K_SHALLOW * (w1 - GR_BASIN_W1), 2 * GR_K_STEEP * (w2 - GR_BASIN_W2)]
+}
+
+// 3D surface projection (same isometric idiom as Scene 27).
+const GR_SURF_OX = 410
+const GR_SURF_OY = 470
+const GR_SURF_SCALE = 175 // larger than Scene 27 so the ravine reads
+const GR_SURF_H_SCALE = 90
+const GR_GRID = 22 // wireframe resolution — denser since the ravine is sharp
+
+function grProject(w1: number, w2: number, z: number): [number, number] {
+  const COS = Math.cos(Math.PI / 6)
+  const SIN = Math.sin(Math.PI / 6)
+  const sx = GR_SURF_OX + (w1 * COS - w2 * COS) * GR_SURF_SCALE
+  const sy = GR_SURF_OY + (w1 * SIN + w2 * SIN) * GR_SURF_SCALE - z * GR_SURF_H_SCALE
+  return [sx, sy]
+}
+
+const GR_LR = 0.95 // learning rate — chosen so |1 - η·hessian_steep| ≈ 0.9
+// (slow oscillation decay, visible zig-zag throughout 32 steps), and
+// |1 - η·hessian_shallow| ≈ 0.96 (slow forward drift along the valley).
+
+const GR_TRAIL: Array<{ w1: number; w2: number; loss: number; sx: number; sy: number }> = (() => {
+  const out: Array<{ w1: number; w2: number; loss: number; sx: number; sy: number }> = []
+  let w1 = -1.5
+  let w2 = 1.0
+  for (let k = 0; k <= 32; k++) {
+    const z = grLoss(w1, w2)
+    const [sx, sy] = grProject(w1, w2, z)
+    out.push({ w1, w2, loss: z, sx, sy })
+    const [g1, g2] = grGradient(w1, w2)
+    w1 -= GR_LR * g1
+    w2 -= GR_LR * g2
+  }
+  return out
+})()
+
+// Contour map (right side of viz pane)
+const GR_CMAP_X = 870
+const GR_CMAP_Y = 130
+const GR_CMAP_W = 430
+const GR_CMAP_H = 320
+const GR_CMAP_CX = GR_CMAP_X + GR_CMAP_W / 2
+const GR_CMAP_CY = GR_CMAP_Y + GR_CMAP_H / 2
+
+function grCmapPoint(w1: number, w2: number): [number, number] {
+  const u = (w1 - GR_BASIN_W1) / 1.65
+  const v = (w2 - GR_BASIN_W2) / 1.2
+  return [GR_CMAP_CX + u * (GR_CMAP_W / 2), GR_CMAP_CY + v * (GR_CMAP_H / 2)]
+}
+
+// Slider zone
+const GR_SLIDER_X = 870
+const GR_SLIDER_Y = 600
+const GR_SLIDER_W = 430
+const GR_SLIDER_H = 130
+
+export function VizGdRavine({ phase, stepIdx }: { phase: number; stepIdx: number }) {
+  const speed = useSpeed()
+
+  const showAnnots = phase >= 1
+  const showTrail = phase >= 2
+  const showSlider = phase >= 0
+
+  const safeIdx = Math.max(0, Math.min(GR_TRAIL.length - 1, stepIdx))
+  const cur = GR_TRAIL[safeIdx]
+
+  // --- Wireframe polylines ---
+  const rowPolylines: string[] = []
+  const colPolylines: string[] = []
+  for (let i = 0; i <= GR_GRID; i++) {
+    const w1 = -1.7 + (3.4 * i) / GR_GRID
+    const ptsRow: string[] = []
+    const ptsCol: string[] = []
+    for (let j = 0; j <= GR_GRID; j++) {
+      const w2 = -1.2 + (2.4 * j) / GR_GRID
+      const loss = grLoss(w1, w2)
+      const [sx, sy] = grProject(w1, w2, loss)
+      ptsRow.push(`${sx.toFixed(1)},${sy.toFixed(1)}`)
+      const w1b = -1.7 + (3.4 * j) / GR_GRID
+      const w2b = -1.2 + (2.4 * i) / GR_GRID
+      const lossB = grLoss(w1b, w2b)
+      const [sx2, sy2] = grProject(w1b, w2b, lossB)
+      ptsCol.push(`${sx2.toFixed(1)},${sy2.toFixed(1)}`)
+    }
+    rowPolylines.push(ptsRow.join(' '))
+    colPolylines.push(ptsCol.join(' '))
+  }
+
+  // Annotation arrow base — at the current point during beat 1.
+  const [g1, g2] = grGradient(cur.w1, cur.w2)
+  const gMag = Math.sqrt(g1 * g1 + g2 * g2)
+  const g1N = g1 / gMag
+  const g2N = g2 / gMag
+  const arrowLen = 0.28
+  // "Steep across" arrow — points uphill across the ravine wall
+  const upW1 = cur.w1 + arrowLen * g1N
+  const upW2 = cur.w2 + arrowLen * g2N
+  const [arrowUpSx, arrowUpSy] = grProject(upW1, upW2, grLoss(upW1, upW2))
+  // "Slow along" arrow — points along the valley toward the minimum
+  // (rough: along the gradient projected onto the w1 axis only)
+  const alongW1 = cur.w1 + 0.5 * Math.sign(GR_BASIN_W1 - cur.w1) // toward basin in w1
+  const alongW2 = cur.w2 // same w2
+  const alongLoss = grLoss(alongW1, alongW2)
+  const [alongSx, alongSy] = grProject(alongW1, alongW2, alongLoss)
+
+  return (
+    <svg viewBox={`0 0 ${GR_VB_W} ${GR_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <radialGradient id="gr-min-glow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor={ACCENT.mint} stopOpacity="0.95" />
+          <stop offset="60%" stopColor={ACCENT.mint} stopOpacity="0.30" />
+          <stop offset="100%" stopColor={ACCENT.mint} stopOpacity="0" />
+        </radialGradient>
+        <filter id="gr-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* ===================== HEADER strip ===================== */}
+      <text
+        x={GR_VB_W / 2}
+        y={56}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="13"
+        letterSpacing="0.32em"
+        fill={ACCENT.dim}
+      >
+        ONE LEARNING RATE FOR ALL DIRECTIONS  ·  RAVINES MAKE THAT FAIL
+      </text>
+
+      {/* ===================== LANDSCAPE LABEL ===================== */}
+      <text
+        x={32}
+        y={104}
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={ACCENT.dim}
+      >
+        LOSS LANDSCAPE  L(w₁, w₂)
+      </text>
+      <text
+        x={32}
+        y={126}
+        fontFamily="var(--font-display, Georgia, serif)"
+        fontStyle="italic"
+        fontSize="14"
+        fill="rgba(255,255,255,0.62)"
+      >
+        A narrow ravine — steep across, shallow along.
+      </text>
+
+      {/* ===================== Y-AXIS: Loss ===================== */}
+      <text
+        x={28}
+        y={250}
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.18em"
+        fill="rgba(255,255,255,0.55)"
+      >
+        Loss
+      </text>
+      <line x1={28} x2={28} y1={262} y2={550} stroke="rgba(255,255,255,0.18)" strokeWidth={1} />
+      <polyline points="24,266 28,258 32,266" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={1} />
+
+      {/* ===================== 3D WIREFRAME RAVINE ===================== */}
+      <g>
+        {rowPolylines.map((pts, i) => (
+          <polyline
+            key={`r-${i}`}
+            points={pts}
+            fill="none"
+            stroke="rgba(248,113,113,0.42)"
+            strokeWidth={0.75}
+          />
+        ))}
+        {colPolylines.map((pts, i) => (
+          <polyline
+            key={`c-${i}`}
+            points={pts}
+            fill="none"
+            stroke="rgba(248,113,113,0.42)"
+            strokeWidth={0.75}
+          />
+        ))}
+      </g>
+
+      {/* ===================== Honesty + axis labels ===================== */}
+      <text
+        x={120}
+        y={620}
+        fontFamily="var(--font-mono)"
+        fontSize="10"
+        letterSpacing="0.18em"
+        fill="rgba(255,255,255,0.45)"
+      >
+        w₂
+      </text>
+      <text
+        x={680}
+        y={720}
+        fontFamily="var(--font-mono)"
+        fontSize="10"
+        letterSpacing="0.18em"
+        fill="rgba(255,255,255,0.45)"
+      >
+        w₁
+      </text>
+
+      {/* ===================== TRAIL ===================== */}
+      <g
+        style={{
+          opacity: showTrail ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        {GR_TRAIL.slice(0, safeIdx + 1).map((t, i) => (
+          <circle
+            key={`tr-${i}`}
+            cx={t.sx}
+            cy={t.sy}
+            r={i === safeIdx ? 0 : 4}
+            fill={ACCENT.red}
+            opacity={0.45 + 0.5 * (i / Math.max(1, safeIdx))}
+          />
+        ))}
+      </g>
+
+      {/* ===================== MINIMUM (green dot at basin) ===================== */}
+      {(() => {
+        const [mx, my] = grProject(GR_BASIN_W1, GR_BASIN_W2, 0)
+        return (
+          <g>
+            <circle cx={mx} cy={my} r={28} fill="url(#gr-min-glow)" />
+            <circle cx={mx} cy={my} r={7} fill={ACCENT.mint} stroke="rgba(255,255,255,0.7)" strokeWidth={1.2} />
+          </g>
+        )
+      })()}
+
+      {/* ===================== CURRENT W (pink dot) ===================== */}
+      <g
+        style={{
+          transform: `translate(${cur.sx - GR_TRAIL[0].sx}px, ${cur.sy - GR_TRAIL[0].sy}px)`,
+          transition: `transform ${0.18 / speed}s linear`,
+        }}
+      >
+        <circle cx={GR_TRAIL[0].sx} cy={GR_TRAIL[0].sy} r={20} fill={ACCENT.red} opacity={0.25} filter="url(#gr-glow)" />
+        <circle cx={GR_TRAIL[0].sx} cy={GR_TRAIL[0].sy} r={9} fill={ACCENT.red} stroke="rgba(255,255,255,0.85)" strokeWidth={1.4} />
+      </g>
+
+      {/* ===================== ANNOTATIONS (beat 1+) ===================== */}
+      <g
+        style={{
+          opacity: showAnnots ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        {/* "steep across" — red arrow pointing across the ravine wall */}
+        <line x1={cur.sx} y1={cur.sy} x2={arrowUpSx} y2={arrowUpSy} stroke={ACCENT.red} strokeWidth={2} />
+        <polygon
+          points={(() => {
+            const dx = arrowUpSx - cur.sx
+            const dy = arrowUpSy - cur.sy
+            const len = Math.sqrt(dx * dx + dy * dy)
+            const ux = dx / len
+            const uy = dy / len
+            const head = 10
+            const a1x = arrowUpSx - ux * head + uy * head * 0.5
+            const a1y = arrowUpSy - uy * head - ux * head * 0.5
+            const a2x = arrowUpSx - ux * head - uy * head * 0.5
+            const a2y = arrowUpSy - uy * head + ux * head * 0.5
+            return `${arrowUpSx},${arrowUpSy} ${a1x},${a1y} ${a2x},${a2y}`
+          })()}
+          fill={ACCENT.red}
+        />
+        <text
+          x={arrowUpSx + 14}
+          y={arrowUpSy - 30}
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="20"
+          fill={ACCENT.red}
+        >
+          steep across
+        </text>
+        <text x={arrowUpSx + 14} y={arrowUpSy - 12} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.62)">
+          large curvature
+        </text>
+        <text x={arrowUpSx + 14} y={arrowUpSy + 4} fontFamily="var(--font-mono)" fontSize="11" fill={ACCENT.red}>
+          → overshoot
+        </text>
+
+        {/* "slow along" — mint arrow along the valley */}
+        <line x1={cur.sx} y1={cur.sy} x2={alongSx} y2={alongSy} stroke={ACCENT.mint} strokeWidth={2} />
+        <polygon
+          points={(() => {
+            const dx = alongSx - cur.sx
+            const dy = alongSy - cur.sy
+            const len = Math.sqrt(dx * dx + dy * dy)
+            const ux = dx / len
+            const uy = dy / len
+            const head = 10
+            const a1x = alongSx - ux * head + uy * head * 0.5
+            const a1y = alongSy - uy * head - ux * head * 0.5
+            const a2x = alongSx - ux * head - uy * head * 0.5
+            const a2y = alongSy - uy * head + ux * head * 0.5
+            return `${alongSx},${alongSy} ${a1x},${a1y} ${a2x},${a2y}`
+          })()}
+          fill={ACCENT.mint}
+        />
+        <text
+          x={alongSx + 14}
+          y={alongSy - 24}
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="20"
+          fill={ACCENT.mint}
+        >
+          slow along
+        </text>
+        <text x={alongSx + 14} y={alongSy - 6} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.62)">
+          small curvature
+        </text>
+        <text x={alongSx + 14} y={alongSy + 10} fontFamily="var(--font-mono)" fontSize="11" fill={ACCENT.mint}>
+          → tiny progress
+        </text>
+      </g>
+
+      {/* ===================== LEGEND (bottom-left) ===================== */}
+      <g transform="translate(40, 760)">
+        <rect x={0} y={0} width={210} height={86} rx={8} fill="rgba(255,255,255,0.025)" stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+        <circle cx={18} cy={20} r={5} fill={ACCENT.red} />
+        <text x={32} y={24} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.78)">
+          current update
+        </text>
+        <circle cx={18} cy={42} r={4} fill={ACCENT.red} opacity={0.55} />
+        <text x={32} y={46} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.78)">
+          past updates
+        </text>
+        <circle cx={18} cy={64} r={5} fill={ACCENT.mint} />
+        <text x={32} y={68} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.78)">
+          minimum
+        </text>
+      </g>
+
+      {/* ===================== CONTOUR MAP (top-right of viz) ===================== */}
+      <g>
+        <text
+          x={GR_CMAP_X + GR_CMAP_W / 2}
+          y={GR_CMAP_Y - 14}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.dim}
+        >
+          CONTOUR VIEW (TOP-DOWN)
+        </text>
+        <rect
+          x={GR_CMAP_X - 6}
+          y={GR_CMAP_Y - 6}
+          width={GR_CMAP_W + 12}
+          height={GR_CMAP_H + 12}
+          rx={10}
+          fill="rgba(255,255,255,0.02)"
+          stroke="rgba(255,255,255,0.10)"
+          strokeWidth={1}
+        />
+        {/* w₁ axis (horizontal) */}
+        <line
+          x1={GR_CMAP_X + 30}
+          x2={GR_CMAP_X + GR_CMAP_W - 10}
+          y1={GR_CMAP_CY}
+          y2={GR_CMAP_CY}
+          stroke="rgba(255,255,255,0.20)"
+          strokeWidth={1}
+        />
+        <text x={GR_CMAP_X + GR_CMAP_W - 6} y={GR_CMAP_CY - 8} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.55)">
+          w₁
+        </text>
+        {/* w₂ axis (vertical) */}
+        <line
+          x1={GR_CMAP_CX}
+          x2={GR_CMAP_CX}
+          y1={GR_CMAP_Y + 10}
+          y2={GR_CMAP_Y + GR_CMAP_H - 10}
+          stroke="rgba(255,255,255,0.20)"
+          strokeWidth={1}
+        />
+        <text x={GR_CMAP_CX + 6} y={GR_CMAP_Y + 18} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.55)">
+          w₂
+        </text>
+
+        {/* Anisotropic level-set ellipses — wide & short */}
+        {[0.6, 0.35, 0.18, 0.07, 0.02].map((k, i) => {
+          const xR = (Math.sqrt(k / GR_K_SHALLOW) / 1.65) * (GR_CMAP_W / 2)
+          const yR = (Math.sqrt(k / GR_K_STEEP) / 1.2) * (GR_CMAP_H / 2)
+          return (
+            <ellipse
+              key={`ec-${i}`}
+              cx={GR_CMAP_CX}
+              cy={GR_CMAP_CY}
+              rx={Math.min(xR, GR_CMAP_W / 2 - 10)}
+              ry={yR}
+              fill="none"
+              stroke={i < 2 ? ACCENT.red : i < 4 ? ACCENT.dim : ACCENT.mint}
+              strokeOpacity={0.5}
+              strokeWidth={1}
+            />
+          )
+        })}
+
+        {/* Path on contour — segments connecting consecutive points so the
+            zig-zag reads clearly */}
+        {GR_TRAIL.slice(0, safeIdx + 1).map((t, i) => {
+          if (i === 0) return null
+          const [x0, y0] = grCmapPoint(GR_TRAIL[i - 1].w1, GR_TRAIL[i - 1].w2)
+          const [x1, y1] = grCmapPoint(t.w1, t.w2)
+          return (
+            <line
+              key={`pl-${i}`}
+              x1={x0}
+              y1={y0}
+              x2={x1}
+              y2={y1}
+              stroke={ACCENT.red}
+              strokeOpacity={0.55}
+              strokeWidth={1.4}
+            />
+          )
+        })}
+        {GR_TRAIL.slice(0, safeIdx + 1).map((t, i) => {
+          const [cx, cy] = grCmapPoint(t.w1, t.w2)
+          return (
+            <circle
+              key={`cm-${i}`}
+              cx={cx}
+              cy={cy}
+              r={i === safeIdx ? 6 : 3.2}
+              fill={ACCENT.red}
+              opacity={i === safeIdx ? 1 : 0.45 + 0.5 * (i / Math.max(1, safeIdx))}
+            />
+          )
+        })}
+
+        {/* Minimum marker on contour */}
+        <circle cx={GR_CMAP_CX} cy={GR_CMAP_CY} r={6} fill={ACCENT.mint} />
+        <circle cx={GR_CMAP_CX} cy={GR_CMAP_CY} r={14} fill={ACCENT.mint} opacity={0.18} />
+
+        {/* "one learning rate for all directions" caption */}
+        <text
+          x={GR_CMAP_X + GR_CMAP_W / 2}
+          y={GR_CMAP_Y + GR_CMAP_H + 28}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.red}
+          style={{
+            opacity: showAnnots ? 1 : 0,
+            transition: `opacity ${0.5 / speed}s ease`,
+          }}
+        >
+          one learning rate for all directions
+        </text>
+      </g>
+
+      {/* ===================== LEARNING-RATE SLIDER ===================== */}
+      <g
+        style={{
+          opacity: showSlider ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        <rect
+          x={GR_SLIDER_X}
+          y={GR_SLIDER_Y}
+          width={GR_SLIDER_W}
+          height={GR_SLIDER_H}
+          rx={10}
+          fill="rgba(255,255,255,0.025)"
+          stroke="rgba(255,255,255,0.12)"
+          strokeWidth={1}
+        />
+        <text x={GR_SLIDER_X + 22} y={GR_SLIDER_Y + 30} fontFamily="var(--font-mono)" fontSize="11" letterSpacing="0.22em" fill={ACCENT.dim}>
+          LEARNING RATE  η
+        </text>
+        <text x={GR_SLIDER_X + GR_SLIDER_W - 22} y={GR_SLIDER_Y + 30} textAnchor="end" fontFamily="var(--font-mono)" fontSize="14" fill={ACCENT.cyan}>
+          {GR_LR.toFixed(3)}
+        </text>
+        {/* Track */}
+        {(() => {
+          const trackX = GR_SLIDER_X + 22
+          const trackY = GR_SLIDER_Y + 60
+          const trackW = GR_SLIDER_W - 44
+          // η ∈ [0.0, 1.2]; current value GR_LR (=0.95) → near "oscillating · just right"
+          const t = Math.min(1, Math.max(0, GR_LR / 1.2))
+          const knobX = trackX + t * trackW
+          return (
+            <g>
+              <line x1={trackX} x2={trackX + trackW} y1={trackY} y2={trackY} stroke="rgba(255,255,255,0.15)" strokeWidth={4} strokeLinecap="round" />
+              <line x1={trackX} x2={knobX} y1={trackY} y2={trackY} stroke={ACCENT.cyan} strokeWidth={4} strokeLinecap="round" />
+              <circle cx={knobX} cy={trackY} r={10} fill={ACCENT.cyan} stroke="rgba(255,255,255,0.7)" strokeWidth={1.4} />
+            </g>
+          )
+        })()}
+        {/* Three regime labels */}
+        <text x={GR_SLIDER_X + 32} y={GR_SLIDER_Y + 100} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.78)">
+          crawls
+        </text>
+        <text x={GR_SLIDER_X + 32} y={GR_SLIDER_Y + 116} fontFamily="var(--font-mono)" fontSize="9" fill="rgba(255,255,255,0.45)">
+          too small
+        </text>
+
+        <text x={GR_SLIDER_X + GR_SLIDER_W / 2} y={GR_SLIDER_Y + 100} textAnchor="middle" fontFamily="var(--font-mono)" fontSize="11" fill={ACCENT.amber}>
+          oscillating
+        </text>
+        <text x={GR_SLIDER_X + GR_SLIDER_W / 2} y={GR_SLIDER_Y + 116} textAnchor="middle" fontFamily="var(--font-mono)" fontSize="9" fill={ACCENT.amber}>
+          just right
+        </text>
+
+        <text x={GR_SLIDER_X + GR_SLIDER_W - 32} y={GR_SLIDER_Y + 100} textAnchor="end" fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.78)">
+          explodes
+        </text>
+        <text x={GR_SLIDER_X + GR_SLIDER_W - 32} y={GR_SLIDER_Y + 116} textAnchor="end" fontFamily="var(--font-mono)" fontSize="9" fill="rgba(255,255,255,0.45)">
+          too large
+        </text>
+      </g>
+
+      {/* ===================== ENDING CAPTION ===================== */}
+      <text
+        x={GR_VB_W / 2}
+        y={GR_VB_H - 92}
+        textAnchor="middle"
+        fontFamily="var(--font-display, Georgia, serif)"
+        fontStyle="italic"
+        fontSize="18"
+        fill="rgba(255,255,255,0.85)"
+      >
+        Fixed learning rate <tspan fill={ACCENT.red}>overshoots</tspan> steep directions and makes <tspan fill={ACCENT.mint}>slow progress</tspan> along shallow ones.
+      </text>
+
+      <text
+        x={GR_VB_W / 2}
+        y={GR_VB_H - 68}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={ACCENT.dim}
+      >
+        A FIXED LEARNING RATE WASTES STEPS BOUNCING ACROSS STEEP DIRECTIONS
+      </text>
+
+      {/* ===================== BEAT INDICATOR ===================== */}
+      <g transform={`translate(${GR_VB_W / 2}, ${GR_VB_H - 30})`}>
+        {(['set the geometry', 'steep vs shallow', 'zig-zag descent'] as const).map((label, i) => {
+          const w = 240
+          const gap = 18
+          const total = 3 * w + 2 * gap
+          const startX = -total / 2
+          const cx = startX + i * (w + gap) + w / 2
+          const active = i === phase
+          return (
+            <g key={`gr-beat-${i}`} transform={`translate(${cx}, 0)`}>
+              <rect
+                x={-w / 2}
+                y={-12}
+                width={w}
+                height={24}
+                rx={12}
+                fill={active ? 'rgba(248,113,113,0.18)' : 'rgba(255,255,255,0.02)'}
+                stroke={active ? ACCENT.red : ACCENT.rule}
+                strokeWidth={1.2}
+                style={{ transition: `fill ${0.3 / speed}s ease, stroke ${0.3 / speed}s ease` }}
+              />
+              <text
+                x={0}
+                y={4}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="10"
+                letterSpacing="0.18em"
+                fill={active ? ACCENT.red : ACCENT.dim}
+                style={{ transition: `fill ${0.3 / speed}s ease` }}
+              >
+                {label.toUpperCase()}
+              </text>
+            </g>
+          )
+        })}
+      </g>
+    </svg>
+  )
+}
+
+export function GdRavineSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 3
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      6000 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  // Smooth step counter — beat 2 advances 0→32 over ~5s.
+  const [stepIdx, setStepIdx] = useState(0)
+  useEffect(() => {
+    if (phase < 2) {
+      setStepIdx(0)
+      return
+    }
+    setStepIdx(0)
+    let i = 0
+    const totalMs = 5200 / speed
+    const stepMs = totalMs / 32
+    const id = setInterval(() => {
+      i += 1
+      if (i >= 32) {
+        setStepIdx(32)
+        clearInterval(id)
+      } else {
+        setStepIdx(i)
+      }
+    }, stepMs)
+    return () => clearInterval(id)
+  }, [phase, speed])
+
+  const safeIdx = Math.max(0, Math.min(GR_TRAIL.length - 1, stepIdx))
+  const cur = GR_TRAIL[safeIdx]
+
+  const phaseLabels = ['set the geometry', 'steep vs shallow', 'zig-zag descent']
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      Real loss surfaces aren&apos;t round bowls. They&apos;re narrow
+      <em> ravines</em> — steep across, shallow along. The gradient at
+      every point is dominated by the steep direction.
+    </>,
+    <>
+      Same step size in every direction means the update is too{' '}
+      <em>large</em> for the steep wall (bounces) and too <em>small</em>{' '}
+      for the long valley (crawls). One η can&apos;t serve both.
+    </>,
+    <>
+      The path zig-zags across the ravine wasting steps, while making
+      slow progress along the valley toward the minimum. This is the
+      problem Adam was built to fix.
+    </>,
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'A 2D toy. Real loss landscapes are still ravine-shaped — they have many directions of high curvature and many of low. The same one-η problem appears, just in millions of dimensions.',
+    'Cause: ∇L points across the ravine wall (where the slope is biggest), so −η∇L overshoots the valley. The component along the ravine is tiny, so each step barely moves down the valley.',
+    'Reduce η → less overshoot but even slower progress along the valley. Increase η → faster valley progress but unstable / explodes across the wall. There is no good single η. Next scene: Adam scales each direction independently.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizGdRavine phase={phase} stepIdx={stepIdx} />}
+      text={{
+        kicker: 'ACT IV · GD · REALISTIC',
+        title: 'Why vanilla GD zig-zags.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.red,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.red}
+          />
+        ),
+        stats: [
+          { label: 'w₁  (along)', value: cur.w1.toFixed(2), color: ACCENT.cyan },
+          { label: 'w₂  (across)', value: cur.w2.toFixed(2), color: ACCENT.red },
+          { label: 'loss', value: cur.loss.toFixed(2), color: ACCENT.amber },
+          { label: 'step', value: `${safeIdx} / 32` },
+          { label: 'η  (fixed)', value: GR_LR.toFixed(3), color: ACCENT.cyan },
+        ],
+        equation: {
+          label: 'one rule, one η',
+          body: <>W ← W − η · ∇L(W)</>,
+        },
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}
