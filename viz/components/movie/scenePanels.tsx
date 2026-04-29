@@ -321,34 +321,6 @@ export function PanelEmbed() {
   )
 }
 
-/* ─────────── Act IV — Loss ─────────── */
-export function PanelLoss() {
-  return (
-    <Panel
-      kicker="Training · Cross-Entropy"
-      title="How wrong is the guess?"
-      subtitle="Loss measures the surprise of the true next token under the model's distribution. Small when confident-and-right, huge when confident-and-wrong."
-      accent={ACCENT.red}
-    >
-      <Eq accent={ACCENT.red} caption="negative log probability of the true target token">
-        L = − log p(target)
-      </Eq>
-      <Bullet index={1} accent={ACCENT.red} delay={0.4}>
-        100% on the target → loss = 0. Perfect.
-      </Bullet>
-      <Bullet index={2} accent={ACCENT.amber} delay={0.55}>
-        50% → ≈ 0.69. Some surprise.
-      </Bullet>
-      <Bullet index={3} accent={ACCENT.violet} delay={0.7}>
-        1% → ≈ 4.6. Confident and wrong.
-      </Bullet>
-      <Bullet index={4} accent={ACCENT.mint} delay={0.85}>
-        Backprop only cares about this scalar. Every weight gets nudged by its gradient.
-      </Bullet>
-    </Panel>
-  )
-}
-
 /* ─────────── Act IV — Backprop ─────────── */
 export function PanelBackprop() {
   return (

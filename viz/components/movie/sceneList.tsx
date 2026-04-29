@@ -9,7 +9,6 @@ import {
   SceneBackpropJacobian,
   SceneCELossBatch,
   SceneCELossSeqParallel,
-  SceneCrossEntropy,
   SceneEmbedding,
   SceneGDAdam,
   SceneGDRavine,
@@ -35,7 +34,6 @@ import {
   PanelOutput,
   PanelAttention,
   PanelMulti,
-  PanelLoss,
   PanelBackprop,
   PanelRope,
   PanelModern,
@@ -65,7 +63,7 @@ import {
   SampleSplitPane,
   KVCacheSplitPane,
 } from './act3Scenes'
-import { Act4IntroSplitPane } from './act4Scenes'
+import { Act4IntroSplitPane, CrossEntropySplitPane } from './act4Scenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -498,7 +496,8 @@ This is the single biggest optimization behind fast generation. It's also why co
 Equivalently: loss measures how many bits of surprise the true token carried given the model's distribution. We want to minimize that surprise.
 
 This scalar is the only number backprop cares about. Every weight in the model gets nudged based on its contribution to this one number.`,
-    render: () => <PanelThenScene panel={<PanelLoss />} scene={<SceneCrossEntropy />} />,
+    render: () => <CrossEntropySplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'loss-seq',

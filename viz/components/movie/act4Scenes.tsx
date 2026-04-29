@@ -690,3 +690,620 @@ export function Act4IntroSplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 21 — loss: "How wrong is the guess?"
+ *
+ * One clean causal chain across the viz pane:
+ *
+ *   predicted distribution  →  highlight correct token  →  read p(correct)
+ *                                                          →  apply −log
+ *                                                          →  scalar loss
+ *
+ * Three phases share the SAME six-token vocabulary and the SAME target
+ * ('c'), so the only thing that changes between phases is the predicted
+ * distribution. That keeps the comparison clean.
+ *
+ *   phase 0 — confident & correct  →  p(c)=0.75  →  loss ≈ 0.29 (mint)
+ *   phase 1 — uncertain            →  p(c)=0.28  →  loss ≈ 1.27 (amber)
+ *   phase 2 — confident & wrong    →  p(c)=0.02  →  loss ≈ 3.91 (red)
+ * ====================================================================== */
+
+const CE_VB_W = 1400
+const CE_VB_H = 1000
+
+const CE_TOKENS = ['a', 'b', 'c', 'd', 'e', 'f']
+const CE_TARGET_IDX = 2
+
+const CE_BAR_W = 78
+const CE_BAR_GAP = 22
+const CE_BAR_MAX_H = 320
+const CE_BARS_X = 120
+const CE_BARS_BASELINE_Y = 540 // y at the bottom of the bars
+
+interface CEPhase {
+  label: string
+  probs: number[]
+  tone: 'low' | 'mid' | 'high'
+  beat: string
+}
+
+const CE_PHASES: CEPhase[] = [
+  {
+    label: 'confident & correct',
+    probs: [0.04, 0.05, 0.75, 0.06, 0.05, 0.05],
+    tone: 'low',
+    beat: 'The model put most of its weight on the right token. Loss is tiny.',
+  },
+  {
+    label: 'uncertain',
+    probs: [0.12, 0.18, 0.28, 0.15, 0.15, 0.12],
+    tone: 'mid',
+    beat: 'The probability spread thin. Loss climbs — the model is hedging.',
+  },
+  {
+    label: 'confident & wrong',
+    probs: [0.06, 0.65, 0.02, 0.13, 0.08, 0.06],
+    tone: 'high',
+    beat: 'The model was sure — and it was sure of the wrong token. Loss explodes.',
+  },
+]
+
+function ceLoss(p: number): number {
+  return -Math.log(Math.max(p, 1e-12))
+}
+
+function ceToneColor(tone: 'low' | 'mid' | 'high'): string {
+  if (tone === 'low') return ACCENT.mint
+  if (tone === 'mid') return ACCENT.amber
+  return ACCENT.red
+}
+
+export function VizCrossEntropy() {
+  const speed = useSpeed()
+  const PHASES = CE_PHASES.length
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      5000 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const s = CE_PHASES[phase]
+  const pCorrect = s.probs[CE_TARGET_IDX]
+  const loss = ceLoss(pCorrect)
+  const toneColor = ceToneColor(s.tone)
+
+  // Geometry of the target predicted bar
+  const targetBarX = CE_BARS_X + CE_TARGET_IDX * (CE_BAR_W + CE_BAR_GAP)
+  const targetBarH = pCorrect * CE_BAR_MAX_H
+  const targetBarTopY = CE_BARS_BASELINE_Y - targetBarH
+
+  // Right-side readout column
+  const READ_X = 940
+  const P_BOX_Y = 220
+  const NEGLOG_BOX_Y = 380
+  const LOSS_BOX_Y = 560
+
+  return (
+    <svg viewBox={`0 0 ${CE_VB_W} ${CE_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="ce-bar-target" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={ACCENT.mint} stopOpacity="0.95" />
+          <stop offset="100%" stopColor={ACCENT.mint} stopOpacity="0.55" />
+        </linearGradient>
+        <linearGradient id="ce-bar-other" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={ACCENT.blue} stopOpacity="0.55" />
+          <stop offset="100%" stopColor={ACCENT.blue} stopOpacity="0.20" />
+        </linearGradient>
+        <filter id="ce-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* ========== HEADER ========== */}
+      <text
+        x={CE_BARS_X}
+        y={70}
+        fontFamily="var(--font-mono)"
+        fontSize="13"
+        letterSpacing="0.22em"
+        fill={ACCENT.dim}
+      >
+        ONE PREDICTION · ONE TARGET · ONE NUMBER
+      </text>
+      <text
+        x={CE_BARS_X}
+        y={102}
+        fontFamily="var(--font-display, Georgia, serif)"
+        fontStyle="italic"
+        fontSize="26"
+        fill="rgba(255,255,255,0.85)"
+      >
+        Read the probability on the correct token. Take −log.
+      </text>
+
+      {/* ========== TARGET ROW (one-hot) ========== */}
+      <text
+        x={CE_BARS_X}
+        y={158}
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={ACCENT.mint}
+      >
+        TARGET (ONE-HOT)
+      </text>
+      {CE_TOKENS.map((t, i) => {
+        const x = CE_BARS_X + i * (CE_BAR_W + CE_BAR_GAP)
+        const isTarget = i === CE_TARGET_IDX
+        return (
+          <g key={`tgt-${i}`}>
+            <rect
+              x={x}
+              y={172}
+              width={CE_BAR_W}
+              height={32}
+              rx={3}
+              fill={isTarget ? ACCENT.mint : 'rgba(255,255,255,0.03)'}
+              stroke={isTarget ? ACCENT.mint : ACCENT.rule}
+              strokeWidth={isTarget ? 1.5 : 1}
+              opacity={isTarget ? 0.9 : 0.6}
+            />
+            <text
+              x={x + CE_BAR_W / 2}
+              y={193}
+              textAnchor="middle"
+              fontFamily="var(--font-mono)"
+              fontSize="13"
+              fill={isTarget ? '#0c0c0e' : ACCENT.dim}
+              fontWeight={isTarget ? 600 : 400}
+            >
+              {isTarget ? '1.0' : '0.0'}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* ========== HIGHLIGHT COLUMN ========== */}
+      {/* A faint vertical band picks out the target column across both
+          target row and prediction bars. Helps the eye trace the link. */}
+      <rect
+        x={targetBarX - 6}
+        y={172}
+        width={CE_BAR_W + 12}
+        height={CE_BARS_BASELINE_Y - 172 + 16}
+        rx={6}
+        fill={ACCENT.mint}
+        opacity={0.06}
+      />
+
+      {/* ========== PREDICTION LABEL ========== */}
+      <motion.text
+        key={`plabel-${phase}`}
+        x={CE_BARS_X}
+        y={232}
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={toneColor}
+        initial={{ opacity: 0, y: 240 }}
+        animate={{ opacity: 1, y: 232 }}
+        transition={{ duration: 0.4 / speed }}
+      >
+        PREDICTION · {s.label.toUpperCase()}
+      </motion.text>
+
+      {/* ========== PREDICTION BARS ========== */}
+      {s.probs.map((p, i) => {
+        const x = CE_BARS_X + i * (CE_BAR_W + CE_BAR_GAP)
+        const h = p * CE_BAR_MAX_H
+        const y = CE_BARS_BASELINE_Y - h
+        const isTarget = i === CE_TARGET_IDX
+        return (
+          <g key={`bar-${i}`}>
+            {/* Bar */}
+            <motion.rect
+              x={x}
+              width={CE_BAR_W}
+              rx={4}
+              fill={isTarget ? 'url(#ce-bar-target)' : 'url(#ce-bar-other)'}
+              stroke={isTarget ? ACCENT.mint : 'rgba(96,165,250,0.45)'}
+              strokeWidth={isTarget ? 1.5 : 1}
+              initial={false}
+              animate={{ y, height: h }}
+              transition={{ type: 'spring', stiffness: 140, damping: 22 }}
+            />
+            {/* % label above bar */}
+            <motion.text
+              x={x + CE_BAR_W / 2}
+              textAnchor="middle"
+              fontFamily="var(--font-mono)"
+              fontSize="14"
+              fill={isTarget ? ACCENT.mint : 'rgba(255,255,255,0.78)'}
+              fontWeight={isTarget ? 600 : 400}
+              initial={false}
+              animate={{ y: y - 12 }}
+              transition={{ type: 'spring', stiffness: 140, damping: 22 }}
+            >
+              {(p * 100).toFixed(0)}%
+            </motion.text>
+            {/* Token label below baseline */}
+            <rect
+              x={x}
+              y={CE_BARS_BASELINE_Y + 14}
+              width={CE_BAR_W}
+              height={42}
+              rx={3}
+              fill="rgba(255,255,255,0.02)"
+              stroke={isTarget ? ACCENT.mint : ACCENT.rule}
+              strokeWidth={isTarget ? 1.5 : 1}
+            />
+            <text
+              x={x + CE_BAR_W / 2}
+              y={CE_BARS_BASELINE_Y + 42}
+              textAnchor="middle"
+              fontFamily="var(--font-mono)"
+              fontSize="20"
+              fill={isTarget ? ACCENT.mint : 'rgba(255,255,255,0.78)'}
+              fontWeight={isTarget ? 600 : 400}
+            >
+              {CE_TOKENS[i]}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* baseline */}
+      <line
+        x1={CE_BARS_X - 6}
+        x2={CE_BARS_X + CE_TOKENS.length * (CE_BAR_W + CE_BAR_GAP) - CE_BAR_GAP + 6}
+        y1={CE_BARS_BASELINE_Y}
+        y2={CE_BARS_BASELINE_Y}
+        stroke={ACCENT.rule}
+        strokeWidth={1}
+      />
+
+      {/* ========== EXTRACTION ARROW: target bar → p readout ========== */}
+      <motion.g key={`arrow-${phase}`}>
+        <motion.path
+          d={`M ${targetBarX + CE_BAR_W} ${targetBarTopY + 8}
+              C ${targetBarX + CE_BAR_W + 90} ${targetBarTopY + 8}
+                ${READ_X - 80} ${P_BOX_Y + 60}
+                ${READ_X - 12} ${P_BOX_Y + 60}`}
+          fill="none"
+          stroke={ACCENT.mint}
+          strokeWidth={1.6}
+          strokeDasharray="4 5"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 0.9 }}
+          transition={{ delay: 0.6 / speed, duration: 0.9 / speed, ease: 'easeOut' }}
+        />
+        {/* arrowhead */}
+        <motion.polyline
+          points={`${READ_X - 18},${P_BOX_Y + 56} ${READ_X - 8},${P_BOX_Y + 60} ${READ_X - 18},${P_BOX_Y + 64}`}
+          fill="none"
+          stroke={ACCENT.mint}
+          strokeWidth={1.6}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.9 }}
+          transition={{ delay: 1.4 / speed, duration: 0.3 / speed }}
+        />
+      </motion.g>
+
+      {/* ========== READOUT 1: p(correct) ========== */}
+      <g transform={`translate(${READ_X}, ${P_BOX_Y})`}>
+        <rect
+          x={0}
+          y={0}
+          width={340}
+          height={120}
+          rx={8}
+          fill="rgba(52,211,153,0.06)"
+          stroke={ACCENT.mint}
+          strokeWidth={1.2}
+          opacity={0.9}
+        />
+        <text
+          x={20}
+          y={28}
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.mint}
+        >
+          p( CORRECT TOKEN )
+        </text>
+        <text
+          x={20}
+          y={56}
+          fontFamily="var(--font-mono)"
+          fontSize="13"
+          fill="rgba(255,255,255,0.6)"
+        >
+          read off bar &apos;{CE_TOKENS[CE_TARGET_IDX]}&apos;
+        </text>
+        <motion.text
+          key={`pcorrect-${phase}`}
+          x={170}
+          y={100}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="46"
+          fill={ACCENT.mint}
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 1.5 / speed, type: 'spring', stiffness: 180, damping: 16 }}
+        >
+          {pCorrect.toFixed(2)}
+        </motion.text>
+      </g>
+
+      {/* ========== TRANSFORM ARROW: p → −log ========== */}
+      <motion.g
+        key={`tx-${phase}`}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 2.0 / speed, duration: 0.4 / speed }}
+      >
+        <line
+          x1={READ_X + 170}
+          x2={READ_X + 170}
+          y1={P_BOX_Y + 130}
+          y2={NEGLOG_BOX_Y - 8}
+          stroke={ACCENT.amber}
+          strokeWidth={1.4}
+          strokeDasharray="4 5"
+        />
+        <polyline
+          points={`${READ_X + 166},${NEGLOG_BOX_Y - 12} ${READ_X + 170},${NEGLOG_BOX_Y - 4} ${READ_X + 174},${NEGLOG_BOX_Y - 12}`}
+          fill="none"
+          stroke={ACCENT.amber}
+          strokeWidth={1.6}
+        />
+        <text
+          x={READ_X + 184}
+          y={(P_BOX_Y + 130 + NEGLOG_BOX_Y) / 2 + 4}
+          fontFamily="var(--font-mono)"
+          fontSize="12"
+          letterSpacing="0.18em"
+          fill={ACCENT.amber}
+        >
+          apply − log
+        </text>
+      </motion.g>
+
+      {/* ========== READOUT 2: −log( p ) substitution ========== */}
+      <g transform={`translate(${READ_X}, ${NEGLOG_BOX_Y})`}>
+        <rect
+          x={0}
+          y={0}
+          width={340}
+          height={100}
+          rx={8}
+          fill="rgba(245,158,11,0.06)"
+          stroke={ACCENT.amber}
+          strokeWidth={1.2}
+        />
+        <text
+          x={20}
+          y={28}
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.amber}
+        >
+          THE RULE
+        </text>
+        <motion.text
+          key={`rule-${phase}`}
+          x={170}
+          y={70}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="22"
+          fill="rgba(255,255,255,0.92)"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 2.3 / speed, duration: 0.4 / speed }}
+        >
+          L = − log ( {pCorrect.toFixed(2)} )
+        </motion.text>
+      </g>
+
+      {/* ========== READOUT 3: scalar loss ========== */}
+      <g transform={`translate(${READ_X}, ${LOSS_BOX_Y})`}>
+        <motion.rect
+          key={`lossbox-${phase}`}
+          x={0}
+          y={0}
+          width={340}
+          height={170}
+          rx={10}
+          fill={`${toneColor}1A`}
+          stroke={toneColor}
+          strokeWidth={1.6}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 2.6 / speed, duration: 0.5 / speed }}
+        />
+        <text
+          x={20}
+          y={32}
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={toneColor}
+        >
+          LOSS
+        </text>
+        <text
+          x={20}
+          y={54}
+          fontFamily="var(--font-mono)"
+          fontSize="13"
+          fill="rgba(255,255,255,0.55)"
+        >
+          one scalar — feeds backprop
+        </text>
+        <motion.text
+          key={`lossval-${phase}`}
+          x={170}
+          y={134}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="78"
+          fill={toneColor}
+          filter="url(#ce-glow)"
+          initial={{ opacity: 0, scale: 0.6 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 2.9 / speed, type: 'spring', stiffness: 160, damping: 16 }}
+        >
+          {loss.toFixed(2)}
+        </motion.text>
+      </g>
+
+      {/* ========== BOTTOM SCENARIO STRIP ========== */}
+      <g transform={`translate(${CE_VB_W / 2}, ${CE_VB_H - 70})`}>
+        <text
+          x={0}
+          y={-30}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.32em"
+          fill={ACCENT.dim}
+        >
+          THREE CASES
+        </text>
+        {(() => {
+          const w = 240
+          const gap = 18
+          const total = CE_PHASES.length * w + (CE_PHASES.length - 1) * gap
+          const startX = -total / 2
+          return CE_PHASES.map((c, i) => {
+            const active = i === phase
+            const accent = ceToneColor(c.tone)
+            const x = startX + i * (w + gap) + w / 2
+            return (
+              <g key={`case-${i}`} transform={`translate(${x}, 0)`}>
+                <motion.rect
+                  x={-w / 2}
+                  y={-22}
+                  width={w}
+                  height={44}
+                  rx={22}
+                  initial={{
+                    fill: 'rgba(255,255,255,0.02)',
+                    stroke: ACCENT.rule,
+                  }}
+                  animate={{
+                    fill: active ? `${accent}26` : 'rgba(255,255,255,0.02)',
+                    stroke: active ? accent : ACCENT.rule,
+                  }}
+                  transition={{ duration: 0.4 / speed }}
+                  strokeWidth={1.5}
+                />
+                <motion.text
+                  x={0}
+                  y={5}
+                  textAnchor="middle"
+                  fontFamily="var(--font-mono)"
+                  fontSize="13"
+                  letterSpacing="0.18em"
+                  initial={{ fill: ACCENT.dim }}
+                  animate={{ fill: active ? accent : ACCENT.dim }}
+                  transition={{ duration: 0.4 / speed }}
+                >
+                  {c.label.toUpperCase()}
+                </motion.text>
+              </g>
+            )
+          })
+        })()}
+      </g>
+    </svg>
+  )
+}
+
+export function CrossEntropySplitPane() {
+  const speed = useSpeed()
+  const PHASES = CE_PHASES.length
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      5000 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const s = CE_PHASES[phase]
+  const pCorrect = s.probs[CE_TARGET_IDX]
+  const loss = ceLoss(pCorrect)
+  const toneColor = ceToneColor(s.tone)
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      The model assigns a probability to every token in the vocabulary. We
+      only care about <em>one</em>: the probability it placed on the
+      correct next token. Loss = <em>−log</em> of that number.
+    </>,
+    <>
+      When the model hedges, the probability on the right token shrinks.
+      Loss climbs steadily — a few tenths of a nat for each halving of the
+      probability.
+    </>,
+    <>
+      This is why <em>−log</em> matters. As p(correct) → 0 the loss → ∞.
+      Confident-and-wrong creates a huge gradient — exactly the signal
+      backprop needs to fix the mistake.
+    </>,
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'Quick anchors: p=1.00 → loss=0.00. p=0.50 → loss≈0.69. p=0.25 → loss≈1.39. p=0.10 → loss≈2.30. p=0.01 → loss≈4.60. The model is paid in nats of surprise.',
+    'A uniform model over V tokens always gets loss = log V. With V=6 that is ≈1.79 — the "knows nothing" baseline. Anything below that means the model has actually learned something about which token is more likely.',
+    'Squared error would barely care that 1% missed by 99%. −log p does — that is what makes cross-entropy the right loss for token prediction. The next scenes show how this single scalar drives every weight update.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizCrossEntropy />}
+      text={{
+        kicker: 'ACT IV · LOSS',
+        title: 'How wrong is the guess?',
+        subtitle: subtitleByPhase[phase],
+        accent: toneColor,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={s.label}
+            accent={toneColor}
+          />
+        ),
+        stats: [
+          { label: 'vocab', value: `V = ${CE_TOKENS.length}` },
+          { label: 'target', value: `'${CE_TOKENS[CE_TARGET_IDX]}'`, color: ACCENT.mint },
+          { label: 'p(correct)', value: pCorrect.toFixed(2), color: ACCENT.mint },
+          { label: 'loss', value: loss.toFixed(2), color: toneColor },
+        ],
+        equation: {
+          label: 'one rule',
+          body: <>L = − log p(correct token)</>,
+        },
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}
