@@ -4,7 +4,6 @@ import { type MovieScene } from './MovieOrchestrator'
 import {
   SceneAttention,
   SceneBPE,
-  SceneBackpropAccumulation,
   SceneEmbedding,
   SceneGDAdam,
   SceneGDRavine,
@@ -61,6 +60,7 @@ import {
 import {
   Act4IntroSplitPane,
   BackpropSplitPane,
+  BpAccumulationSplitPane,
   BpJacobianSplitPane,
   CELossBatchSplitPane,
   CELossSeqSplitPane,
@@ -595,7 +595,8 @@ The beauty of backprop: every layer only needs to know its own local Jacobian. T
 This is why batching works: noisy per-example gradients average into a cleaner batch gradient that points in a more reliable direction. Larger batches = lower-variance gradient = potentially larger learning rate.
 
 "Gradient accumulation" in practice also refers to splitting a big logical batch across multiple forward passes when the GPU can't fit the whole batch in memory. Same math, different mechanics.`,
-    render: () => <SceneBackpropAccumulation />,
+    render: () => <BpAccumulationSplitPane />,
+    panelAnchor: 'fullscreen',
   },
 
   // ── GRADIENT DESCENT (applies the ∇W backprop just computed) ──

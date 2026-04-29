@@ -4033,3 +4033,623 @@ export function BpJacobianSplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 26 — bp-accum: "Gradients average across the batch."
+ *
+ * The batch-level closing of the backprop arc:
+ *
+ *   Scene 24 — gradient flows back through every block
+ *   Scene 25 — one block transforms the gradient
+ *   Scene 26 — every example in the batch produces its OWN ∇W; those
+ *              gradients average into one ∇W_batch which drives one
+ *              optimizer step.
+ *
+ * Four beats:
+ *
+ *   beat 0 — per-example gradients. Four sample lanes light up one
+ *            after another; each emits its own ∇W heatmap (red/blue
+ *            patches of different intensities).
+ *   beat 1 — same W, different examples. A bracket + label clarifies
+ *            that all four gradients are gradients of the SAME weight
+ *            matrix. Tiles get a faint shared-frame highlight.
+ *   beat 2 — collapse to the mean. The four heatmaps converge through
+ *            a Σ/B operator into a single teal/green ∇W_batch tile,
+ *            visibly smoother than the noisy per-example ones.
+ *   beat 3 — one update step. An amber arrow from ∇W_batch drops into
+ *            the gold update box: W ← W − η·∇W_batch.
+ *
+ * Color roles:
+ *   red/blue  — per-example gradients (noisy)
+ *   teal/mint — averaged batch gradient (smoothed)
+ *   amber/gold — η, the update / learning rate
+ * ====================================================================== */
+
+const BPA_VB_W = 1400
+const BPA_VB_H = 1000
+
+const BPA_B = 4 // batch size shown
+const BPA_GRID = 5 // per-tile heatmap is 5×5
+
+// Per-example tile geometry (left column, stacked vertically)
+const BPA_TILE_CELL = 18
+const BPA_TILE_GAP = 3
+const BPA_TILE_W = BPA_GRID * BPA_TILE_CELL + (BPA_GRID - 1) * BPA_TILE_GAP // 102
+const BPA_TILE_H = BPA_TILE_W
+const BPA_TILES_X = 200 // x of leftmost cell of each per-example tile
+const BPA_TILES_Y0 = 220 // y of first tile
+const BPA_TILE_VGAP = 24
+const BPA_TILE_PITCH = BPA_TILE_H + BPA_TILE_VGAP // 126
+function bpaTileY(i: number) {
+  return BPA_TILES_Y0 + i * BPA_TILE_PITCH
+}
+
+// Averaging operator (Σ / B)
+const BPA_OP_CX = 530
+const BPA_OP_CY = (bpaTileY(0) + bpaTileY(BPA_B - 1) + BPA_TILE_H) / 2 // mid of stack
+const BPA_OP_R = 64
+
+// Averaged batch gradient ∇W_batch (right side, larger and smoother)
+const BPA_AVG_CELL = 30
+const BPA_AVG_GAP = 4
+const BPA_AVG_W = BPA_GRID * BPA_AVG_CELL + (BPA_GRID - 1) * BPA_AVG_GAP // 166
+const BPA_AVG_X = 740
+const BPA_AVG_Y = BPA_OP_CY - BPA_AVG_W / 2
+
+// Update box (gold) at bottom-right
+const BPA_UPDATE_X = 700
+const BPA_UPDATE_Y = 720
+const BPA_UPDATE_W = 540
+const BPA_UPDATE_H = 130
+
+// Deterministic per-cell gradient magnitude for sample i, row r, col c.
+// Each sample's pattern is offset so they look distinctly noisy.
+function bpaSampleMag(i: number, r: number, c: number): number {
+  const seed = i * 19 + r * 7 + c * 3
+  return 0.25 + ((Math.sin(seed * 0.91 + i * 0.7) + 1) / 2) * 0.7
+}
+
+// Averaged value at (r, c) — the literal mean across samples.
+function bpaAvgMag(r: number, c: number): number {
+  let s = 0
+  for (let i = 0; i < BPA_B; i++) s += bpaSampleMag(i, r, c)
+  return s / BPA_B
+}
+
+// Sign-ish: per-cell, randomly red (positive) or blue (negative) for the
+// per-example tiles, to make them feel like real (signed) gradients.
+function bpaSampleSign(i: number, r: number, c: number): 1 | -1 {
+  return ((i + r + c) % 2 === 0 ? 1 : -1) * (Math.sin(i * 11 + r * 5 + c * 3) > 0 ? 1 : -1)
+}
+
+export function VizBpAccum({ phase }: { phase: number }) {
+  const speed = useSpeed()
+
+  // beat 1+ — "same W" frame visible
+  const sameWFrame = phase >= 1
+  // beat 2+ — average tile visible, sample tiles dim slightly
+  const showAvg = phase >= 2
+  // beat 3 — update box + arrow visible
+  const showUpdate = phase >= 3
+
+  return (
+    <svg viewBox={`0 0 ${BPA_VB_W} ${BPA_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="bpa-update-fill" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%" stopColor="rgba(245,158,11,0.10)" />
+          <stop offset="100%" stopColor="rgba(245,158,11,0.16)" />
+        </linearGradient>
+        <radialGradient id="bpa-avg-glow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor={ACCENT.mint} stopOpacity="0.55" />
+          <stop offset="60%" stopColor={ACCENT.mint} stopOpacity="0.16" />
+          <stop offset="100%" stopColor={ACCENT.mint} stopOpacity="0" />
+        </radialGradient>
+        <filter id="bpa-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* ===================== HEADER ===================== */}
+      <text
+        x={BPA_VB_W / 2}
+        y={62}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="13"
+        letterSpacing="0.32em"
+        fill={ACCENT.dim}
+      >
+        EVERY EXAMPLE VOTES · ONE BATCH · ONE UPDATE STEP
+      </text>
+      <text
+        x={BPA_VB_W / 2}
+        y={100}
+        textAnchor="middle"
+        fontFamily="var(--font-display, Georgia, serif)"
+        fontStyle="italic"
+        fontSize="24"
+        fill="rgba(255,255,255,0.85)"
+      >
+        Each example’s gradient is one vote; the batch average is the step.
+      </text>
+
+      {/* ===================== "SAME W" FRAME (beat 1+) ===================== */}
+      {/* A subtle bracket around the per-example tiles indicating they
+          are gradients for the SAME weight matrix. */}
+      <g
+        style={{
+          opacity: sameWFrame ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        <rect
+          x={BPA_TILES_X - 110}
+          y={bpaTileY(0) - 14}
+          width={BPA_TILE_W + 130}
+          height={BPA_B * BPA_TILE_PITCH - BPA_TILE_VGAP + 28}
+          rx={14}
+          fill="rgba(167,139,250,0.04)"
+          stroke="rgba(167,139,250,0.30)"
+          strokeWidth={1.2}
+          strokeDasharray="6 5"
+        />
+        <text
+          x={BPA_TILES_X - 110 + (BPA_TILE_W + 130) / 2}
+          y={bpaTileY(0) - 22}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.violet}
+        >
+          SAME  W  ·  DIFFERENT EXAMPLES
+        </text>
+      </g>
+
+      {/* ===================== PER-EXAMPLE GRADIENTS ===================== */}
+      {Array.from({ length: BPA_B }, (_, i) => {
+        const tileY = bpaTileY(i)
+        const dimWhenAvg = showAvg ? 0.55 : 1
+        const cascadeDelayS = i * 0.25
+        return (
+          <g
+            key={`s-${i}`}
+            style={{
+              opacity: dimWhenAvg,
+              transition: `opacity ${0.5 / speed}s ease`,
+            }}
+          >
+            {/* Sample label */}
+            <text
+              x={BPA_TILES_X - 14}
+              y={tileY + BPA_TILE_H / 2 - 6}
+              textAnchor="end"
+              fontFamily="var(--font-mono)"
+              fontSize="11"
+              letterSpacing="0.22em"
+              fill="rgba(255,255,255,0.55)"
+              style={{
+                opacity: 1,
+                transition: `opacity ${0.4 / speed}s ease ${cascadeDelayS / speed}s`,
+              }}
+            >
+              SAMPLE {i + 1}
+            </text>
+            <text
+              x={BPA_TILES_X - 14}
+              y={tileY + BPA_TILE_H / 2 + 16}
+              textAnchor="end"
+              fontFamily="var(--font-display, Georgia, serif)"
+              fontStyle="italic"
+              fontSize="20"
+              fill={ACCENT.red}
+              style={{
+                opacity: 1,
+                transition: `opacity ${0.4 / speed}s ease ${cascadeDelayS / speed}s`,
+              }}
+            >
+              ∇W
+              <tspan dy="-6" fontSize="13">{i + 1}</tspan>
+            </text>
+
+            {/* Tile cascading in (cell-by-cell) */}
+            <g
+              style={{
+                opacity: 1,
+                transition: `opacity ${0.4 / speed}s ease ${cascadeDelayS / speed}s`,
+              }}
+            >
+              <rect
+                x={BPA_TILES_X - 4}
+                y={tileY - 4}
+                width={BPA_TILE_W + 8}
+                height={BPA_TILE_H + 8}
+                rx={5}
+                fill="rgba(255,255,255,0.02)"
+                stroke="rgba(255,255,255,0.08)"
+                strokeWidth={1}
+              />
+              {Array.from({ length: BPA_GRID }, (_, r) =>
+                Array.from({ length: BPA_GRID }, (_, c) => {
+                  const m = bpaSampleMag(i, r, c)
+                  const sign = bpaSampleSign(i, r, c)
+                  const fill = sign > 0 ? ACCENT.red : ACCENT.blue
+                  return (
+                    <rect
+                      key={`s-${i}-${r}-${c}`}
+                      x={BPA_TILES_X + c * (BPA_TILE_CELL + BPA_TILE_GAP)}
+                      y={tileY + r * (BPA_TILE_CELL + BPA_TILE_GAP)}
+                      width={BPA_TILE_CELL}
+                      height={BPA_TILE_CELL}
+                      rx={2}
+                      fill={fill}
+                      opacity={m * 0.85}
+                    />
+                  )
+                }),
+              )}
+            </g>
+
+            {/* Outflow arrow toward the averaging operator */}
+            <line
+              x1={BPA_TILES_X + BPA_TILE_W + 8}
+              x2={BPA_OP_CX - BPA_OP_R - 6}
+              y1={tileY + BPA_TILE_H / 2}
+              y2={BPA_OP_CY}
+              stroke={ACCENT.dim}
+              strokeOpacity={0.45}
+              strokeWidth={1}
+              strokeDasharray="3 4"
+              style={{
+                opacity: sameWFrame ? 0.6 : 0,
+                transition: `opacity ${0.5 / speed}s ease`,
+              }}
+            />
+          </g>
+        )
+      })}
+
+      {/* ===================== AVERAGING OPERATOR (Σ / B) ===================== */}
+      <g>
+        {/* Soft halo */}
+        <circle
+          cx={BPA_OP_CX}
+          cy={BPA_OP_CY}
+          r={BPA_OP_R + 12}
+          fill={showAvg ? 'rgba(52,211,153,0.10)' : 'rgba(167,139,250,0.06)'}
+          style={{ transition: `fill ${0.5 / speed}s ease` }}
+        />
+        <circle
+          cx={BPA_OP_CX}
+          cy={BPA_OP_CY}
+          r={BPA_OP_R}
+          fill={showAvg ? 'rgba(52,211,153,0.18)' : 'rgba(255,255,255,0.04)'}
+          stroke={showAvg ? ACCENT.mint : 'rgba(255,255,255,0.30)'}
+          strokeWidth={1.6}
+          style={{ transition: `fill ${0.5 / speed}s ease, stroke ${0.5 / speed}s ease` }}
+        />
+        <text
+          x={BPA_OP_CX}
+          y={BPA_OP_CY - 4}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={showAvg ? ACCENT.mint : 'rgba(255,255,255,0.65)'}
+          style={{ transition: `fill ${0.5 / speed}s ease` }}
+        >
+          MEAN
+        </text>
+        <text
+          x={BPA_OP_CX}
+          y={BPA_OP_CY + 22}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="22"
+          fill={showAvg ? ACCENT.mint : 'rgba(255,255,255,0.78)'}
+          style={{ transition: `fill ${0.5 / speed}s ease` }}
+        >
+          (1/B) Σ
+        </text>
+      </g>
+
+      {/* Operator → averaged tile arrow */}
+      <line
+        x1={BPA_OP_CX + BPA_OP_R + 6}
+        x2={BPA_AVG_X - 6}
+        y1={BPA_OP_CY}
+        y2={BPA_OP_CY}
+        stroke={ACCENT.mint}
+        strokeWidth={1.4}
+        strokeDasharray="4 4"
+        style={{
+          opacity: showAvg ? 0.7 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      />
+      <polyline
+        points={`${BPA_AVG_X - 14},${BPA_OP_CY - 5} ${BPA_AVG_X - 6},${BPA_OP_CY} ${BPA_AVG_X - 14},${BPA_OP_CY + 5}`}
+        fill="none"
+        stroke={ACCENT.mint}
+        strokeWidth={1.6}
+        style={{
+          opacity: showAvg ? 0.8 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      />
+
+      {/* ===================== AVERAGED ∇W_batch TILE ===================== */}
+      <g
+        style={{
+          opacity: showAvg ? 1 : 0.15,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        <text
+          x={BPA_AVG_X + BPA_AVG_W / 2}
+          y={BPA_AVG_Y - 16}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.mint}
+        >
+          BATCH GRADIENT  ·  ∇W_batch
+        </text>
+        {/* halo */}
+        <rect
+          x={BPA_AVG_X - 18}
+          y={BPA_AVG_Y - 18}
+          width={BPA_AVG_W + 36}
+          height={BPA_AVG_W + 36}
+          rx={16}
+          fill="url(#bpa-avg-glow)"
+        />
+        <rect
+          x={BPA_AVG_X - 8}
+          y={BPA_AVG_Y - 8}
+          width={BPA_AVG_W + 16}
+          height={BPA_AVG_W + 16}
+          rx={10}
+          fill="rgba(52,211,153,0.06)"
+          stroke={ACCENT.mint}
+          strokeWidth={1.4}
+        />
+        {Array.from({ length: BPA_GRID }, (_, r) =>
+          Array.from({ length: BPA_GRID }, (_, c) => {
+            const m = bpaAvgMag(r, c)
+            return (
+              <rect
+                key={`avg-${r}-${c}`}
+                x={BPA_AVG_X + c * (BPA_AVG_CELL + BPA_AVG_GAP)}
+                y={BPA_AVG_Y + r * (BPA_AVG_CELL + BPA_AVG_GAP)}
+                width={BPA_AVG_CELL}
+                height={BPA_AVG_CELL}
+                rx={3}
+                fill={ACCENT.mint}
+                opacity={Math.max(0.25, m * 0.95)}
+              />
+            )
+          }),
+        )}
+        <text
+          x={BPA_AVG_X + BPA_AVG_W / 2}
+          y={BPA_AVG_Y + BPA_AVG_W + 30}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.18em"
+          fill={ACCENT.dim}
+        >
+          smoothed average — one direction to step
+        </text>
+      </g>
+
+      {/* ===================== UPDATE BOX (gold) ===================== */}
+      <g
+        style={{
+          opacity: showUpdate ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        {/* Arrow from averaged tile down to update box */}
+        <line
+          x1={BPA_AVG_X + BPA_AVG_W / 2}
+          x2={BPA_UPDATE_X + BPA_UPDATE_W / 2}
+          y1={BPA_AVG_Y + BPA_AVG_W + 50}
+          y2={BPA_UPDATE_Y - 10}
+          stroke={ACCENT.amber}
+          strokeWidth={1.6}
+          strokeDasharray="5 5"
+        />
+        <polyline
+          points={`${BPA_UPDATE_X + BPA_UPDATE_W / 2 - 6},${BPA_UPDATE_Y - 16} ${BPA_UPDATE_X + BPA_UPDATE_W / 2},${BPA_UPDATE_Y - 6} ${BPA_UPDATE_X + BPA_UPDATE_W / 2 + 6},${BPA_UPDATE_Y - 16}`}
+          fill="none"
+          stroke={ACCENT.amber}
+          strokeWidth={1.7}
+        />
+
+        <rect
+          x={BPA_UPDATE_X}
+          y={BPA_UPDATE_Y}
+          width={BPA_UPDATE_W}
+          height={BPA_UPDATE_H}
+          rx={14}
+          fill="url(#bpa-update-fill)"
+          stroke={ACCENT.amber}
+          strokeWidth={1.6}
+          filter="url(#bpa-glow)"
+        />
+        <text
+          x={BPA_UPDATE_X + 22}
+          y={BPA_UPDATE_Y + 32}
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.amber}
+        >
+          ONE OPTIMIZER STEP
+        </text>
+        <text
+          x={BPA_UPDATE_X + BPA_UPDATE_W / 2}
+          y={BPA_UPDATE_Y + 92}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="38"
+          fill={ACCENT.amber}
+        >
+          W ← W − <tspan fill={ACCENT.amber} fontWeight={500}>η</tspan>
+          {' · '}
+          <tspan fill={ACCENT.mint}>∇W_batch</tspan>
+        </text>
+      </g>
+
+      {/* ===================== ENDING CAPTION ===================== */}
+      <g
+        style={{
+          opacity: showUpdate ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease ${0.4 / speed}s`,
+        }}
+      >
+        <text
+          x={BPA_VB_W / 2}
+          y={BPA_VB_H - 76}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="20"
+          fill={ACCENT.mint}
+        >
+          One averaged gradient → one optimizer step.
+        </text>
+      </g>
+
+      {/* ===================== BEAT INDICATOR ===================== */}
+      <g transform={`translate(${BPA_VB_W / 2}, ${BPA_VB_H - 30})`}>
+        {(['per-example ∇W', 'same W, different examples', 'mean → ∇W_batch', 'one update step'] as const).map((label, i) => {
+          const w = 220
+          const gap = 14
+          const total = 4 * w + 3 * gap
+          const startX = -total / 2
+          const cx = startX + i * (w + gap) + w / 2
+          const active = i === phase
+          return (
+            <g key={`bpa-beat-${i}`} transform={`translate(${cx}, 0)`}>
+              <rect
+                x={-w / 2}
+                y={-12}
+                width={w}
+                height={24}
+                rx={12}
+                fill={active ? 'rgba(52,211,153,0.18)' : 'rgba(255,255,255,0.02)'}
+                stroke={active ? ACCENT.mint : ACCENT.rule}
+                strokeWidth={1.2}
+                style={{ transition: `fill ${0.3 / speed}s ease, stroke ${0.3 / speed}s ease` }}
+              />
+              <text
+                x={0}
+                y={4}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="10"
+                letterSpacing="0.18em"
+                fill={active ? ACCENT.mint : ACCENT.dim}
+                style={{ transition: `fill ${0.3 / speed}s ease` }}
+              >
+                {label.toUpperCase()}
+              </text>
+            </g>
+          )
+        })}
+      </g>
+    </svg>
+  )
+}
+
+export function BpAccumulationSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 4
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      4500 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const phaseLabels = [
+    'per-example ∇W',
+    'same W, different examples',
+    'mean → ∇W_batch',
+    'one update step',
+  ]
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      Backprop just produced <em>∂L/∂W</em> for every weight in the
+      model. But the loss was a batch loss — so each example in the
+      batch produced its own gradient estimate for every weight matrix.
+    </>,
+    <>
+      All four of these are gradients of the <em>same</em> weight matrix
+      W — just measured against different examples. Different examples
+      vote for slightly different directions; that disagreement is
+      gradient noise.
+    </>,
+    <>
+      Average them: <em>∇W_batch = (1/B) Σᵢ ∇Wᵢ</em>. The mean is
+      smoother than any individual gradient — that&apos;s why batching
+      gives a more reliable update direction.
+    </>,
+    <>
+      That single averaged direction drives one optimizer step:{' '}
+      <em>W ← W − η · ∇W_batch</em>. The next scenes show what happens
+      when you turn that step into a sequence — gradient descent.
+    </>,
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'One backward pass through the batched forward graph yields B per-example gradients per weight, all at once. PyTorch sums them by default; setting reduction="mean" averages.',
+    'Same weight matrix, different vote. Each example pushes W in the direction that would reduce its own loss — the batch finds the consensus push.',
+    'Smaller batches mean noisier gradients (more variance per cell), which can actually help generalization. Bigger batches mean cleaner gradients, but each step costs more compute. Tuning B is half of training-recipe folklore.',
+    'η is the learning rate — the size of the step we take in the averaged-gradient direction. Real optimizers like Adam also rescale this direction per-parameter. Scene 27 covers gradient descent; Scene 28 introduces Adam.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizBpAccum phase={phase} />}
+      text={{
+        kicker: 'ACT IV · BACKPROP · BATCHED',
+        title: 'Gradients average across the batch.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.mint,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.mint}
+          />
+        ),
+        stats: [
+          { label: 'votes / batch', value: `B = ${BPA_B}`, color: ACCENT.violet },
+          { label: 'per example', value: '∇Wᵢ', color: ACCENT.red },
+          { label: 'averaged', value: '∇W_batch', color: ACCENT.mint },
+          { label: 'step', value: 'W ← W − η·∇W_batch', color: ACCENT.amber },
+        ],
+        equation: {
+          label: 'one rule, B votes',
+          body: <>∇W_batch = (1/B) · Σᵢ ∇Wᵢ</>,
+        },
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}
