@@ -26,7 +26,6 @@ import {
 import {
   IntroColdOpenPanel,
   ActFramingPanel,
-  Act4LossOverlay,
   Act6LogitOverlay,
 } from './introScenes'
 import {
@@ -66,6 +65,7 @@ import {
   SampleSplitPane,
   KVCacheSplitPane,
 } from './act3Scenes'
+import { Act4IntroSplitPane } from './act4Scenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -476,9 +476,10 @@ This is the single biggest optimization behind fast generation. It's also why co
     title: 'How the weights got there.',
     caption: 'The model above was trained. Here is what "trained" means.',
     accent: ACCENT.amber,
-    durationMs: 12000,
+    durationMs: 14000,
     details: `Training means: run a forward pass, measure how wrong the prediction was (loss), compute which weights are to blame (backprop), nudge them slightly (gradient descent). Repeat a few hundred thousand times.`,
-    render: () => <Act4LossOverlay />,
+    render: () => <Act4IntroSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   // ── LOSS ──
   {

@@ -821,64 +821,6 @@ export function ActFramingPanel({
   )
 }
 
-/** --- Act 4: Training — miniature loss curve sketches in beside the tower --- */
-
-export function Act4LossOverlay() {
-  const speed = useSpeed()
-  const points = [
-    [0, 90], [60, 70], [120, 55], [180, 46], [240, 40],
-    [300, 36], [360, 33], [420, 31], [480, 30], [540, 29.5],
-  ]
-  const d = points
-    .map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x} ${y}`)
-    .join(' ')
-
-  return (
-    <div className="relative flex h-full w-full items-center justify-center">
-      <motion.div
-        className="flex flex-col items-center gap-3 text-center"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 / speed, duration: 0.6 / speed, ease: 'easeOut' }}
-      >
-        <div className="font-mono text-[10px] tracking-[0.24em] uppercase" style={{ color: ACCENT.amber }}>
-          Act IV
-        </div>
-        <div className="font-serif italic text-[28px] leading-tight" style={{ color: FG, maxWidth: 640 }}>
-          How the weights got there.
-        </div>
-
-        <svg width={560} height={120} viewBox="0 0 560 120" className="mt-3">
-          <defs>
-            <linearGradient id="loss-fill" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor={ACCENT.amber} stopOpacity="0.35" />
-              <stop offset="100%" stopColor={ACCENT.amber} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <motion.path
-            d={d}
-            fill="none"
-            stroke={ACCENT.amber}
-            strokeWidth={2}
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ delay: 1.0 / speed, duration: 3.0 / speed, ease: 'easeOut' }}
-          />
-          <motion.path
-            d={`${d} L 540 100 L 0 100 Z`}
-            fill="url(#loss-fill)"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 3.6 / speed, duration: 0.8 / speed }}
-          />
-          <text x={6} y={12} fontSize={9} fontFamily="var(--font-mono)" fill={DIM}>loss</text>
-          <text x={520} y={115} fontSize={9} fontFamily="var(--font-mono)" fill={DIM}>iters →</text>
-        </svg>
-      </motion.div>
-    </div>
-  )
-}
-
 /** --- Act 6: Output — a logit distribution sketches in --- */
 
 export function Act6LogitOverlay() {
