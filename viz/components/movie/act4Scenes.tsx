@@ -6262,7 +6262,7 @@ export function GdRavineSplitPane() {
  *            squared grads, step ≈ m/√v. Closing line.
  * ====================================================================== */
 
-const ADAM_STEPS = 24
+const ADAM_STEPS = 28
 
 // Run the same vanilla GD as Scene 28 (kept in sync) so we can show its
 // stalled trail as a recap.
@@ -6281,12 +6281,23 @@ const ADAM_VANILLA_TRAIL: Array<{ w1: number; w2: number; sx: number; sy: number
   return out
 })()
 
-// Adam optimizer on the same loss. Standard Adam with β₁=0.9, β₂=0.999,
-// ε=1e-8, η=0.18. Tuned so the cyan path reaches the basin in ADAM_STEPS.
-const ADAM_BETA1 = 0.9
+// Adam on the same loss. Using β₁ = 0.85 (slightly less momentum than
+// the 0.9 default) plus a linear LR-decay schedule (0.22 → 0.08) so the
+// cyan path actually lands at the basin within ADAM_STEPS. With β₁=0.9
+// and a fixed η, momentum carries the path past the minimum and orbits
+// around it for many extra steps — accurate Adam, but visually it
+// looks like it doesn't "reach" the green dot. The slightly-damped
+// schedule preserves Adam's character (momentum + per-direction
+// scaling) while landing the lesson.
+const ADAM_BETA1 = 0.85
 const ADAM_BETA2 = 0.999
 const ADAM_EPS = 1e-8
-const ADAM_LR = 0.18
+const ADAM_LR0 = 0.22
+const ADAM_LR_END = 0.08
+function adamLrAt(k: number): number {
+  const f = Math.min(1, Math.max(0, k / ADAM_STEPS))
+  return ADAM_LR0 + (ADAM_LR_END - ADAM_LR0) * f
+}
 
 const ADAM_TRAIL: Array<{
   w1: number
@@ -6317,8 +6328,9 @@ const ADAM_TRAIL: Array<{
     const m2Hat = m2 / (1 - Math.pow(ADAM_BETA1, t))
     const v1Hat = v1 / (1 - Math.pow(ADAM_BETA2, t))
     const v2Hat = v2 / (1 - Math.pow(ADAM_BETA2, t))
-    w1 -= (ADAM_LR * m1Hat) / (Math.sqrt(v1Hat) + ADAM_EPS)
-    w2 -= (ADAM_LR * m2Hat) / (Math.sqrt(v2Hat) + ADAM_EPS)
+    const lr = adamLrAt(k)
+    w1 -= (lr * m1Hat) / (Math.sqrt(v1Hat) + ADAM_EPS)
+    w2 -= (lr * m2Hat) / (Math.sqrt(v2Hat) + ADAM_EPS)
   }
   return out
 })()
@@ -6948,8 +6960,8 @@ export function GdAdamSplitPane() {
           { label: 'w₂  (across)', value: cur.w2.toFixed(2), color: ACCENT.cyan },
           { label: 'loss', value: cur.loss.toFixed(3), color: ACCENT.amber },
           { label: 'step', value: `${safeIdx} / ${ADAM_STEPS}` },
-          { label: 'effective η₁', value: (ADAM_LR / (Math.sqrt(cur.v1 / Math.max(1e-12, 1 - Math.pow(ADAM_BETA2, Math.max(1, safeIdx)))) + ADAM_EPS)).toFixed(3), color: ACCENT.cyan },
-          { label: 'effective η₂', value: (ADAM_LR / (Math.sqrt(cur.v2 / Math.max(1e-12, 1 - Math.pow(ADAM_BETA2, Math.max(1, safeIdx)))) + ADAM_EPS)).toFixed(3), color: ACCENT.red },
+          { label: 'effective η₁', value: (adamLrAt(safeIdx) / (Math.sqrt(cur.v1 / Math.max(1e-12, 1 - Math.pow(ADAM_BETA2, Math.max(1, safeIdx)))) + ADAM_EPS)).toFixed(3), color: ACCENT.cyan },
+          { label: 'effective η₂', value: (adamLrAt(safeIdx) / (Math.sqrt(cur.v2 / Math.max(1e-12, 1 - Math.pow(ADAM_BETA2, Math.max(1, safeIdx)))) + ADAM_EPS)).toFixed(3), color: ACCENT.red },
         ],
         equation: {
           label: 'one rule, per-direction step',
