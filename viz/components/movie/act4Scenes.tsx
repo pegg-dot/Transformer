@@ -2397,3 +2397,699 @@ export function CELossBatchSplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 24 — backprop: "The gradient flows back."
+ *
+ * Take the single scalar L_batch from Scene 23 and show how it becomes
+ * a backward-moving gradient signal that traverses the (already-run)
+ * model and produces ∂L/∂W at every block.
+ *
+ * Visual: a 6-block corridor in faint isometric perspective with the
+ * input slab at the left and the gold loss node at the right. Forward
+ * arrows ghost in blue along the top to remind the viewer that the
+ * forward pass has already finished and activations are saved.
+ *
+ * Then a red pulse leaves the loss and sweeps right-to-left. As it
+ * passes each block the block re-tints red, a small ∂L/∂W glyph appears
+ * above it, and the pulse continues to the previous block. By the end
+ * every block has its own gradient artifact and the loss has reached
+ * the input. The caption locks in: "One backward pass computes
+ * gradients for every weight."
+ *
+ * Three phases:
+ *   beat 0 — forward, done. Blue corridor with saved activations,
+ *            gold loss at right (L_batch = 1.59 from Scene 23).
+ *   beat 1 — backward sweep. Red pulse traverses, blocks turn red one
+ *            by one, ∂L/∂W glyphs reveal in sequence.
+ *   beat 2 — all gradients in. Steady-state showing every block with
+ *            its gradient and the closing line.
+ * ====================================================================== */
+
+const BP_VB_W = 1400
+const BP_VB_H = 1000
+
+const BP_BLOCKS = 6
+const BP_BLOCK_W = 132
+const BP_BLOCK_GAP = 22
+const BP_BLOCK_H = 280
+const BP_BLOCK_Y = 240
+const BP_BLOCK_DEPTH = 18 // small isometric offset
+
+const BP_INPUT_X = 90
+const BP_INPUT_W = 92
+const BP_OUTPUT_X = 1130
+const BP_OUTPUT_W = 92
+
+// 6 blocks centered between input and output
+const BP_GRID_X = BP_INPUT_X + BP_INPUT_W + 28
+const BP_GRID_W = BP_BLOCKS * BP_BLOCK_W + (BP_BLOCKS - 1) * BP_BLOCK_GAP
+// Block i x:
+const bpBlockX = (i: number) => BP_GRID_X + i * (BP_BLOCK_W + BP_BLOCK_GAP)
+
+const BP_LOSS_X = 1240
+const BP_LOSS_Y = BP_BLOCK_Y + BP_BLOCK_H / 2
+const BP_LOSS_R = 60
+
+const BP_PULSE_Y = BP_BLOCK_Y + BP_BLOCK_H + 40
+const BP_PULSE_START_X = BP_LOSS_X
+const BP_PULSE_END_X = BP_INPUT_X + BP_INPUT_W / 2
+
+// L_batch carried over from Scene 23
+const BP_LBATCH = 1.59
+
+export function VizBackprop({ phase }: { phase: number }) {
+  const speed = useSpeed()
+
+  // beat 0 — forward state, no pulse
+  // beat 1 — pulse sweeps, blocks light red one by one
+  // beat 2 — all blocks red, pulse is gone (re-emerges at input side)
+  const showForward = phase >= 0
+  const sweepStarted = phase >= 1
+  const sweepDone = phase >= 2
+
+  // Per-block "lit" timing during the sweep. The pulse leaves the loss
+  // at sweep start and reaches block i after (BP_BLOCKS - i) * step.
+  const SWEEP_TOTAL_S = 3.4 // seconds
+  const stepS = SWEEP_TOTAL_S / (BP_BLOCKS + 1)
+
+  // Saved-activations grid inside each block (4 cols × 6 rows). Pure
+  // decoration — always faintly visible to suggest stored state.
+  const ACT_COLS = 4
+  const ACT_ROWS = 6
+
+  return (
+    <svg viewBox={`0 0 ${BP_VB_W} ${BP_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="bp-block-fwd" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={ACCENT.blue} stopOpacity="0.22" />
+          <stop offset="100%" stopColor={ACCENT.blue} stopOpacity="0.06" />
+        </linearGradient>
+        <linearGradient id="bp-block-back" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={ACCENT.red} stopOpacity="0.32" />
+          <stop offset="100%" stopColor={ACCENT.red} stopOpacity="0.10" />
+        </linearGradient>
+        <radialGradient id="bp-loss-glow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor={ACCENT.amber} stopOpacity="0.85" />
+          <stop offset="60%" stopColor={ACCENT.amber} stopOpacity="0.35" />
+          <stop offset="100%" stopColor={ACCENT.amber} stopOpacity="0" />
+        </radialGradient>
+        <filter id="bp-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3.5" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* ===================== HEADER ===================== */}
+      <text
+        x={BP_VB_W / 2}
+        y={70}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="13"
+        letterSpacing="0.32em"
+        fill={ACCENT.dim}
+      >
+        ONE LOSS · ONE BACKWARD PASS · ONE ∂L/∂W PER LAYER
+      </text>
+      <text
+        x={BP_VB_W / 2}
+        y={108}
+        textAnchor="middle"
+        fontFamily="var(--font-display, Georgia, serif)"
+        fontStyle="italic"
+        fontSize="26"
+        fill="rgba(255,255,255,0.85)"
+      >
+        The error signal walks back through saved activations.
+      </text>
+
+      {/* ===================== FORWARD ARROW (top) ===================== */}
+      <g
+        style={{
+          opacity: showForward ? 0.55 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        <text
+          x={BP_INPUT_X}
+          y={BP_BLOCK_Y - 36}
+          fontFamily="var(--font-mono)"
+          fontSize="10"
+          letterSpacing="0.22em"
+          fill={ACCENT.blue}
+        >
+          FORWARD · activations saved
+        </text>
+        <line
+          x1={BP_INPUT_X}
+          x2={BP_OUTPUT_X + BP_OUTPUT_W}
+          y1={BP_BLOCK_Y - 18}
+          y2={BP_BLOCK_Y - 18}
+          stroke={ACCENT.blue}
+          strokeOpacity={0.5}
+          strokeWidth={1.2}
+          strokeDasharray="6 5"
+        />
+        <polyline
+          points={`${BP_OUTPUT_X + BP_OUTPUT_W - 8},${BP_BLOCK_Y - 22} ${BP_OUTPUT_X + BP_OUTPUT_W},${BP_BLOCK_Y - 18} ${BP_OUTPUT_X + BP_OUTPUT_W - 8},${BP_BLOCK_Y - 14}`}
+          fill="none"
+          stroke={ACCENT.blue}
+          strokeWidth={1.4}
+          strokeOpacity={0.7}
+        />
+      </g>
+
+      {/* ===================== INPUT SLAB ===================== */}
+      <g>
+        <rect
+          x={BP_INPUT_X}
+          y={BP_BLOCK_Y + 30}
+          width={BP_INPUT_W}
+          height={BP_BLOCK_H - 60}
+          rx={6}
+          fill="rgba(96,165,250,0.10)"
+          stroke={ACCENT.blue}
+          strokeOpacity={0.45}
+          strokeWidth={1}
+        />
+        <text
+          x={BP_INPUT_X + BP_INPUT_W / 2}
+          y={BP_BLOCK_Y + BP_BLOCK_H / 2 - 4}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="13"
+          fill={ACCENT.blue}
+          letterSpacing="0.18em"
+        >
+          INPUT
+        </text>
+        <text
+          x={BP_INPUT_X + BP_INPUT_W / 2}
+          y={BP_BLOCK_Y + BP_BLOCK_H / 2 + 18}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          fill="rgba(255,255,255,0.55)"
+        >
+          tokens
+        </text>
+      </g>
+
+      {/* ===================== TRANSFORMER BLOCKS ===================== */}
+      {Array.from({ length: BP_BLOCKS }, (_, i) => {
+        const x = bpBlockX(i)
+        // Lit when the right-to-left pulse has reached this block.
+        // Block at index BP_BLOCKS-1 (rightmost) lights first.
+        const litDelayS = (BP_BLOCKS - 1 - i) * stepS + 0.15
+        const lit = sweepStarted // CSS transition with delay handles timing
+
+        return (
+          <g key={`block-${i}`}>
+            {/* Isometric "back face" — small offset rect for depth */}
+            <rect
+              x={x + BP_BLOCK_DEPTH}
+              y={BP_BLOCK_Y - BP_BLOCK_DEPTH}
+              width={BP_BLOCK_W}
+              height={BP_BLOCK_H}
+              rx={6}
+              fill="rgba(255,255,255,0.02)"
+              stroke="rgba(255,255,255,0.05)"
+              strokeWidth={1}
+            />
+
+            {/* Front face — switches fill from forward (blue) to back (red) */}
+            <rect
+              x={x}
+              y={BP_BLOCK_Y}
+              width={BP_BLOCK_W}
+              height={BP_BLOCK_H}
+              rx={8}
+              fill={lit ? 'url(#bp-block-back)' : 'url(#bp-block-fwd)'}
+              stroke={lit ? ACCENT.red : ACCENT.blue}
+              strokeOpacity={0.7}
+              strokeWidth={1.4}
+              style={{
+                transition: `fill ${0.35 / speed}s ease ${litDelayS / speed}s, stroke ${0.35 / speed}s ease ${litDelayS / speed}s`,
+              }}
+            />
+
+            {/* Block label */}
+            <text
+              x={x + BP_BLOCK_W / 2}
+              y={BP_BLOCK_Y + 30}
+              textAnchor="middle"
+              fontFamily="var(--font-mono)"
+              fontSize="11"
+              letterSpacing="0.22em"
+              fill={ACCENT.dim}
+            >
+              BLOCK {i}
+            </text>
+
+            {/* Saved-activations mini grid — faint mint tiles inside the
+                block. Reads as "this block holds its forward state." */}
+            <g transform={`translate(${x + BP_BLOCK_W / 2 - (ACT_COLS * 14) / 2}, ${BP_BLOCK_Y + 60})`}>
+              {Array.from({ length: ACT_ROWS }, (_, r) =>
+                Array.from({ length: ACT_COLS }, (_, c) => {
+                  const cellSeed = i * 31 + r * 7 + c * 3
+                  const a = 0.18 + ((Math.sin(cellSeed) + 1) / 2) * 0.45
+                  return (
+                    <rect
+                      key={`act-${r}-${c}`}
+                      x={c * 14}
+                      y={r * 14}
+                      width={11}
+                      height={11}
+                      rx={1.5}
+                      fill={ACCENT.mint}
+                      opacity={a}
+                    />
+                  )
+                }),
+              )}
+            </g>
+            <text
+              x={x + BP_BLOCK_W / 2}
+              y={BP_BLOCK_Y + 60 + ACT_ROWS * 14 + 16}
+              textAnchor="middle"
+              fontFamily="var(--font-mono)"
+              fontSize="9"
+              letterSpacing="0.18em"
+              fill="rgba(52,211,153,0.55)"
+            >
+              saved a_{i}
+            </text>
+
+            {/* Weights "card" inside the block — lights up red when this
+                block computes its ∂L/∂W. */}
+            <g transform={`translate(${x + 14}, ${BP_BLOCK_Y + BP_BLOCK_H - 64})`}>
+              <rect
+                x={0}
+                y={0}
+                width={BP_BLOCK_W - 28}
+                height={48}
+                rx={5}
+                fill={lit ? 'rgba(248,113,113,0.18)' : 'rgba(255,255,255,0.03)'}
+                stroke={lit ? ACCENT.red : 'rgba(255,255,255,0.10)'}
+                strokeWidth={1.2}
+                style={{
+                  transition: `fill ${0.35 / speed}s ease ${litDelayS / speed}s, stroke ${0.35 / speed}s ease ${litDelayS / speed}s`,
+                }}
+              />
+              <text
+                x={(BP_BLOCK_W - 28) / 2}
+                y={20}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="10"
+                letterSpacing="0.2em"
+                fill={lit ? ACCENT.red : ACCENT.dim}
+                style={{
+                  transition: `fill ${0.35 / speed}s ease ${litDelayS / speed}s`,
+                }}
+              >
+                W_{i}
+              </text>
+              <text
+                x={(BP_BLOCK_W - 28) / 2}
+                y={38}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="9"
+                fill={lit ? ACCENT.red : ACCENT.dim}
+                style={{
+                  transition: `fill ${0.35 / speed}s ease ${litDelayS / speed}s`,
+                }}
+              >
+                {lit ? '∂L/∂W ready' : 'weights'}
+              </text>
+            </g>
+
+            {/* ∂L/∂W glyph above the block — the local-gradient artifact */}
+            <g
+              style={{
+                opacity: lit ? 1 : 0,
+                transition: `opacity ${0.4 / speed}s ease ${(litDelayS + 0.05) / speed}s`,
+              }}
+            >
+              <line
+                x1={x + BP_BLOCK_W / 2}
+                x2={x + BP_BLOCK_W / 2}
+                y1={BP_BLOCK_Y - 6}
+                y2={BP_BLOCK_Y - 56}
+                stroke={ACCENT.red}
+                strokeWidth={1.3}
+                strokeDasharray="3 4"
+              />
+              <rect
+                x={x + BP_BLOCK_W / 2 - 38}
+                y={BP_BLOCK_Y - 86}
+                width={76}
+                height={32}
+                rx={6}
+                fill="rgba(248,113,113,0.16)"
+                stroke={ACCENT.red}
+                strokeWidth={1.2}
+              />
+              <text
+                x={x + BP_BLOCK_W / 2}
+                y={BP_BLOCK_Y - 65}
+                textAnchor="middle"
+                fontFamily="var(--font-display, Georgia, serif)"
+                fontStyle="italic"
+                fontSize="14"
+                fill={ACCENT.red}
+              >
+                ∂L/∂W_{i}
+              </text>
+            </g>
+          </g>
+        )
+      })}
+
+      {/* ===================== OUTPUT / LOGITS COLUMN ===================== */}
+      <g>
+        <rect
+          x={BP_OUTPUT_X}
+          y={BP_BLOCK_Y + 30}
+          width={BP_OUTPUT_W}
+          height={BP_BLOCK_H - 60}
+          rx={6}
+          fill="rgba(96,165,250,0.08)"
+          stroke={ACCENT.blue}
+          strokeOpacity={0.4}
+          strokeWidth={1}
+        />
+        <text
+          x={BP_OUTPUT_X + BP_OUTPUT_W / 2}
+          y={BP_BLOCK_Y + BP_BLOCK_H / 2 - 4}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="12"
+          fill={ACCENT.blue}
+          letterSpacing="0.18em"
+        >
+          LOGITS
+        </text>
+        <text
+          x={BP_OUTPUT_X + BP_OUTPUT_W / 2}
+          y={BP_BLOCK_Y + BP_BLOCK_H / 2 + 18}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="10"
+          fill="rgba(255,255,255,0.55)"
+        >
+          → softmax → CE
+        </text>
+      </g>
+
+      {/* ===================== LOSS NODE ===================== */}
+      <g>
+        {/* Outer halo (always visible, slightly larger) */}
+        <circle
+          cx={BP_LOSS_X}
+          cy={BP_LOSS_Y}
+          r={BP_LOSS_R + 10}
+          fill="url(#bp-loss-glow)"
+          opacity={0.55}
+        />
+        <circle
+          cx={BP_LOSS_X}
+          cy={BP_LOSS_Y}
+          r={BP_LOSS_R}
+          fill="rgba(245,158,11,0.18)"
+          stroke={ACCENT.amber}
+          strokeWidth={1.6}
+          filter="url(#bp-glow)"
+        />
+        <text
+          x={BP_LOSS_X}
+          y={BP_LOSS_Y - 8}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="10"
+          letterSpacing="0.22em"
+          fill={ACCENT.amber}
+        >
+          L_BATCH
+        </text>
+        <text
+          x={BP_LOSS_X}
+          y={BP_LOSS_Y + 20}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="28"
+          fill={ACCENT.amber}
+        >
+          {BP_LBATCH.toFixed(2)}
+        </text>
+      </g>
+
+      {/* ===================== BACKWARD PULSE ===================== */}
+      {/* The protagonist of the scene. A red glowing dot starts at the
+          loss and animates to the input over SWEEP_TOTAL_S seconds. */}
+      <g
+        style={{
+          opacity: sweepStarted && !sweepDone ? 1 : 0,
+          transition: `opacity ${0.3 / speed}s ease`,
+        }}
+      >
+        <circle
+          cx={BP_PULSE_END_X}
+          cy={BP_PULSE_Y}
+          r={10}
+          fill={ACCENT.red}
+          filter="url(#bp-glow)"
+          style={{
+            transform: sweepStarted
+              ? `translateX(0px)`
+              : `translateX(${BP_PULSE_START_X - BP_PULSE_END_X}px)`,
+            transition: sweepStarted
+              ? `transform ${SWEEP_TOTAL_S / speed}s linear`
+              : 'none',
+          }}
+        />
+      </g>
+
+      {/* Backward arrow lane */}
+      <g
+        style={{
+          opacity: sweepStarted ? 1 : 0,
+          transition: `opacity ${0.4 / speed}s ease`,
+        }}
+      >
+        <line
+          x1={BP_PULSE_END_X}
+          x2={BP_PULSE_START_X}
+          y1={BP_PULSE_Y}
+          y2={BP_PULSE_Y}
+          stroke={ACCENT.red}
+          strokeOpacity={0.4}
+          strokeWidth={1.4}
+          strokeDasharray="5 5"
+        />
+        <polyline
+          points={`${BP_PULSE_END_X + 8},${BP_PULSE_Y - 5} ${BP_PULSE_END_X},${BP_PULSE_Y} ${BP_PULSE_END_X + 8},${BP_PULSE_Y + 5}`}
+          fill="none"
+          stroke={ACCENT.red}
+          strokeWidth={1.5}
+          strokeOpacity={0.85}
+        />
+        <text
+          x={BP_VB_W / 2}
+          y={BP_PULSE_Y + 28}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.red}
+        >
+          BACKWARD ·  ∂L flowing right → left
+        </text>
+      </g>
+
+      {/* ===================== CHAIN-RULE MICRO-LABEL ===================== */}
+      {/* Show the math attached to the moving object, not floating off. */}
+      <g
+        style={{
+          opacity: sweepStarted ? 1 : 0,
+          transition: `opacity ${0.4 / speed}s ease ${0.6 / speed}s`,
+        }}
+      >
+        <text
+          x={BP_VB_W / 2}
+          y={BP_BLOCK_Y + BP_BLOCK_H + 100}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="20"
+          fill="rgba(255,255,255,0.78)"
+        >
+          ∂L/∂x_l = ∂L/∂x_<tspan dy="-4" fontSize="14">l+1</tspan>
+          <tspan dy="4"> · ∂x_</tspan>
+          <tspan dy="-4" fontSize="14">l+1</tspan>
+          <tspan dy="4">/∂x_l</tspan>
+        </text>
+        <text
+          x={BP_VB_W / 2}
+          y={BP_BLOCK_Y + BP_BLOCK_H + 124}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.dim}
+        >
+          INCOMING GRADIENT × LOCAL DERIVATIVE = OUTGOING GRADIENT (+ ∂L/∂W FOR THIS LAYER)
+        </text>
+      </g>
+
+      {/* ===================== ENDING CAPTION ===================== */}
+      <g
+        style={{
+          opacity: sweepDone ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        <text
+          x={BP_VB_W / 2}
+          y={BP_VB_H - 110}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="22"
+          fill={ACCENT.red}
+        >
+          One backward pass → one ∂L/∂W per layer.
+        </text>
+        <text
+          x={BP_VB_W / 2}
+          y={BP_VB_H - 84}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.dim}
+        >
+          NEXT: THE OPTIMIZER USES THESE GRADIENTS TO STEP THE WEIGHTS
+        </text>
+      </g>
+
+      {/* ===================== BEAT INDICATOR ===================== */}
+      <g transform={`translate(${BP_VB_W / 2}, ${BP_VB_H - 36})`}>
+        {(['forward · saved', 'backward sweep', 'all gradients in'] as const).map((label, i) => {
+          const w = 220
+          const gap = 18
+          const total = 3 * w + 2 * gap
+          const startX = -total / 2
+          const cx = startX + i * (w + gap) + w / 2
+          const active = i === phase
+          return (
+            <g key={`bp-beat-${i}`} transform={`translate(${cx}, 0)`}>
+              <rect
+                x={-w / 2}
+                y={-16}
+                width={w}
+                height={32}
+                rx={16}
+                fill={active ? 'rgba(248,113,113,0.18)' : 'rgba(255,255,255,0.02)'}
+                stroke={active ? ACCENT.red : ACCENT.rule}
+                strokeWidth={1.4}
+                style={{ transition: `fill ${0.3 / speed}s ease, stroke ${0.3 / speed}s ease` }}
+              />
+              <text
+                x={0}
+                y={4}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="11"
+                letterSpacing="0.18em"
+                fill={active ? ACCENT.red : ACCENT.dim}
+                style={{ transition: `fill ${0.3 / speed}s ease` }}
+              >
+                {label.toUpperCase()}
+              </text>
+            </g>
+          )
+        })}
+      </g>
+    </svg>
+  )
+}
+
+export function BackpropSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 3
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      6000 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const phaseLabels = ['forward · saved', 'backward sweep', 'all gradients in']
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      Scene 23 produced one scalar: <em>L_batch</em> = {BP_LBATCH.toFixed(2)}.
+      The forward pass already ran and every block kept its activations
+      around. Now the gradient signal will travel back through that same
+      chain.
+    </>,
+    <>
+      A red error pulse leaves the loss and sweeps right-to-left. As it
+      reaches each block, that block uses its saved activations and a
+      local Jacobian to compute <em>∂L/∂W</em> for its own weights and
+      the incoming gradient for the layer to its left.
+    </>,
+    <>
+      Every layer ends up with its own ∂L/∂W. The model itself didn&apos;t
+      run backward — the <em>error signal</em> propagated backward through
+      the computation graph. The next two scenes zoom into one block&apos;s
+      Jacobian and into batched gradient accumulation.
+    </>,
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'Without saved activations there is no backprop. Frameworks like PyTorch and JAX track the forward graph automatically; tinygrad does it manually but in <500 lines.',
+    'Chain rule, mechanically: incoming gradient × local derivative = outgoing gradient + a term for ∂L/∂W. Every layer only needs to know its own local Jacobian — the chain-rule plumbing handles the rest.',
+    'For a 12-block GPT-2 small with ~125M parameters, one backward pass touches every one of those parameters and produces 125M scalar gradients. Each one tells the optimizer how to nudge that weight to make L_batch smaller.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizBackprop phase={phase} />}
+      text={{
+        kicker: 'ACT IV · BACKPROP · OVERVIEW',
+        title: 'The gradient flows back.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.red,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.red}
+          />
+        ),
+        stats: [
+          { label: 'starts at', value: `L_batch = ${BP_LBATCH.toFixed(2)}`, color: ACCENT.amber },
+          { label: 'direction', value: 'right → left', color: ACCENT.red },
+          { label: 'per block', value: '∂L/∂W_i', color: ACCENT.red },
+          { label: 'depends on', value: 'saved acts', color: ACCENT.mint },
+        ],
+        equation: {
+          label: 'chain rule, layer by layer',
+          body: <>∂L/∂W_l = ∂L/∂y · ∂y/∂W_l</>,
+        },
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}

@@ -321,34 +321,6 @@ export function PanelEmbed() {
   )
 }
 
-/* ─────────── Act IV — Backprop ─────────── */
-export function PanelBackprop() {
-  return (
-    <Panel
-      kicker="Training · Backprop"
-      title="Gradient flows back."
-      subtitle="The chain rule walks the loss backward through every operation, depositing ∂L/∂param onto each weight as it passes."
-      accent={ACCENT.red}
-    >
-      <Eq accent={ACCENT.red} caption="upstream × local — repeated all the way back">
-        ∂L/∂W_i = ∂L/∂y · ∂y/∂W_i
-      </Eq>
-      <Bullet index={1} accent={ACCENT.red} delay={0.4}>
-        Start at the output. ∂L/∂logits is one easy derivative.
-      </Bullet>
-      <Bullet index={2} accent={ACCENT.amber} delay={0.55}>
-        Walk backward. Each layer multiplies its local Jacobian onto the upstream gradient.
-      </Bullet>
-      <Bullet index={3} accent={ACCENT.mint} delay={0.7}>
-        At every weight, deposit the gradient. That's the "blame" this weight gets for the loss.
-      </Bullet>
-      <Bullet index={4} accent={ACCENT.violet} delay={0.85}>
-        Skip connections in the residual stream let gradients flow back unchanged — no vanishing.
-      </Bullet>
-    </Panel>
-  )
-}
-
 /* ─────────── Act V — RoPE ─────────── */
 export function PanelRope() {
   return (

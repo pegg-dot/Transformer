@@ -4,7 +4,6 @@ import { type MovieScene } from './MovieOrchestrator'
 import {
   SceneAttention,
   SceneBPE,
-  SceneBackprop,
   SceneBackpropAccumulation,
   SceneBackpropJacobian,
   SceneEmbedding,
@@ -32,7 +31,6 @@ import {
   PanelOutput,
   PanelAttention,
   PanelMulti,
-  PanelBackprop,
   PanelRope,
   PanelModern,
 } from './scenePanels'
@@ -63,6 +61,7 @@ import {
 } from './act3Scenes'
 import {
   Act4IntroSplitPane,
+  BackpropSplitPane,
   CELossBatchSplitPane,
   CELossSeqSplitPane,
   CrossEntropySplitPane,
@@ -558,7 +557,8 @@ Batch size matters: bigger batches give less noisy gradients but each step costs
 By the end, you have ∂loss/∂w for every weight w. Gradient descent then nudges each w in the opposite direction of its gradient.
 
 Modern autodiff libraries (PyTorch, JAX) build this graph automatically from the forward pass. You write numpy-like code, they track it, and backprop "just works".`,
-    render: () => <PanelThenScene panel={<PanelBackprop />} scene={<SceneBackprop />} />,
+    render: () => <BackpropSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'bp-jacobian',
