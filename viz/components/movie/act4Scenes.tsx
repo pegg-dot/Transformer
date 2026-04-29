@@ -4653,3 +4653,826 @@ export function BpAccumulationSplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 27 — training: "Roll down the loss hill."
+ *
+ * The first optimizer scene. Pick up the averaged batch gradient from
+ * Scene 26 and turn it into a weight update. Visual hero is a 3D
+ * isometric wireframe loss surface with a glowing low-loss basin and
+ * a yellow point (the current weights W) descending step by step.
+ *
+ * Four beats:
+ *
+ *   beat 0 — set the metaphor. Surface visible, yellow dot at start,
+ *            top-left legend explains "height = loss / position = W".
+ *   beat 1 — the two arrows. Coral arrow ∇L(W) points uphill (steepest
+ *            increase). Teal arrow -η∇L(W) points downhill (descent
+ *            direction). Connection to Scene 26: ∇L = ∇W_batch.
+ *   beat 2 — take many tiny steps. Yellow dot animates from start to
+ *            basin along the actual gradient-descent trajectory; trail
+ *            of dots remains. Contour map mirrors the path. Loss curve
+ *            on the right falls.
+ *   beat 3 — settled near basin. Final state with full path, big light
+ *            -bulb callout reinforces the rule.
+ * ====================================================================== */
+
+const GD_VB_W = 1400
+const GD_VB_H = 1000
+
+// 3D loss-surface zone (left)
+const GD_SURF_OX = 380 // surface origin x in screen coords
+const GD_SURF_OY = 540 // surface origin y in screen coords
+const GD_SURF_SCALE = 230
+const GD_SURF_H_SCALE = 240 // height scale (loss → screen y)
+const GD_GRID = 18 // wireframe resolution
+
+// Loss surface — a slightly off-center bowl. Min at (-0.5, 0.4), pos
+// loss values everywhere else.
+function gdLoss(wx: number, wy: number): number {
+  const a = wx + 0.5
+  const b = wy - 0.4
+  return 0.30 * a * a + 0.55 * b * b
+}
+function gdGradient(wx: number, wy: number): [number, number] {
+  return [0.60 * (wx + 0.5), 1.10 * (wy - 0.4)]
+}
+
+// Project (world x, world y, loss) → screen (x, y) using a simple
+// isometric projection. Higher loss → smaller screen y (appears higher).
+function gdProject(wx: number, wy: number, z: number): [number, number] {
+  const COS = Math.cos(Math.PI / 6) // ~0.866
+  const SIN = Math.sin(Math.PI / 6) // 0.5
+  const sx = GD_SURF_OX + (wx * COS - wy * COS) * GD_SURF_SCALE
+  const sy = GD_SURF_OY + (wx * SIN + wy * SIN) * GD_SURF_SCALE - z * GD_SURF_H_SCALE
+  return [sx, sy]
+}
+
+// Trail: 32 steps of actual gradient descent from start (0.85, -0.7) to
+// minimum at (-0.5, 0.4). Uses η = 0.20 for a curved path.
+const GD_TRAIL: Array<{ wx: number; wy: number; loss: number; sx: number; sy: number }> = (() => {
+  const out: Array<{ wx: number; wy: number; loss: number; sx: number; sy: number }> = []
+  let wx = 0.85
+  let wy = -0.70
+  const eta = 0.20
+  for (let k = 0; k <= 32; k++) {
+    const z = gdLoss(wx, wy)
+    const [sx, sy] = gdProject(wx, wy, z)
+    out.push({ wx, wy, loss: z, sx, sy })
+    const [gx, gy] = gdGradient(wx, wy)
+    wx -= eta * gx
+    wy -= eta * gy
+  }
+  return out
+})()
+
+// Per-phase "current step" along the trail.
+const GD_PHASE_STEP = [0, 0, 22, 32] as const
+
+// Contour map zone (top right of viz)
+const GD_CMAP_X = 950
+const GD_CMAP_Y = 100
+const GD_CMAP_W = 360
+const GD_CMAP_H = 360
+const GD_CMAP_CX = GD_CMAP_X + GD_CMAP_W / 2
+const GD_CMAP_CY = GD_CMAP_Y + GD_CMAP_H / 2
+
+// Project (wx, wy) into top-down contour map coords.
+function gdCmapPoint(wx: number, wy: number): [number, number] {
+  // The basin is at (-0.5, 0.4). Map world (-1.5..1.5, -1.5..1.5) to
+  // CMAP_X..CMAP_X+W / CMAP_Y..CMAP_Y+H so the basin sits at center.
+  const u = (wx + 0.5) / 3 // -1.5 → wx=-2; +1.5 → wx=+2.5 etc.
+  const v = (wy - 0.4) / 3
+  const cx = GD_CMAP_CX + u * (GD_CMAP_W / 2)
+  const cy = GD_CMAP_CY + v * (GD_CMAP_H / 2)
+  return [cx, cy]
+}
+
+// Loss-over-steps zone (bottom right of viz)
+const GD_LCHART_X = 950
+const GD_LCHART_Y = 510
+const GD_LCHART_W = 360
+const GD_LCHART_H = 200
+const GD_LCHART_PAD_L = 36
+const GD_LCHART_PAD_R = 14
+const GD_LCHART_PAD_T = 14
+const GD_LCHART_PAD_B = 28
+
+function gdLchartPoint(stepIdx: number, loss: number): [number, number] {
+  const innerW = GD_LCHART_W - GD_LCHART_PAD_L - GD_LCHART_PAD_R
+  const innerH = GD_LCHART_H - GD_LCHART_PAD_T - GD_LCHART_PAD_B
+  const t = stepIdx / 32
+  const maxLoss = GD_TRAIL[0].loss
+  const x = GD_LCHART_X + GD_LCHART_PAD_L + t * innerW
+  const y = GD_LCHART_Y + GD_LCHART_PAD_T + (1 - loss / maxLoss) * innerH
+  return [x, y]
+}
+
+// Constants for phase-driven UI fields
+const GD_LR = 0.20
+
+export function VizGradientDescent({ phase }: { phase: number }) {
+  const speed = useSpeed()
+
+  const showArrows = phase >= 1
+  const showTrail = phase >= 2
+
+  const stepIdx = Math.min(32, GD_PHASE_STEP[phase] ?? 32)
+  const cur = GD_TRAIL[stepIdx]
+  const start = GD_TRAIL[0]
+
+  // ---------- WIREFRAME GRID polylines ----------
+  const rowPolylines: string[] = []
+  const colPolylines: string[] = []
+  for (let i = 0; i <= GD_GRID; i++) {
+    const wx = -1.4 + (2.8 * i) / GD_GRID
+    const ptsRow: string[] = []
+    const ptsCol: string[] = []
+    for (let j = 0; j <= GD_GRID; j++) {
+      const wy = -1.4 + (2.8 * j) / GD_GRID
+      const loss = gdLoss(wx, wy)
+      const [sx, sy] = gdProject(wx, wy, loss)
+      ptsRow.push(`${sx.toFixed(1)},${sy.toFixed(1)}`)
+      // For the column polyline, we transpose — same i but x/y flipped.
+      const wx2 = -1.4 + (2.8 * j) / GD_GRID
+      const wy2 = -1.4 + (2.8 * i) / GD_GRID
+      const loss2 = gdLoss(wx2, wy2)
+      const [sx2, sy2] = gdProject(wx2, wy2, loss2)
+      ptsCol.push(`${sx2.toFixed(1)},${sy2.toFixed(1)}`)
+    }
+    rowPolylines.push(ptsRow.join(' '))
+    colPolylines.push(ptsCol.join(' '))
+  }
+
+  // ---------- BASIN GLOW location (in screen coords) ----------
+  const [basinSx, basinSy] = gdProject(-0.5, 0.4, 0)
+
+  // ---------- ARROWS ----------
+  // ∇L(W): points in the direction of steepest increase — i.e., up the
+  // gradient direction projected into screen + height.
+  const [gx, gy] = gdGradient(cur.wx, cur.wy)
+  const gMag = Math.sqrt(gx * gx + gy * gy)
+  const gxN = gx / gMag
+  const gyN = gy / gMag
+  // Tail at current point on surface
+  const arrowLen = 0.7
+  const upWx = cur.wx + arrowLen * gxN
+  const upWy = cur.wy + arrowLen * gyN
+  const upLoss = gdLoss(upWx, upWy)
+  const [arrowUpSx, arrowUpSy] = gdProject(upWx, upWy, upLoss)
+  // Descent: opposite direction
+  const downWx = cur.wx - arrowLen * gxN
+  const downWy = cur.wy - arrowLen * gyN
+  const downLoss = gdLoss(downWx, downWy)
+  const [arrowDownSx, arrowDownSy] = gdProject(downWx, downWy, downLoss)
+
+  // ---------- LOSS CURVE PATH ----------
+  const lossCurvePts = GD_TRAIL.slice(0, stepIdx + 1).map((t, i) => gdLchartPoint(i, t.loss))
+  const lossCurvePath = lossCurvePts
+    .map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`)
+    .join(' ')
+
+  // ---------- DELTA loss for stats ----------
+  const dLoss = stepIdx > 0 ? cur.loss - GD_TRAIL[stepIdx - 1].loss : 0
+
+  return (
+    <svg viewBox={`0 0 ${GD_VB_W} ${GD_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <radialGradient id="gd-basin-glow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor={ACCENT.cyan} stopOpacity="0.85" />
+          <stop offset="50%" stopColor={ACCENT.cyan} stopOpacity="0.30" />
+          <stop offset="100%" stopColor={ACCENT.cyan} stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="gd-current-glow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor={ACCENT.amber} stopOpacity="0.85" />
+          <stop offset="60%" stopColor={ACCENT.amber} stopOpacity="0.20" />
+          <stop offset="100%" stopColor={ACCENT.amber} stopOpacity="0" />
+        </radialGradient>
+        <filter id="gd-soft" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="1.2" />
+        </filter>
+      </defs>
+
+      {/* ===================== HEADER strip ===================== */}
+      <text
+        x={GD_VB_W / 2}
+        y={56}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="13"
+        letterSpacing="0.32em"
+        fill={ACCENT.dim}
+      >
+        WEIGHTS DESCEND THE LOSS LANDSCAPE  ·  ONE TINY STEP AT A TIME
+      </text>
+
+      {/* ===================== METAPHOR LEGEND (top-left) ===================== */}
+      <g transform="translate(40, 100)">
+        <rect
+          x={0}
+          y={0}
+          width={250}
+          height={70}
+          rx={8}
+          fill="rgba(255,255,255,0.025)"
+          stroke="rgba(255,255,255,0.15)"
+          strokeWidth={1}
+        />
+        <line x1={16} x2={16} y1={16} y2={32} stroke={ACCENT.cyan} strokeWidth={1.4} />
+        <polyline points="13,18 16,14 19,18" fill="none" stroke={ACCENT.cyan} strokeWidth={1.4} />
+        <polyline points="13,30 16,34 19,30" fill="none" stroke={ACCENT.cyan} strokeWidth={1.4} />
+        <text x={32} y={28} fontFamily="var(--font-mono)" fontSize="12" fill="rgba(255,255,255,0.78)">
+          height = loss
+        </text>
+        <circle cx={16} cy={52} r={4} fill={ACCENT.amber} />
+        <text x={32} y={56} fontFamily="var(--font-mono)" fontSize="12" fill="rgba(255,255,255,0.78)">
+          position = weights
+        </text>
+      </g>
+
+      {/* ===================== Y-AXIS (loss high → low) ===================== */}
+      <g transform="translate(28, 240)">
+        <text
+          x={0}
+          y={-12}
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.18em"
+          fill={ACCENT.dim}
+        >
+          loss L(W)
+        </text>
+        <line x1={0} x2={0} y1={4} y2={310} stroke="rgba(255,255,255,0.18)" strokeWidth={1} />
+        <text x={0} y={26} fontFamily="var(--font-mono)" fontSize="10" fill={ACCENT.cyan}>
+          high
+        </text>
+        <text x={0} y={306} fontFamily="var(--font-mono)" fontSize="10" fill={ACCENT.amber}>
+          low
+        </text>
+      </g>
+
+      {/* ===================== 3D WIREFRAME LOSS SURFACE ===================== */}
+      <g>
+        {/* Basin glow */}
+        <circle
+          cx={basinSx}
+          cy={basinSy}
+          r={86}
+          fill="url(#gd-basin-glow)"
+          opacity={0.85}
+        />
+
+        {/* Wireframe rows (constant wx) */}
+        {rowPolylines.map((pts, i) => (
+          <polyline
+            key={`row-${i}`}
+            points={pts}
+            fill="none"
+            stroke="rgba(96,165,250,0.30)"
+            strokeWidth={0.7}
+          />
+        ))}
+        {/* Wireframe cols (constant wy) */}
+        {colPolylines.map((pts, i) => (
+          <polyline
+            key={`col-${i}`}
+            points={pts}
+            fill="none"
+            stroke="rgba(96,165,250,0.30)"
+            strokeWidth={0.7}
+          />
+        ))}
+
+        {/* "low loss basin" label near basin */}
+        <text
+          x={basinSx}
+          y={basinSy + 110}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.18em"
+          fill={ACCENT.cyan}
+        >
+          low loss basin
+        </text>
+
+        {/* Honesty label */}
+        <text
+          x={50}
+          y={830}
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="14"
+          fill="rgba(255,255,255,0.45)"
+        >
+          2D slice of a much larger weight space
+        </text>
+      </g>
+
+      {/* ===================== TRAIL of past steps ===================== */}
+      <g
+        style={{
+          opacity: showTrail ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        {GD_TRAIL.slice(0, stepIdx + 1).map((t, i) => (
+          <circle
+            key={`trail-${i}`}
+            cx={t.sx}
+            cy={t.sy}
+            r={i === stepIdx ? 0 : 3.2}
+            fill={ACCENT.amber}
+            opacity={0.55 + 0.4 * (i / Math.max(1, stepIdx))}
+          />
+        ))}
+      </g>
+
+      {/* ===================== CURRENT W (yellow point) ===================== */}
+      <g
+        style={{
+          transform: `translate(${cur.sx - start.sx}px, ${cur.sy - start.sy}px)`,
+          transition: `transform ${0.9 / speed}s ease-out`,
+        }}
+      >
+        <circle cx={start.sx} cy={start.sy} r={22} fill="url(#gd-current-glow)" />
+        <circle
+          cx={start.sx}
+          cy={start.sy}
+          r={9}
+          fill={ACCENT.amber}
+          stroke="rgba(255,255,255,0.85)"
+          strokeWidth={1.4}
+        />
+        {/* Label "current W (weights)" — only when not stepping */}
+        <g
+          style={{
+            opacity: phase < 2 ? 1 : 0,
+            transition: `opacity ${0.4 / speed}s ease`,
+          }}
+        >
+          <text
+            x={start.sx - 14}
+            y={start.sy - 14}
+            textAnchor="end"
+            fontFamily="var(--font-display, Georgia, serif)"
+            fontStyle="italic"
+            fontSize="18"
+            fill={ACCENT.amber}
+          >
+            current W
+          </text>
+          <text
+            x={start.sx - 14}
+            y={start.sy + 4}
+            textAnchor="end"
+            fontFamily="var(--font-mono)"
+            fontSize="10"
+            fill="rgba(255,255,255,0.55)"
+          >
+            (weights)
+          </text>
+        </g>
+      </g>
+
+      {/* ===================== ARROWS ∇L(W) and -η∇L(W) ===================== */}
+      <g
+        style={{
+          opacity: showArrows ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        {/* ∇L uphill arrow (coral) */}
+        <line
+          x1={cur.sx}
+          y1={cur.sy}
+          x2={arrowUpSx}
+          y2={arrowUpSy}
+          stroke={ACCENT.red}
+          strokeWidth={2.5}
+        />
+        <polygon
+          points={(() => {
+            const dx = arrowUpSx - cur.sx
+            const dy = arrowUpSy - cur.sy
+            const len = Math.sqrt(dx * dx + dy * dy)
+            const ux = dx / len
+            const uy = dy / len
+            const head = 12
+            const a1x = arrowUpSx - ux * head + uy * head * 0.5
+            const a1y = arrowUpSy - uy * head - ux * head * 0.5
+            const a2x = arrowUpSx - ux * head - uy * head * 0.5
+            const a2y = arrowUpSy - uy * head + ux * head * 0.5
+            return `${arrowUpSx},${arrowUpSy} ${a1x},${a1y} ${a2x},${a2y}`
+          })()}
+          fill={ACCENT.red}
+        />
+        <text
+          x={arrowUpSx + 12}
+          y={arrowUpSy - 10}
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="20"
+          fill={ACCENT.red}
+        >
+          ∇L(W)
+        </text>
+        <text
+          x={arrowUpSx + 12}
+          y={arrowUpSy + 10}
+          fontFamily="var(--font-mono)"
+          fontSize="10"
+          fill={ACCENT.red}
+        >
+          (steepest increase)
+        </text>
+
+        {/* -η∇L descent arrow (mint/teal) */}
+        <line
+          x1={cur.sx}
+          y1={cur.sy}
+          x2={arrowDownSx}
+          y2={arrowDownSy}
+          stroke={ACCENT.cyan}
+          strokeWidth={2.5}
+        />
+        <polygon
+          points={(() => {
+            const dx = arrowDownSx - cur.sx
+            const dy = arrowDownSy - cur.sy
+            const len = Math.sqrt(dx * dx + dy * dy)
+            const ux = dx / len
+            const uy = dy / len
+            const head = 12
+            const a1x = arrowDownSx - ux * head + uy * head * 0.5
+            const a1y = arrowDownSy - uy * head - ux * head * 0.5
+            const a2x = arrowDownSx - ux * head - uy * head * 0.5
+            const a2y = arrowDownSy - uy * head + ux * head * 0.5
+            return `${arrowDownSx},${arrowDownSy} ${a1x},${a1y} ${a2x},${a2y}`
+          })()}
+          fill={ACCENT.cyan}
+        />
+        <text
+          x={arrowDownSx + 12}
+          y={arrowDownSy - 6}
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="20"
+          fill={ACCENT.cyan}
+        >
+          −η∇L(W)
+        </text>
+        <text
+          x={arrowDownSx + 12}
+          y={arrowDownSy + 14}
+          fontFamily="var(--font-mono)"
+          fontSize="10"
+          fill={ACCENT.cyan}
+        >
+          (descent direction)
+        </text>
+      </g>
+
+      {/* ===================== CONTOUR MAP (top right) ===================== */}
+      <g>
+        <text
+          x={GD_CMAP_X + GD_CMAP_W / 2}
+          y={GD_CMAP_Y - 14}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.dim}
+        >
+          TOP-DOWN VIEW (CONTOUR MAP)
+        </text>
+        <rect
+          x={GD_CMAP_X - 6}
+          y={GD_CMAP_Y - 6}
+          width={GD_CMAP_W + 12}
+          height={GD_CMAP_H + 12}
+          rx={10}
+          fill="rgba(255,255,255,0.02)"
+          stroke="rgba(255,255,255,0.10)"
+          strokeWidth={1}
+        />
+
+        {/* Concentric ovals (warm to cool toward center) */}
+        {[1.5, 1.2, 0.9, 0.6, 0.3].map((scale, i) => (
+          <ellipse
+            key={`contour-${i}`}
+            cx={GD_CMAP_CX}
+            cy={GD_CMAP_CY}
+            rx={(GD_CMAP_W / 2) * scale * 0.8}
+            ry={(GD_CMAP_H / 2) * scale * 0.55}
+            fill="none"
+            stroke={i < 2 ? ACCENT.amber : i < 4 ? ACCENT.dim : ACCENT.cyan}
+            strokeOpacity={0.45}
+            strokeWidth={1}
+          />
+        ))}
+
+        {/* Path (yellow dotted) */}
+        {GD_TRAIL.slice(0, stepIdx + 1).map((t, i) => {
+          const [cx, cy] = gdCmapPoint(t.wx, t.wy)
+          return (
+            <circle
+              key={`cm-${i}`}
+              cx={cx}
+              cy={cy}
+              r={i === stepIdx ? 5 : 2.8}
+              fill={i === stepIdx ? ACCENT.amber : ACCENT.amber}
+              opacity={i === stepIdx ? 1 : 0.45 + 0.5 * (i / Math.max(1, stepIdx))}
+              style={{
+                transition: `opacity ${0.4 / speed}s ease`,
+              }}
+            />
+          )
+        })}
+
+        {/* Optimum (teal dot at center) */}
+        <circle cx={GD_CMAP_CX} cy={GD_CMAP_CY} r={6} fill={ACCENT.cyan} />
+        <circle cx={GD_CMAP_CX} cy={GD_CMAP_CY} r={14} fill={ACCENT.cyan} opacity={0.18} />
+
+        {/* Legend */}
+        <g transform={`translate(${GD_CMAP_X + 10}, ${GD_CMAP_Y + GD_CMAP_H + 18})`}>
+          <circle cx={6} cy={5} r={4} fill={ACCENT.amber} />
+          <text x={18} y={9} fontFamily="var(--font-mono)" fontSize="10" fill="rgba(255,255,255,0.65)">
+            weights path  (W₀ → W₁ → …)
+          </text>
+          <circle cx={6} cy={25} r={4} fill={ACCENT.cyan} />
+          <text x={18} y={29} fontFamily="var(--font-mono)" fontSize="10" fill="rgba(255,255,255,0.65)">
+            optimum  (low loss)
+          </text>
+        </g>
+      </g>
+
+      {/* ===================== LOSS-OVER-STEPS chart ===================== */}
+      <g>
+        <text
+          x={GD_LCHART_X + GD_LCHART_W / 2}
+          y={GD_LCHART_Y - 14}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.dim}
+        >
+          LOSS OVER STEPS
+        </text>
+        <rect
+          x={GD_LCHART_X - 6}
+          y={GD_LCHART_Y - 6}
+          width={GD_LCHART_W + 12}
+          height={GD_LCHART_H + 12}
+          rx={10}
+          fill="rgba(255,255,255,0.02)"
+          stroke="rgba(255,255,255,0.10)"
+          strokeWidth={1}
+        />
+        {/* Y axis */}
+        <line
+          x1={GD_LCHART_X + GD_LCHART_PAD_L}
+          x2={GD_LCHART_X + GD_LCHART_PAD_L}
+          y1={GD_LCHART_Y + GD_LCHART_PAD_T}
+          y2={GD_LCHART_Y + GD_LCHART_H - GD_LCHART_PAD_B}
+          stroke="rgba(255,255,255,0.18)"
+          strokeWidth={1}
+        />
+        {/* X axis */}
+        <line
+          x1={GD_LCHART_X + GD_LCHART_PAD_L}
+          x2={GD_LCHART_X + GD_LCHART_W - GD_LCHART_PAD_R}
+          y1={GD_LCHART_Y + GD_LCHART_H - GD_LCHART_PAD_B}
+          y2={GD_LCHART_Y + GD_LCHART_H - GD_LCHART_PAD_B}
+          stroke="rgba(255,255,255,0.18)"
+          strokeWidth={1}
+        />
+        {/* Y labels */}
+        <text
+          x={GD_LCHART_X + 4}
+          y={GD_LCHART_Y + GD_LCHART_PAD_T + 6}
+          fontFamily="var(--font-mono)"
+          fontSize="9"
+          fill={ACCENT.cyan}
+        >
+          high
+        </text>
+        <text
+          x={GD_LCHART_X + 4}
+          y={GD_LCHART_Y + GD_LCHART_H - GD_LCHART_PAD_B - 2}
+          fontFamily="var(--font-mono)"
+          fontSize="9"
+          fill={ACCENT.amber}
+        >
+          low
+        </text>
+        {/* X labels */}
+        <text
+          x={GD_LCHART_X + GD_LCHART_PAD_L}
+          y={GD_LCHART_Y + GD_LCHART_H - 6}
+          fontFamily="var(--font-mono)"
+          fontSize="9"
+          fill={ACCENT.dim}
+        >
+          0
+        </text>
+        <text
+          x={GD_LCHART_X + GD_LCHART_W - GD_LCHART_PAD_R}
+          y={GD_LCHART_Y + GD_LCHART_H - 6}
+          textAnchor="end"
+          fontFamily="var(--font-mono)"
+          fontSize="9"
+          fill={ACCENT.dim}
+        >
+          step 32
+        </text>
+        {/* Loss curve */}
+        {stepIdx > 0 && (
+          <path
+            d={lossCurvePath}
+            fill="none"
+            stroke={ACCENT.red}
+            strokeWidth={2}
+            strokeLinecap="round"
+          />
+        )}
+        {stepIdx > 0 && (
+          <circle
+            cx={gdLchartPoint(stepIdx, cur.loss)[0]}
+            cy={gdLchartPoint(stepIdx, cur.loss)[1]}
+            r={4}
+            fill={ACCENT.amber}
+          />
+        )}
+      </g>
+
+      {/* ===================== LIVE READOUT (small panel under loss chart) ===================== */}
+      <g transform={`translate(${GD_LCHART_X - 6}, ${GD_LCHART_Y + GD_LCHART_H + 28})`}>
+        <rect
+          x={0}
+          y={0}
+          width={GD_LCHART_W + 12}
+          height={150}
+          rx={10}
+          fill="rgba(255,255,255,0.02)"
+          stroke="rgba(255,255,255,0.10)"
+          strokeWidth={1}
+        />
+        <text x={16} y={22} fontFamily="var(--font-mono)" fontSize="10" letterSpacing="0.22em" fill={ACCENT.dim}>
+          REAL VALUES
+        </text>
+        {(() => {
+          const rows: Array<[string, string, string]> = [
+            ['step', `${stepIdx} / 32`, ACCENT.amber],
+            ['loss  L(W)', cur.loss.toFixed(4), ACCENT.amber],
+            ['learning rate  η', GD_LR.toFixed(2), 'rgba(255,255,255,0.78)'],
+            ['Δloss', stepIdx > 0 ? dLoss.toFixed(4) : '—', ACCENT.cyan],
+          ]
+          return rows.map(([label, val, color], i) => (
+            <g key={`v-${i}`}>
+              <text x={16} y={48 + i * 24} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.55)">
+                {label}
+              </text>
+              <text
+                x={GD_LCHART_W - 8}
+                y={48 + i * 24}
+                textAnchor="end"
+                fontFamily="var(--font-mono)"
+                fontSize="13"
+                fill={color}
+              >
+                {val}
+              </text>
+            </g>
+          ))
+        })()}
+      </g>
+
+      {/* ===================== BEAT INDICATOR ===================== */}
+      <g transform={`translate(${GD_VB_W / 2}, ${GD_VB_H - 26})`}>
+        {(['set the metaphor', '∇L  vs  −η∇L', 'take many tiny steps', 'settled in basin'] as const).map((label, i) => {
+          const w = 220
+          const gap = 14
+          const total = 4 * w + 3 * gap
+          const startX = -total / 2
+          const cx = startX + i * (w + gap) + w / 2
+          const active = i === phase
+          return (
+            <g key={`gd-beat-${i}`} transform={`translate(${cx}, 0)`}>
+              <rect
+                x={-w / 2}
+                y={-12}
+                width={w}
+                height={24}
+                rx={12}
+                fill={active ? 'rgba(52,211,153,0.18)' : 'rgba(255,255,255,0.02)'}
+                stroke={active ? ACCENT.mint : ACCENT.rule}
+                strokeWidth={1.2}
+                style={{ transition: `fill ${0.3 / speed}s ease, stroke ${0.3 / speed}s ease` }}
+              />
+              <text
+                x={0}
+                y={4}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="10"
+                letterSpacing="0.18em"
+                fill={active ? ACCENT.mint : ACCENT.dim}
+                style={{ transition: `fill ${0.3 / speed}s ease` }}
+              >
+                {label.toUpperCase()}
+              </text>
+            </g>
+          )
+        })}
+      </g>
+    </svg>
+  )
+}
+
+export function GradientDescentSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 4
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      5500 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const stepIdx = Math.min(32, GD_PHASE_STEP[phase] ?? 32)
+  const cur = GD_TRAIL[stepIdx]
+
+  const phaseLabels = [
+    'set the metaphor',
+    '∇L vs −η∇L',
+    'take many tiny steps',
+    'settled in basin',
+  ]
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      The model&apos;s weights live as a single point on a giant loss
+      landscape. <em>Height</em> is the loss; <em>position</em> is the
+      current weights. The basin we&apos;re aiming for is where the loss
+      is lowest.
+    </>,
+    <>
+      The averaged batch gradient from Scene 26 is exactly{' '}
+      <em>∇L(W)</em>: it points in the direction of steepest{' '}
+      <em>increase</em>. To <em>lower</em> the loss we step the other
+      way — distance <em>η</em>, opposite direction.
+    </>,
+    <>
+      Each step nudges the weights downhill by{' '}
+      <em>η · ∇L(W)</em>. After many tiny steps, the path curves toward
+      the basin and the loss drops on the chart at right.
+    </>,
+    <>
+      The weights settle near the optimum and the loss curve flattens.
+      Real training takes hundreds of thousands of these steps. The next
+      scene shows what happens when the landscape isn&apos;t this kind.
+    </>,
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'A real transformer has hundreds of millions of weights, so the landscape lives in a hundred-million-dimensional space. We can only ever see 2D slices. The math is identical regardless of dimension.',
+    'Why the minus sign? ∇L points toward higher loss. Subtracting it moves toward lower loss. η controls how big a step — too large overshoots, too small crawls. Tuning it is half the art.',
+    `After ${stepIdx} steps the loss has dropped from ${GD_TRAIL[0].loss.toFixed(2)} to ${cur.loss.toFixed(4)}. Each step in this 2D toy is one optimizer call; in real training it is one full forward+backward pass over a batch of B sequences.`,
+    'In practice every weight update follows this same rule with η scheduled (warmup, decay) and ∇W usually transformed by Adam or another optimizer (next scene) so the step size adapts per-parameter.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizGradientDescent phase={phase} />}
+      text={{
+        kicker: 'ACT IV · GD · IDEAL',
+        title: 'Roll down the loss hill.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.mint,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.mint}
+          />
+        ),
+        stats: [
+          { label: 'step', value: `${stepIdx} / 32`, color: ACCENT.amber },
+          { label: 'loss  L(W)', value: cur.loss.toFixed(4), color: ACCENT.amber },
+          { label: 'learning rate  η', value: GD_LR.toFixed(2) },
+          { label: 'Δloss', value: stepIdx > 0 ? (cur.loss - GD_TRAIL[stepIdx - 1].loss).toFixed(4) : '—', color: ACCENT.cyan },
+        ],
+        equation: {
+          label: 'one step',
+          body: <>W ← W − η · ∇W_batch L</>,
+        },
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}

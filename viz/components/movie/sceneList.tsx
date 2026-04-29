@@ -15,7 +15,6 @@ import {
   SceneQKV,
   SceneRoPE,
   SceneTokenization,
-  SceneTraining,
 } from './scenes'
 import {
   IntroColdOpenPanel,
@@ -65,6 +64,7 @@ import {
   CELossBatchSplitPane,
   CELossSeqSplitPane,
   CrossEntropySplitPane,
+  GradientDescentSplitPane,
 } from './act4Scenes'
 
 const ACCENT = {
@@ -616,7 +616,8 @@ This is why batching works: noisy per-example gradients average into a cleaner b
 Total training runs are measured in steps, not epochs. GPT-3 trained for ~100k steps. LLaMA-2 trained for ~2M. Each step touches every weight in the model.
 
 The loss landscape is wildly non-convex — it has billions of dimensions, saddle points everywhere, and local minima. But in practice, SGD + momentum + learning rate schedules finds models that generalize well, for reasons we don't fully understand.`,
-    render: () => <SceneTraining />,
+    render: () => <GradientDescentSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'gd-ravine',
