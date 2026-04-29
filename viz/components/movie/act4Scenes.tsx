@@ -4809,9 +4809,6 @@ export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx:
     colPolylines.push(ptsCol.join(' '))
   }
 
-  // ---------- BASIN GLOW location (in screen coords) ----------
-  const [basinSx, basinSy] = gdProject(-0.5, 0.4, 0)
-
   // ---------- ARROWS ----------
   // ∇L(W): points in the direction of steepest increase — i.e., up the
   // gradient direction projected into screen + height.
@@ -4843,11 +4840,6 @@ export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx:
   return (
     <svg viewBox={`0 0 ${GD_VB_W} ${GD_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
       <defs>
-        <radialGradient id="gd-basin-glow" cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0%" stopColor={ACCENT.cyan} stopOpacity="0.85" />
-          <stop offset="50%" stopColor={ACCENT.cyan} stopOpacity="0.30" />
-          <stop offset="100%" stopColor={ACCENT.cyan} stopOpacity="0" />
-        </radialGradient>
         <radialGradient id="gd-current-glow" cx="0.5" cy="0.5" r="0.5">
           <stop offset="0%" stopColor={ACCENT.amber} stopOpacity="0.85" />
           <stop offset="60%" stopColor={ACCENT.amber} stopOpacity="0.20" />
@@ -4918,15 +4910,6 @@ export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx:
 
       {/* ===================== 3D WIREFRAME LOSS SURFACE ===================== */}
       <g>
-        {/* Basin glow */}
-        <circle
-          cx={basinSx}
-          cy={basinSy}
-          r={86}
-          fill="url(#gd-basin-glow)"
-          opacity={0.85}
-        />
-
         {/* Wireframe rows (constant wx) */}
         {rowPolylines.map((pts, i) => (
           <polyline
@@ -4947,19 +4930,6 @@ export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx:
             strokeWidth={0.7}
           />
         ))}
-
-        {/* "low loss basin" label near basin */}
-        <text
-          x={basinSx}
-          y={basinSy + 110}
-          textAnchor="middle"
-          fontFamily="var(--font-mono)"
-          fontSize="11"
-          letterSpacing="0.18em"
-          fill={ACCENT.cyan}
-        >
-          low loss basin
-        </text>
 
         {/* Honesty label */}
         <text
