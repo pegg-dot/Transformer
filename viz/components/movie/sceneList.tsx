@@ -5,7 +5,6 @@ import {
   SceneAttention,
   SceneBPE,
   SceneBackpropAccumulation,
-  SceneBackpropJacobian,
   SceneEmbedding,
   SceneGDAdam,
   SceneGDRavine,
@@ -62,6 +61,7 @@ import {
 import {
   Act4IntroSplitPane,
   BackpropSplitPane,
+  BpJacobianSplitPane,
   CELossBatchSplitPane,
   CELossSeqSplitPane,
   CrossEntropySplitPane,
@@ -576,7 +576,8 @@ Modern autodiff libraries (PyTorch, JAX) build this graph automatically from the
 For a matrix multiply y = W·x, both Jacobians are just matrix multiplies themselves. For a nonlinearity like GELU, the Jacobian is diagonal.
 
 The beauty of backprop: every layer only needs to know its own local Jacobian. The chain rule handles the rest.`,
-    render: () => <SceneBackpropJacobian />,
+    render: () => <BpJacobianSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'bp-accum',

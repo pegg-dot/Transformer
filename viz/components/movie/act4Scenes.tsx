@@ -3262,3 +3262,774 @@ export function BackpropSplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 25 — bp-jacobian: "What each layer contributes."
+ *
+ * Zoom into one block from Scene 24 and show what happens locally when
+ * the backward gradient reaches it.
+ *
+ *   forward (saved):   x  →  layer  →  y     (blue)
+ *   the Jacobian:     ∂y/∂x  is the local sensitivity map
+ *   backward:         ∂L/∂y  ×  ∂y/∂x   =   ∂L/∂x
+ *                     incoming    Jacobian    outgoing
+ *   weight gradient:  the same local info gives ∂L/∂W
+ *
+ * Four beats:
+ *
+ *   beat 0 — isolate. One translucent block at center, x and y vectors
+ *            on the sides in blue, Jacobian plane visible but faint.
+ *   beat 1 — one cell. Highlight ∂y₂/∂x₁: when x₁ wiggles, y₂ wiggles.
+ *            Lines connect cell → x₁ and cell → y₂.
+ *   beat 2 — backward conversion. A red ∂L/∂y vector enters from the
+ *            right, passes through the (now fully lit) Jacobian, and
+ *            exits left as ∂L/∂x. The whole Jacobian glows red.
+ *   beat 3 — also the weight gradient. A small ∂L/∂W tile drops onto
+ *            the floor below the block in the same isometric idiom as
+ *            Scene 24, completing the "two outputs" story.
+ * ====================================================================== */
+
+const BPJ_VB_W = 1400
+const BPJ_VB_H = 1000
+
+// One central block (echo of Scene 24's BpBlock idiom).
+const BPJ_BLOCK_X = 450
+const BPJ_BLOCK_Y = 240
+const BPJ_BLOCK_W = 500
+const BPJ_BLOCK_H = 440
+const BPJ_BLOCK_DEPTH = 36
+
+// Jacobian heatmap plane inside the front face. 5×5 cells.
+const BPJ_J_SIZE = 5
+const BPJ_J_CELL = 56
+const BPJ_J_GAP = 5
+const BPJ_J_W = BPJ_J_SIZE * BPJ_J_CELL + (BPJ_J_SIZE - 1) * BPJ_J_GAP // 300
+const BPJ_J_X = BPJ_BLOCK_X + (BPJ_BLOCK_W - BPJ_J_W) / 2
+const BPJ_J_Y = BPJ_BLOCK_Y + 84
+
+function bpjCellX(c: number) {
+  return BPJ_J_X + c * (BPJ_J_CELL + BPJ_J_GAP)
+}
+function bpjCellY(r: number) {
+  return BPJ_J_Y + r * (BPJ_J_CELL + BPJ_J_GAP)
+}
+
+// Highlighted cell for beat 1: ∂y₂/∂x₁ → row 1 (y₂, 0-indexed = 1), col 0 (x₁, 0-indexed = 0)
+const BPJ_HIGH_ROW = 1
+const BPJ_HIGH_COL = 0
+
+// Input vector x — column on left of the block.
+const BPJ_X_VEC_X = 250
+const BPJ_X_VEC_Y = BPJ_J_Y
+const BPJ_X_CELL = BPJ_J_CELL
+const BPJ_X_GAP = BPJ_J_GAP
+
+// Output vector y — column on right of the block.
+const BPJ_Y_VEC_X = BPJ_BLOCK_X + BPJ_BLOCK_W + 60
+const BPJ_Y_VEC_Y = BPJ_J_Y
+
+// ∂L/∂W tile (echo of Scene 24's gradient tile)
+const BPJ_TILE_CX = BPJ_BLOCK_X + BPJ_BLOCK_W / 2
+const BPJ_TILE_CY = BPJ_BLOCK_Y + BPJ_BLOCK_H + 90
+const BPJ_TILE_W = 220
+const BPJ_TILE_H = 50
+const BPJ_TILE_GRID = 4
+
+// Deterministic Jacobian "magnitude" per cell — drives heatmap intensity.
+function bpjMag(r: number, c: number): number {
+  const seed = r * 13 + c * 7 + 1
+  return 0.3 + ((Math.sin(seed * 0.91) + 1) / 2) * 0.65
+}
+
+export function VizBpJacobian({ phase }: { phase: number }) {
+  const speed = useSpeed()
+
+  const showOneCell = phase >= 1
+  const showFullJacobian = phase >= 2
+  const showBackward = phase >= 2
+  const showWeightGrad = phase >= 3
+
+  // Block face polygons
+  const x = BPJ_BLOCK_X
+  const y = BPJ_BLOCK_Y
+  const w = BPJ_BLOCK_W
+  const h = BPJ_BLOCK_H
+  const d = BPJ_BLOCK_DEPTH
+  const topFace = `${x},${y} ${x + w},${y} ${x + w + d},${y - d} ${x + d},${y - d}`
+  const rightFace = `${x + w},${y} ${x + w + d},${y - d} ${x + w + d},${y + h - d} ${x + w},${y + h}`
+
+  return (
+    <svg viewBox={`0 0 ${BPJ_VB_W} ${BPJ_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <radialGradient id="bpj-pulse-glow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor={ACCENT.red} stopOpacity="0.95" />
+          <stop offset="60%" stopColor={ACCENT.red} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={ACCENT.red} stopOpacity="0" />
+        </radialGradient>
+        <filter id="bpj-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* ===================== HEADER ===================== */}
+      <text
+        x={BPJ_VB_W / 2}
+        y={62}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="13"
+        letterSpacing="0.32em"
+        fill={ACCENT.dim}
+      >
+        ONE LAYER · LOCAL SENSITIVITY MAP · GRADIENT CONVERTER
+      </text>
+      <text
+        x={BPJ_VB_W / 2}
+        y={100}
+        textAnchor="middle"
+        fontFamily="var(--font-display, Georgia, serif)"
+        fontStyle="italic"
+        fontSize="24"
+        fill="rgba(255,255,255,0.85)"
+      >
+        How a layer transforms the gradient passing through it.
+      </text>
+
+      {/* ===================== INPUT VECTOR x (left) ===================== */}
+      <g>
+        <text
+          x={BPJ_X_VEC_X + BPJ_X_CELL / 2}
+          y={BPJ_X_VEC_Y - 16}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.blue}
+        >
+          INPUT  x
+        </text>
+        {Array.from({ length: BPJ_J_SIZE }, (_, r) => {
+          const cy = BPJ_X_VEC_Y + r * (BPJ_X_CELL + BPJ_X_GAP)
+          const isX1 = r === BPJ_HIGH_COL
+          return (
+            <g key={`x-${r}`}>
+              <rect
+                x={BPJ_X_VEC_X}
+                y={cy}
+                width={BPJ_X_CELL}
+                height={BPJ_X_CELL}
+                rx={4}
+                fill="rgba(96,165,250,0.18)"
+                stroke={ACCENT.blue}
+                strokeOpacity={isX1 && showOneCell ? 1 : 0.4}
+                strokeWidth={isX1 && showOneCell ? 1.8 : 1}
+                style={{ transition: `stroke-opacity ${0.3 / speed}s ease, stroke-width ${0.3 / speed}s ease` }}
+              />
+              <text
+                x={BPJ_X_VEC_X + BPJ_X_CELL / 2}
+                y={cy + BPJ_X_CELL / 2 + 5}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="14"
+                fill={ACCENT.blue}
+              >
+                x
+                <tspan dy="3" fontSize="10">{r + 1}</tspan>
+              </text>
+            </g>
+          )
+        })}
+      </g>
+
+      {/* ===================== TRANSLUCENT BLOCK (cutaway) ===================== */}
+      <g>
+        {/* Floor shadow under block */}
+        <ellipse
+          cx={BPJ_BLOCK_X + BPJ_BLOCK_W / 2 + d / 3}
+          cy={BPJ_BLOCK_Y + BPJ_BLOCK_H + 8}
+          rx={BPJ_BLOCK_W * 0.46}
+          ry={11}
+          fill="rgba(0,0,0,0.55)"
+          opacity={0.7}
+        />
+        {/* Right face (shadowed) */}
+        <polygon
+          points={rightFace}
+          fill={showBackward ? 'rgba(248,113,113,0.10)' : 'rgba(96,165,250,0.07)'}
+          stroke={showBackward ? ACCENT.red : ACCENT.blue}
+          strokeOpacity={0.55}
+          strokeWidth={1}
+          style={{ transition: `fill ${0.4 / speed}s ease, stroke ${0.4 / speed}s ease` }}
+        />
+        {/* Top face (lit) */}
+        <polygon
+          points={topFace}
+          fill={showBackward ? 'rgba(248,113,113,0.20)' : 'rgba(96,165,250,0.18)'}
+          stroke={showBackward ? ACCENT.red : ACCENT.blue}
+          strokeOpacity={0.6}
+          strokeWidth={1}
+          style={{ transition: `fill ${0.4 / speed}s ease, stroke ${0.4 / speed}s ease` }}
+        />
+        {/* Front face (translucent) */}
+        <rect
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          rx={6}
+          fill={showBackward ? 'rgba(248,113,113,0.10)' : 'rgba(96,165,250,0.08)'}
+          stroke={showBackward ? ACCENT.red : ACCENT.blue}
+          strokeOpacity={0.7}
+          strokeWidth={1.4}
+          style={{ transition: `fill ${0.4 / speed}s ease, stroke ${0.4 / speed}s ease` }}
+        />
+        {/* Top edge highlight */}
+        <line
+          x1={x + 4}
+          x2={x + w - 4}
+          y1={y + 1.5}
+          y2={y + 1.5}
+          stroke="rgba(255,255,255,0.18)"
+          strokeWidth={0.8}
+        />
+
+        {/* Block label */}
+        <text
+          x={BPJ_BLOCK_X + BPJ_BLOCK_W / 2}
+          y={BPJ_BLOCK_Y - d - 8}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={showBackward ? ACCENT.red : ACCENT.dim}
+          style={{ transition: `fill ${0.4 / speed}s ease` }}
+        >
+          ONE LAYER
+        </text>
+      </g>
+
+      {/* ===================== JACOBIAN HEATMAP PLANE ===================== */}
+      {/* Header text just above the matrix, inside the block */}
+      <text
+        x={BPJ_BLOCK_X + BPJ_BLOCK_W / 2}
+        y={BPJ_J_Y - 22}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill="rgba(255,255,255,0.55)"
+      >
+        ∂y / ∂x  ·  the layer&apos;s local sensitivity map
+      </text>
+
+      {/* Cells */}
+      {Array.from({ length: BPJ_J_SIZE }, (_, r) =>
+        Array.from({ length: BPJ_J_SIZE }, (_, c) => {
+          const cellX = bpjCellX(c)
+          const cellY = bpjCellY(r)
+          const mag = bpjMag(r, c)
+          const isHigh = r === BPJ_HIGH_ROW && c === BPJ_HIGH_COL
+          // Forward state: faint blue. After phase 2, all cells red.
+          // Phase 1: only the highlighted cell is bright.
+          let opacity: number
+          let fill: string
+          if (showFullJacobian) {
+            fill = ACCENT.red
+            opacity = mag
+          } else if (showOneCell && isHigh) {
+            fill = ACCENT.amber
+            opacity = 0.85
+          } else {
+            fill = ACCENT.blue
+            opacity = mag * 0.45
+          }
+          return (
+            <rect
+              key={`j-${r}-${c}`}
+              x={cellX}
+              y={cellY}
+              width={BPJ_J_CELL}
+              height={BPJ_J_CELL}
+              rx={4}
+              fill={fill}
+              opacity={opacity}
+              stroke={isHigh && showOneCell ? ACCENT.amber : 'rgba(255,255,255,0.06)'}
+              strokeWidth={isHigh && showOneCell ? 2 : 1}
+              style={{ transition: `fill ${0.45 / speed}s ease, opacity ${0.45 / speed}s ease, stroke ${0.45 / speed}s ease, stroke-width ${0.45 / speed}s ease` }}
+            />
+          )
+        }),
+      )}
+
+      {/* "∂y₂/∂x₁" callout for the highlighted cell — visible in beat 1 */}
+      {(() => {
+        const cellCx = bpjCellX(BPJ_HIGH_COL) + BPJ_J_CELL / 2
+        const cellCy = bpjCellY(BPJ_HIGH_ROW) + BPJ_J_CELL / 2
+        const calloutX = BPJ_BLOCK_X + BPJ_BLOCK_W / 2
+        const calloutY = BPJ_J_Y + BPJ_J_SIZE * (BPJ_J_CELL + BPJ_J_GAP) + 24
+        // Show only in beat 1 (single-cell highlight)
+        const visible = showOneCell && !showFullJacobian
+        return (
+          <g
+            style={{
+              opacity: visible ? 1 : 0,
+              transition: `opacity ${0.4 / speed}s ease`,
+            }}
+          >
+            {/* dashed connector cell → callout */}
+            <line
+              x1={cellCx}
+              x2={calloutX}
+              y1={cellCy}
+              y2={calloutY - 16}
+              stroke={ACCENT.amber}
+              strokeOpacity={0.65}
+              strokeWidth={1.2}
+              strokeDasharray="3 4"
+            />
+            <rect
+              x={calloutX - 168}
+              y={calloutY - 14}
+              width={336}
+              height={36}
+              rx={18}
+              fill="rgba(245,158,11,0.16)"
+              stroke={ACCENT.amber}
+              strokeWidth={1.4}
+            />
+            <text
+              x={calloutX}
+              y={calloutY + 10}
+              textAnchor="middle"
+              fontFamily="var(--font-display, Georgia, serif)"
+              fontStyle="italic"
+              fontSize="16"
+              fill={ACCENT.amber}
+            >
+              ∂y
+              <tspan dy="3" fontSize="11">2</tspan>
+              <tspan dy="-3"> / ∂x</tspan>
+              <tspan dy="3" fontSize="11">1</tspan>
+              <tspan dy="-3">  —  if x</tspan>
+              <tspan dy="3" fontSize="11">1</tspan>
+              <tspan dy="-3"> wiggles, this is how y</tspan>
+              <tspan dy="3" fontSize="11">2</tspan>
+              <tspan dy="-3"> wiggles</tspan>
+            </text>
+          </g>
+        )
+      })()}
+
+      {/* ===================== OUTPUT VECTOR y (right) ===================== */}
+      <g>
+        <text
+          x={BPJ_Y_VEC_X + BPJ_X_CELL / 2}
+          y={BPJ_Y_VEC_Y - 16}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.blue}
+        >
+          OUTPUT  y
+        </text>
+        {Array.from({ length: BPJ_J_SIZE }, (_, r) => {
+          const cy = BPJ_Y_VEC_Y + r * (BPJ_X_CELL + BPJ_X_GAP)
+          const isY2 = r === BPJ_HIGH_ROW
+          return (
+            <g key={`y-${r}`}>
+              <rect
+                x={BPJ_Y_VEC_X}
+                y={cy}
+                width={BPJ_X_CELL}
+                height={BPJ_X_CELL}
+                rx={4}
+                fill="rgba(96,165,250,0.18)"
+                stroke={ACCENT.blue}
+                strokeOpacity={isY2 && showOneCell ? 1 : 0.4}
+                strokeWidth={isY2 && showOneCell ? 1.8 : 1}
+                style={{ transition: `stroke-opacity ${0.3 / speed}s ease, stroke-width ${0.3 / speed}s ease` }}
+              />
+              <text
+                x={BPJ_Y_VEC_X + BPJ_X_CELL / 2}
+                y={cy + BPJ_X_CELL / 2 + 5}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="14"
+                fill={ACCENT.blue}
+              >
+                y
+                <tspan dy="3" fontSize="10">{r + 1}</tspan>
+              </text>
+            </g>
+          )
+        })}
+      </g>
+
+      {/* ===================== FORWARD ARROWS (faint blue) ===================== */}
+      <g opacity={0.45}>
+        {/* x → block */}
+        <line
+          x1={BPJ_X_VEC_X + BPJ_X_CELL + 10}
+          x2={BPJ_BLOCK_X - 4}
+          y1={BPJ_X_VEC_Y + (BPJ_J_SIZE * (BPJ_X_CELL + BPJ_X_GAP)) / 2 - BPJ_X_GAP / 2}
+          y2={BPJ_X_VEC_Y + (BPJ_J_SIZE * (BPJ_X_CELL + BPJ_X_GAP)) / 2 - BPJ_X_GAP / 2}
+          stroke={ACCENT.blue}
+          strokeWidth={1.4}
+          strokeDasharray="6 4"
+        />
+        {/* block → y */}
+        <line
+          x1={BPJ_BLOCK_X + BPJ_BLOCK_W + 4}
+          x2={BPJ_Y_VEC_X - 10}
+          y1={BPJ_X_VEC_Y + (BPJ_J_SIZE * (BPJ_X_CELL + BPJ_X_GAP)) / 2 - BPJ_X_GAP / 2}
+          y2={BPJ_X_VEC_Y + (BPJ_J_SIZE * (BPJ_X_CELL + BPJ_X_GAP)) / 2 - BPJ_X_GAP / 2}
+          stroke={ACCENT.blue}
+          strokeWidth={1.4}
+          strokeDasharray="6 4"
+        />
+      </g>
+
+      {/* ===================== BACKWARD GRADIENT VECTORS (red) ===================== */}
+      {/* Incoming ∂L/∂y on the right (above output column), outgoing ∂L/∂x
+          on the left (above input column). Both visible in beat 2+. */}
+      <g
+        style={{
+          opacity: showBackward ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        {/* Top backward lane label */}
+        <text
+          x={BPJ_VB_W / 2}
+          y={BPJ_J_Y - 56}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.red}
+        >
+          BACKWARD ·  ∂L/∂y  ENTERS RIGHT,  ∂L/∂x  EXITS LEFT
+        </text>
+
+        {/* Wide red glow band running across mid-height of block */}
+        {(() => {
+          const laneY = BPJ_J_Y + (BPJ_J_SIZE * (BPJ_J_CELL + BPJ_J_GAP)) / 2 - BPJ_J_GAP / 2
+          return (
+            <g>
+              <line
+                x1={BPJ_X_VEC_X + BPJ_X_CELL + 4}
+                x2={BPJ_Y_VEC_X - 4}
+                y1={laneY}
+                y2={laneY}
+                stroke={ACCENT.red}
+                strokeOpacity={0.10}
+                strokeWidth={28}
+              />
+              <line
+                x1={BPJ_X_VEC_X + BPJ_X_CELL + 8}
+                x2={BPJ_Y_VEC_X - 8}
+                y1={laneY}
+                y2={laneY}
+                stroke={ACCENT.red}
+                strokeOpacity={0.55}
+                strokeWidth={1.6}
+                strokeDasharray="6 6"
+              />
+              <polyline
+                points={`${BPJ_X_VEC_X + BPJ_X_CELL + 14},${laneY - 6} ${BPJ_X_VEC_X + BPJ_X_CELL + 4},${laneY} ${BPJ_X_VEC_X + BPJ_X_CELL + 14},${laneY + 6}`}
+                fill="none"
+                stroke={ACCENT.red}
+                strokeWidth={1.8}
+              />
+            </g>
+          )
+        })()}
+
+        {/* Incoming gradient vector ∂L/∂y — red column on the right */}
+        {Array.from({ length: BPJ_J_SIZE }, (_, r) => {
+          const cy = BPJ_Y_VEC_Y + r * (BPJ_X_CELL + BPJ_X_GAP)
+          const cellX = BPJ_Y_VEC_X + BPJ_X_CELL + 18
+          return (
+            <rect
+              key={`dy-${r}`}
+              x={cellX}
+              y={cy + 8}
+              width={BPJ_X_CELL - 16}
+              height={BPJ_X_CELL - 16}
+              rx={3}
+              fill={ACCENT.red}
+              opacity={0.55 + 0.30 * Math.sin(r * 0.7 + 1)}
+            />
+          )
+        })}
+        <text
+          x={BPJ_Y_VEC_X + BPJ_X_CELL + 18 + (BPJ_X_CELL - 16) / 2}
+          y={BPJ_Y_VEC_Y - 16}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="10"
+          letterSpacing="0.18em"
+          fill={ACCENT.red}
+        >
+          ∂L/∂y
+        </text>
+
+        {/* Outgoing gradient vector ∂L/∂x — red column on the left */}
+        {Array.from({ length: BPJ_J_SIZE }, (_, r) => {
+          const cy = BPJ_X_VEC_Y + r * (BPJ_X_CELL + BPJ_X_GAP)
+          const cellX = BPJ_X_VEC_X - 36
+          return (
+            <rect
+              key={`dx-${r}`}
+              x={cellX}
+              y={cy + 8}
+              width={BPJ_X_CELL - 16}
+              height={BPJ_X_CELL - 16}
+              rx={3}
+              fill={ACCENT.red}
+              opacity={0.50 + 0.32 * Math.cos(r * 0.6 + 0.5)}
+            />
+          )
+        })}
+        <text
+          x={BPJ_X_VEC_X - 36 + (BPJ_X_CELL - 16) / 2}
+          y={BPJ_X_VEC_Y - 16}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="10"
+          letterSpacing="0.18em"
+          fill={ACCENT.red}
+        >
+          ∂L/∂x
+        </text>
+      </g>
+
+      {/* ===================== ∂L/∂W TILE BELOW BLOCK ===================== */}
+      {/* Drops in beat 3. Shows the layer also produces a weight gradient. */}
+      <g
+        style={{
+          opacity: showWeightGrad ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        <line
+          x1={BPJ_BLOCK_X + BPJ_BLOCK_W / 2}
+          x2={BPJ_TILE_CX}
+          y1={BPJ_BLOCK_Y + BPJ_BLOCK_H + 12}
+          y2={BPJ_TILE_CY - BPJ_TILE_H / 2 - 4}
+          stroke={ACCENT.red}
+          strokeWidth={1.3}
+          strokeDasharray="3 4"
+          opacity={0.6}
+        />
+        {/* Tile background */}
+        <rect
+          x={BPJ_TILE_CX - BPJ_TILE_W / 2}
+          y={BPJ_TILE_CY - BPJ_TILE_H / 2}
+          width={BPJ_TILE_W}
+          height={BPJ_TILE_H}
+          rx={6}
+          fill="rgba(248,113,113,0.18)"
+          stroke={ACCENT.red}
+          strokeWidth={1.4}
+        />
+        {/* Tile cells (4×4) */}
+        {(() => {
+          const cellW = (BPJ_TILE_W - 10) / BPJ_TILE_GRID
+          const cellH = (BPJ_TILE_H - 10) / BPJ_TILE_GRID
+          return Array.from({ length: BPJ_TILE_GRID }, (_, r) =>
+            Array.from({ length: BPJ_TILE_GRID }, (_, c) => {
+              const seed = r * 5 + c * 3
+              const a = 0.45 + ((Math.sin(seed * 0.7) + 1) / 2) * 0.4
+              return (
+                <rect
+                  key={`wg-${r}-${c}`}
+                  x={BPJ_TILE_CX - BPJ_TILE_W / 2 + 5 + c * cellW + 1}
+                  y={BPJ_TILE_CY - BPJ_TILE_H / 2 + 5 + r * cellH + 1}
+                  width={cellW - 2}
+                  height={cellH - 2}
+                  rx={1.5}
+                  fill={ACCENT.red}
+                  opacity={a}
+                />
+              )
+            }),
+          )
+        })()}
+        <text
+          x={BPJ_TILE_CX}
+          y={BPJ_TILE_CY + BPJ_TILE_H / 2 + 22}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="16"
+          fill={ACCENT.red}
+        >
+          ∂L/∂W  —  same local information also gives the weight gradient
+        </text>
+      </g>
+
+      {/* ===================== CHAIN-RULE CALC LINE (bottom) ===================== */}
+      <g
+        style={{
+          opacity: showBackward ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease ${0.4 / speed}s`,
+        }}
+      >
+        <text
+          x={BPJ_VB_W / 2}
+          y={BPJ_VB_H - 76}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="22"
+          fill="rgba(255,255,255,0.92)"
+        >
+          <tspan fill={ACCENT.red}>∂L/∂x</tspan>
+          {'   =   '}
+          <tspan fill={ACCENT.red}>∂L/∂y</tspan>
+          {'   ·   '}
+          <tspan fill={ACCENT.amber}>∂y/∂x</tspan>
+        </text>
+        <text
+          x={BPJ_VB_W / 2}
+          y={BPJ_VB_H - 52}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.dim}
+        >
+          OUTGOING GRADIENT  =  INCOMING GRADIENT  ×  LOCAL JACOBIAN
+        </text>
+      </g>
+
+      {/* ===================== BEAT INDICATOR ===================== */}
+      <g transform={`translate(${BPJ_VB_W / 2}, ${BPJ_VB_H - 22})`}>
+        {(['isolate the layer', 'one cell · ∂y₂/∂x₁', 'gradient through Jacobian', '+ ∂L/∂W'] as const).map((label, i) => {
+          const w = 196
+          const gap = 14
+          const total = 4 * w + 3 * gap
+          const startX = -total / 2
+          const cx = startX + i * (w + gap) + w / 2
+          const active = i === phase
+          return (
+            <g key={`bpj-beat-${i}`} transform={`translate(${cx}, 0)`}>
+              <rect
+                x={-w / 2}
+                y={-12}
+                width={w}
+                height={24}
+                rx={12}
+                fill={active ? 'rgba(245,158,11,0.18)' : 'rgba(255,255,255,0.02)'}
+                stroke={active ? ACCENT.amber : ACCENT.rule}
+                strokeWidth={1.2}
+                style={{ transition: `fill ${0.3 / speed}s ease, stroke ${0.3 / speed}s ease` }}
+              />
+              <text
+                x={0}
+                y={4}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="10"
+                letterSpacing="0.18em"
+                fill={active ? ACCENT.amber : ACCENT.dim}
+                style={{ transition: `fill ${0.3 / speed}s ease` }}
+              >
+                {label.toUpperCase()}
+              </text>
+            </g>
+          )
+        })}
+      </g>
+    </svg>
+  )
+}
+
+export function BpJacobianSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 4
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      4500 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const phaseLabels = [
+    'isolate the layer',
+    'one cell · ∂y₂/∂x₁',
+    'gradient through Jacobian',
+    '+ ∂L/∂W',
+  ]
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      Take any one block from Scene 24. During forward, it mapped its
+      input <em>x</em> to its output <em>y</em>. The activations are
+      saved. Now we&apos;re going to look at how this layer participates in
+      the backward pass.
+    </>,
+    <>
+      Each Jacobian cell answers a wiggle question: <em>if x₁ moves a
+      tiny bit, how much does y₂ move?</em> The whole matrix is just every
+      such input-output sensitivity stacked side by side.
+    </>,
+    <>
+      During backprop the layer&apos;s job is to <em>convert</em> the
+      gradient. The incoming <em>∂L/∂y</em> is multiplied by the local
+      Jacobian to produce <em>∂L/∂x</em>, which travels to the previous
+      layer.
+    </>,
+    <>
+      The same local information also yields <em>∂L/∂W</em> — the weight
+      gradient for this layer. That is what the optimizer (next scene)
+      uses to nudge the weights.
+    </>,
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'Simplified one-layer view. Real transformer blocks contain LayerNorm + multi-head attention + FFN + residual adds — many local Jacobians chained together. The principle is identical, just deeper.',
+    'For a matmul y = Wx, the Jacobian ∂y/∂x is just W itself. For a nonlinearity like GELU, the Jacobian is diagonal. For a residual block, it has an identity component. Each layer only needs to know its own local Jacobian.',
+    'This is the chain rule made physical: incoming gradient × local derivative = outgoing gradient. The autodiff library (PyTorch, JAX) walks this calculation backward through every operation in the forward graph automatically.',
+    'Two outputs per backward step at every layer: the incoming-gradient transform that gets passed back, and the weight-gradient that stays put. The optimizer uses ∂L/∂W to take the actual learning step in Scene 27.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizBpJacobian phase={phase} />}
+      text={{
+        kicker: 'ACT IV · BACKPROP · LOCAL JACOBIAN',
+        title: 'What each layer contributes.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.amber,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.amber}
+          />
+        ),
+        stats: [
+          { label: 'incoming', value: '∂L/∂y', color: ACCENT.red },
+          { label: 'local', value: '∂y/∂x', color: ACCENT.amber },
+          { label: 'outgoing', value: '∂L/∂x', color: ACCENT.red },
+          { label: 'also', value: '∂L/∂W', color: ACCENT.red },
+        ],
+        equation: {
+          label: 'one rule, one layer',
+          body: <>∂L/∂x = ∂L/∂y · ∂y/∂x</>,
+        },
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}
