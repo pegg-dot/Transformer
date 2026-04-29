@@ -5555,11 +5555,15 @@ const GR_LR = 0.95 // learning rate — chosen so |1 - η·hessian_steep| ≈ 0.
 // (slow oscillation decay, visible zig-zag throughout 32 steps), and
 // |1 - η·hessian_shallow| ≈ 0.96 (slow forward drift along the valley).
 
+// 24 steps — enough to show many zig-zags but short enough that the dot
+// visibly stalls mid-valley (lesson: vanilla GD doesn't reach the basin
+// in any reasonable budget when the ravine is narrow).
+const GR_STEPS = 24
 const GR_TRAIL: Array<{ w1: number; w2: number; loss: number; sx: number; sy: number }> = (() => {
   const out: Array<{ w1: number; w2: number; loss: number; sx: number; sy: number }> = []
   let w1 = -1.5
   let w2 = 1.0
-  for (let k = 0; k <= 32; k++) {
+  for (let k = 0; k <= GR_STEPS; k++) {
     const z = grLoss(w1, w2)
     const [sx, sy] = grProject(w1, w2, z)
     out.push({ w1, w2, loss: z, sx, sy })
@@ -5783,7 +5787,7 @@ export function VizGdRavine({ phase, stepIdx }: { phase: number; stepIdx: number
       <g
         style={{
           transform: `translate(${cur.sx - GR_TRAIL[0].sx}px, ${cur.sy - GR_TRAIL[0].sy}px)`,
-          transition: `transform ${0.18 / speed}s linear`,
+          transition: `transform ${0.28 / speed}s ease-out`,
         }}
       >
         <circle cx={GR_TRAIL[0].sx} cy={GR_TRAIL[0].sy} r={20} fill={ACCENT.red} opacity={0.25} filter="url(#gr-glow)" />
@@ -6139,16 +6143,20 @@ export function VizGdRavine({ phase, stepIdx }: { phase: number; stepIdx: number
 export function GdRavineSplitPane() {
   const speed = useSpeed()
   const PHASES = 3
+  // Phase-specific durations: setup beats are short, the descent beat
+  // is held long so all 24 zig-zag steps actually play out.
+  const PHASE_DURATIONS_MS = [4500, 5000, 9500] as const
   const [phase, setPhase] = useState(0)
   useEffect(() => {
-    const id = setInterval(
+    const id = setTimeout(
       () => setPhase((p) => (p + 1) % PHASES),
-      6000 / speed,
+      PHASE_DURATIONS_MS[phase] / speed,
     )
-    return () => clearInterval(id)
-  }, [speed])
+    return () => clearTimeout(id)
+  }, [phase, speed])
 
-  // Smooth step counter — beat 2 advances 0→32 over ~5s.
+  // Smooth step counter — beat 2 advances 0→GR_STEPS over ~8s, ~330ms
+  // per step, so each zig-zag is clearly readable.
   const [stepIdx, setStepIdx] = useState(0)
   useEffect(() => {
     if (phase < 2) {
@@ -6157,12 +6165,12 @@ export function GdRavineSplitPane() {
     }
     setStepIdx(0)
     let i = 0
-    const totalMs = 5200 / speed
-    const stepMs = totalMs / 32
+    const totalMs = 8000 / speed
+    const stepMs = totalMs / GR_STEPS
     const id = setInterval(() => {
       i += 1
-      if (i >= 32) {
-        setStepIdx(32)
+      if (i >= GR_STEPS) {
+        setStepIdx(GR_STEPS)
         clearInterval(id)
       } else {
         setStepIdx(i)
@@ -6220,7 +6228,7 @@ export function GdRavineSplitPane() {
           { label: 'w₁  (along)', value: cur.w1.toFixed(2), color: ACCENT.cyan },
           { label: 'w₂  (across)', value: cur.w2.toFixed(2), color: ACCENT.red },
           { label: 'loss', value: cur.loss.toFixed(2), color: ACCENT.amber },
-          { label: 'step', value: `${safeIdx} / 32` },
+          { label: 'step', value: `${safeIdx} / ${GR_STEPS}` },
           { label: 'η  (fixed)', value: GR_LR.toFixed(3), color: ACCENT.cyan },
         ],
         equation: {

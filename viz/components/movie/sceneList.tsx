@@ -626,9 +626,9 @@ The loss landscape is wildly non-convex — it has billions of dimensions, saddl
     title: 'Why vanilla GD zig-zags.',
     subGroup: { label: 'GD · realistic', index: 2, total: 3, color: ACCENT.mint },
     caption:
-      'Drag the η slider. Too small = crawls. Too big = explodes. Fixed learning rates oscillate in a ravine — this is why we need Adam.',
+      'Same step size in every direction. Too small = crawls. Too big = explodes. Fixed learning rates zig-zag in a ravine — this is why Adam exists.',
     accent: ACCENT.red,
-    durationMs: 27000,
+    durationMs: 19000,
     part: 'gradient-descent',
     details: `Real loss landscapes aren't smooth bowls — they're narrow ravines. The gradient in the steep direction dominates, so plain gradient descent zig-zags across the walls instead of following the valley floor down.
 
