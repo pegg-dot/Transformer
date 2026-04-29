@@ -2430,70 +2430,407 @@ const BP_VB_W = 1400
 const BP_VB_H = 1000
 
 const BP_BLOCKS = 6
-const BP_BLOCK_W = 132
-const BP_BLOCK_GAP = 22
-const BP_BLOCK_H = 280
-const BP_BLOCK_Y = 240
-const BP_BLOCK_DEPTH = 18 // small isometric offset
 
-const BP_INPUT_X = 90
-const BP_INPUT_W = 92
-const BP_OUTPUT_X = 1130
-const BP_OUTPUT_W = 92
+// Floor (isometric ground plane). The whole stage stands on this.
+// Front edge is the bottom of the screen; back edge sits up-and-right
+// (the standard Act III isometric direction).
+const BP_FLOOR_FRONT_Y = 760
+const BP_FLOOR_BACK_Y = 580
+const BP_FLOOR_LEFT_X = 50
+const BP_FLOOR_RIGHT_X = 1300
+const BP_FLOOR_DEPTH_DX = 110 // how far the back edge shifts right
+const BP_FLOOR_DEPTH_DY = BP_FLOOR_FRONT_Y - BP_FLOOR_BACK_Y // 180
 
-// 6 blocks centered between input and output
-const BP_GRID_X = BP_INPUT_X + BP_INPUT_W + 28
-const BP_GRID_W = BP_BLOCKS * BP_BLOCK_W + (BP_BLOCKS - 1) * BP_BLOCK_GAP
-// Block i x:
-const bpBlockX = (i: number) => BP_GRID_X + i * (BP_BLOCK_W + BP_BLOCK_GAP)
+// Project a "floor" point given fractional depth t ∈ [0, 1] (0 = front,
+// 1 = back) and screen-x along the front edge.
+function bpFloorPoint(xFront: number, t: number): [number, number] {
+  return [
+    xFront + t * BP_FLOOR_DEPTH_DX,
+    BP_FLOOR_FRONT_Y - t * BP_FLOOR_DEPTH_DY,
+  ]
+}
 
-const BP_LOSS_X = 1240
-const BP_LOSS_Y = BP_BLOCK_Y + BP_BLOCK_H / 2
-const BP_LOSS_R = 60
+// Block dimensions (3D — front face standing upright on the floor)
+const BP_BLOCK_W = 124
+const BP_BLOCK_H = 320
+const BP_BLOCK_DEPTH = 30 // up-right offset for top + right face
 
-const BP_PULSE_Y = BP_BLOCK_Y + BP_BLOCK_H + 40
-const BP_PULSE_START_X = BP_LOSS_X
-const BP_PULSE_END_X = BP_INPUT_X + BP_INPUT_W / 2
+// Block standing position. Each block's bottom-front edge sits on the
+// floor at depth t ≈ 0.7 (toward the back so the dL/dW tiles have room
+// in the foreground in front of them).
+const BP_BLOCK_FLOOR_T = 0.62
+const BP_BLOCK_BOTTOM_Y = BP_FLOOR_FRONT_Y - BP_BLOCK_FLOOR_T * BP_FLOOR_DEPTH_DY
+const BP_BLOCK_TOP_Y = BP_BLOCK_BOTTOM_Y - BP_BLOCK_H
+
+// Block centers along the back-ish row.
+const BP_BLOCK_FIRST_FRONT_X = 230 // x along the floor's FRONT edge
+const BP_BLOCK_PITCH_FRONT = 152
+function bpBlockCx(i: number): number {
+  // block center is the front-x shifted by the depth-x offset
+  return (
+    BP_BLOCK_FIRST_FRONT_X +
+    i * BP_BLOCK_PITCH_FRONT +
+    BP_BLOCK_FLOOR_T * BP_FLOOR_DEPTH_DX
+  )
+}
+
+// dL/dW tile (lies flat on the floor in foreground in front of each block)
+const BP_TILE_FLOOR_T = 0.18
+const BP_TILE_W = 78
+const BP_TILE_H = 30 // foreshortened (it's lying flat in isometric)
+const BP_TILE_GRID = 4 // 4×4 cells per tile
+function bpTileCenter(i: number): [number, number] {
+  // The tile sits at the same FRONT-x as the block but at a smaller depth
+  const xFront = BP_BLOCK_FIRST_FRONT_X + i * BP_BLOCK_PITCH_FRONT
+  return bpFloorPoint(xFront, BP_TILE_FLOOR_T)
+}
+
+// Loss node — at the right of the corridor at block mid-height.
+const BP_LOSS_CX = 1230
+const BP_LOSS_CY = BP_BLOCK_TOP_Y + BP_BLOCK_H * 0.42
+const BP_LOSS_R = 56
+
+// Backward pulse path — at block mid-height
+const BP_PULSE_Y = BP_LOSS_CY
+const BP_PULSE_START_X = BP_LOSS_CX
+const BP_PULSE_END_X = bpBlockCx(0) - 70
 
 // L_batch carried over from Scene 23
 const BP_LBATCH = 1.59
+
+/* ---------- 3D primitives ---------- */
+
+/** Build the four corners of an isometric "tile" lying flat on the floor.
+ *  cx, cy is the screen center of the tile (already a floor point). */
+function bpTileCorners(cx: number, cy: number, w: number, h: number) {
+  const halfW = w / 2
+  const halfH = h / 2
+  // Project depth axis as up-right at the same ratio as the floor.
+  const depthRatio = BP_FLOOR_DEPTH_DX / BP_FLOOR_DEPTH_DY
+  const dx = halfH * depthRatio
+  const dy = halfH
+  // 4 corners: front-left, front-right, back-right, back-left
+  return [
+    [cx - halfW - dx, cy + dy],
+    [cx + halfW - dx, cy + dy],
+    [cx + halfW + dx, cy - dy],
+    [cx - halfW + dx, cy - dy],
+  ] as const
+}
+
+/** Render one isometric block at index i. The `lit` flag (combined with
+ *  per-block delay) flips the colour palette from forward (blue) → back
+ *  (red) when the right→left pulse arrives. */
+function BpBlock({
+  i,
+  lit,
+  litDelayS,
+  speed,
+}: {
+  i: number
+  lit: boolean
+  litDelayS: number
+  speed: number
+}) {
+  const cx = bpBlockCx(i)
+  const x = cx - BP_BLOCK_W / 2
+  const y = BP_BLOCK_TOP_Y
+  const w = BP_BLOCK_W
+  const h = BP_BLOCK_H
+  const d = BP_BLOCK_DEPTH
+
+  const fwdEdge = ACCENT.blue
+  const fwdFront = 'rgba(96,165,250,0.10)'
+  const fwdTop = 'rgba(96,165,250,0.18)'
+  const fwdRight = 'rgba(96,165,250,0.07)'
+  const backEdge = ACCENT.red
+  const backFront = 'rgba(248,113,113,0.16)'
+  const backTop = 'rgba(248,113,113,0.26)'
+  const backRight = 'rgba(248,113,113,0.10)'
+
+  const topFace = `${x},${y} ${x + w},${y} ${x + w + d},${y - d} ${x + d},${y - d}`
+  const rightFace = `${x + w},${y} ${x + w + d},${y - d} ${x + w + d},${y + h - d} ${x + w},${y + h}`
+
+  const transition = `fill ${0.4 / speed}s ease ${litDelayS / speed}s, stroke ${0.4 / speed}s ease ${litDelayS / speed}s`
+
+  // Internal weight grid — 4×4 cells centered in front face
+  const GRID = 4
+  const cellSize = 18
+  const cellGap = 4
+  const gridW = GRID * cellSize + (GRID - 1) * cellGap
+  const gridX = cx - gridW / 2
+  const gridY = y + 70
+
+  return (
+    <g>
+      {/* Soft floor shadow */}
+      <ellipse
+        cx={cx + d / 3}
+        cy={BP_BLOCK_BOTTOM_Y + 8}
+        rx={w * 0.55}
+        ry={9}
+        fill="rgba(0,0,0,0.55)"
+        opacity={0.7}
+      />
+      {/* Right face (shadowed) */}
+      <polygon
+        points={rightFace}
+        fill={lit ? backRight : fwdRight}
+        stroke={lit ? backEdge : fwdEdge}
+        strokeOpacity={0.55}
+        strokeWidth={1}
+        style={{ transition }}
+      />
+      {/* Top face (lit) */}
+      <polygon
+        points={topFace}
+        fill={lit ? backTop : fwdTop}
+        stroke={lit ? backEdge : fwdEdge}
+        strokeOpacity={0.6}
+        strokeWidth={1}
+        style={{ transition }}
+      />
+      {/* Front face (translucent) */}
+      <rect
+        x={x}
+        y={y}
+        width={w}
+        height={h}
+        rx={4}
+        fill={lit ? backFront : fwdFront}
+        stroke={lit ? backEdge : fwdEdge}
+        strokeOpacity={0.7}
+        strokeWidth={1.4}
+        style={{ transition }}
+      />
+      {/* Top-edge highlight */}
+      <line
+        x1={x + 4}
+        x2={x + w - 4}
+        y1={y + 1.5}
+        y2={y + 1.5}
+        stroke="rgba(255,255,255,0.18)"
+        strokeWidth={0.8}
+      />
+
+      {/* Block label above the top face */}
+      <text
+        x={cx}
+        y={y - d - 8}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={lit ? ACCENT.red : ACCENT.dim}
+        style={{ transition: `fill ${0.4 / speed}s ease ${litDelayS / speed}s` }}
+      >
+        BLOCK {i}
+      </text>
+
+      {/* Internal weight grid (visible through translucent front face) */}
+      <g>
+        {Array.from({ length: GRID }, (_, r) =>
+          Array.from({ length: GRID }, (_, c) => {
+            const seed = i * 41 + r * 13 + c * 5
+            const a = 0.30 + ((Math.sin(seed * 0.91) + 1) / 2) * 0.45
+            return (
+              <rect
+                key={`w-${i}-${r}-${c}`}
+                x={gridX + c * (cellSize + cellGap)}
+                y={gridY + r * (cellSize + cellGap)}
+                width={cellSize}
+                height={cellSize}
+                rx={2}
+                fill={lit ? backEdge : fwdEdge}
+                opacity={a}
+                style={{ transition: `fill ${0.4 / speed}s ease ${litDelayS / speed}s` }}
+              />
+            )
+          }),
+        )}
+      </g>
+
+      {/* "weights W_i" label below the grid */}
+      <text
+        x={cx}
+        y={gridY + GRID * (cellSize + cellGap) + 14}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="9"
+        letterSpacing="0.18em"
+        fill="rgba(255,255,255,0.45)"
+      >
+        weights W_{i}
+      </text>
+
+      {/* Saved-activations strip lower in the block (faint mint) */}
+      <g transform={`translate(${cx - 38}, ${y + h - 70})`}>
+        {Array.from({ length: 6 }, (_, r) =>
+          Array.from({ length: 4 }, (_, c) => (
+            <rect
+              key={`a-${i}-${r}-${c}`}
+              x={c * 11}
+              y={r * 8}
+              width={9}
+              height={6}
+              rx={1.5}
+              fill={ACCENT.mint}
+              opacity={0.18 + ((Math.sin(i + r * 0.3 + c * 0.5) + 1) / 2) * 0.30}
+            />
+          )),
+        )}
+      </g>
+      <text
+        x={cx}
+        y={y + h - 14}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="9"
+        letterSpacing="0.18em"
+        fill="rgba(52,211,153,0.55)"
+      >
+        saved a_{i}
+      </text>
+    </g>
+  )
+}
+
+/** ∂L/∂W tile — a parallelogram lying flat on the floor in front of
+ *  block i. Cells are tiny red parallelograms that fill in when lit. */
+function BpGradTile({
+  i,
+  lit,
+  litDelayS,
+  speed,
+}: {
+  i: number
+  lit: boolean
+  litDelayS: number
+  speed: number
+}) {
+  const [cx, cy] = bpTileCenter(i)
+  const corners = bpTileCorners(cx, cy, BP_TILE_W, BP_TILE_H)
+  const polyPoints = corners.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ')
+  const G = BP_TILE_GRID
+  const [fl, fr, br, bl] = corners
+
+  function P(u: number, v: number): [number, number] {
+    const x =
+      (1 - u) * (1 - v) * fl[0] +
+      u * (1 - v) * fr[0] +
+      u * v * br[0] +
+      (1 - u) * v * bl[0]
+    const y =
+      (1 - u) * (1 - v) * fl[1] +
+      u * (1 - v) * fr[1] +
+      u * v * br[1] +
+      (1 - u) * v * bl[1]
+    return [x, y]
+  }
+  function cellQuad(r: number, c: number) {
+    const u0 = c / G
+    const u1 = (c + 1) / G
+    const v0 = r / G
+    const v1 = (r + 1) / G
+    const a = P(u0, v0)
+    const b = P(u1, v0)
+    const cc = P(u1, v1)
+    const dd = P(u0, v1)
+    return `${a[0].toFixed(1)},${a[1].toFixed(1)} ${b[0].toFixed(1)},${b[1].toFixed(1)} ${cc[0].toFixed(1)},${cc[1].toFixed(1)} ${dd[0].toFixed(1)},${dd[1].toFixed(1)}`
+  }
+
+  const transition = `opacity ${0.5 / speed}s ease ${litDelayS / speed}s`
+
+  return (
+    <g>
+      {/* Tile border (faint when forward, lit when backward) */}
+      <polygon
+        points={polyPoints}
+        fill={lit ? 'rgba(248,113,113,0.18)' : 'rgba(255,255,255,0.025)'}
+        stroke={lit ? ACCENT.red : 'rgba(255,255,255,0.15)'}
+        strokeWidth={1.3}
+        style={{
+          transition: `fill ${0.5 / speed}s ease ${litDelayS / speed}s, stroke ${0.5 / speed}s ease ${litDelayS / speed}s`,
+        }}
+      />
+      {/* Cell quads — only visible when lit */}
+      {Array.from({ length: G }, (_, r) =>
+        Array.from({ length: G }, (_, c) => {
+          const seed = i * 17 + r * 5 + c * 3
+          const a = 0.45 + ((Math.sin(seed * 0.7) + 1) / 2) * 0.40
+          return (
+            <polygon
+              key={`gc-${i}-${r}-${c}`}
+              points={cellQuad(r, c)}
+              fill={ACCENT.red}
+              opacity={lit ? a : 0}
+              style={{ transition }}
+            />
+          )
+        }),
+      )}
+      {/* Falling-arrow connector from block base down to the tile */}
+      <line
+        x1={bpBlockCx(i)}
+        x2={cx}
+        y1={BP_BLOCK_BOTTOM_Y + 12}
+        y2={cy - BP_TILE_H / 2 - 2}
+        stroke={ACCENT.red}
+        strokeWidth={1.2}
+        strokeDasharray="3 4"
+        opacity={lit ? 0.55 : 0}
+        style={{ transition }}
+      />
+      {/* "∂L/∂W_i" label below the tile (closer to viewer) */}
+      <text
+        x={fl[0] + (fr[0] - fl[0]) / 2}
+        y={fl[1] + 18}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        fill={lit ? ACCENT.red : 'rgba(255,255,255,0.30)'}
+        style={{ transition: `fill ${0.5 / speed}s ease ${litDelayS / speed}s` }}
+      >
+        ∂L/∂W_{i}
+      </text>
+    </g>
+  )
+}
+
+/* ---------- Scene 24 viz ---------- */
 
 export function VizBackprop({ phase }: { phase: number }) {
   const speed = useSpeed()
 
   // beat 0 — forward state, no pulse
-  // beat 1 — pulse sweeps, blocks light red one by one
-  // beat 2 — all blocks red, pulse is gone (re-emerges at input side)
-  const showForward = phase >= 0
+  // beat 1 — pulse sweeps right→left, blocks light red one by one,
+  //          ∂L/∂W tiles glow on the floor
+  // beat 2 — all blocks red, all tiles glowing, closing line
   const sweepStarted = phase >= 1
   const sweepDone = phase >= 2
 
-  // Per-block "lit" timing during the sweep. The pulse leaves the loss
-  // at sweep start and reaches block i after (BP_BLOCKS - i) * step.
-  const SWEEP_TOTAL_S = 3.4 // seconds
+  // Sweep timing: total length 3.4s. Block at index BP_BLOCKS-1 (rightmost)
+  // lights first, then leftward.
+  const SWEEP_TOTAL_S = 3.4
   const stepS = SWEEP_TOTAL_S / (BP_BLOCKS + 1)
-
-  // Saved-activations grid inside each block (4 cols × 6 rows). Pure
-  // decoration — always faintly visible to suggest stored state.
-  const ACT_COLS = 4
-  const ACT_ROWS = 6
 
   return (
     <svg viewBox={`0 0 ${BP_VB_W} ${BP_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
       <defs>
-        <linearGradient id="bp-block-fwd" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor={ACCENT.blue} stopOpacity="0.22" />
-          <stop offset="100%" stopColor={ACCENT.blue} stopOpacity="0.06" />
-        </linearGradient>
-        <linearGradient id="bp-block-back" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor={ACCENT.red} stopOpacity="0.32" />
-          <stop offset="100%" stopColor={ACCENT.red} stopOpacity="0.10" />
-        </linearGradient>
         <radialGradient id="bp-loss-glow" cx="0.5" cy="0.5" r="0.5">
           <stop offset="0%" stopColor={ACCENT.amber} stopOpacity="0.85" />
-          <stop offset="60%" stopColor={ACCENT.amber} stopOpacity="0.35" />
+          <stop offset="55%" stopColor={ACCENT.amber} stopOpacity="0.30" />
           <stop offset="100%" stopColor={ACCENT.amber} stopOpacity="0" />
         </radialGradient>
+        <radialGradient id="bp-pulse-glow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor={ACCENT.red} stopOpacity="0.95" />
+          <stop offset="60%" stopColor={ACCENT.red} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={ACCENT.red} stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="bp-floor-fade" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="rgba(167,139,250,0.04)" />
+          <stop offset="100%" stopColor="rgba(167,139,250,0.16)" />
+        </linearGradient>
         <filter id="bp-glow" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="3.5" result="b" />
           <feMerge>
@@ -2501,12 +2838,15 @@ export function VizBackprop({ phase }: { phase: number }) {
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
+        <filter id="bp-soft" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2" />
+        </filter>
       </defs>
 
       {/* ===================== HEADER ===================== */}
       <text
         x={BP_VB_W / 2}
-        y={70}
+        y={62}
         textAnchor="middle"
         fontFamily="var(--font-mono)"
         fontSize="13"
@@ -2517,26 +2857,74 @@ export function VizBackprop({ phase }: { phase: number }) {
       </text>
       <text
         x={BP_VB_W / 2}
-        y={108}
+        y={100}
         textAnchor="middle"
         fontFamily="var(--font-display, Georgia, serif)"
         fontStyle="italic"
-        fontSize="26"
+        fontSize="24"
         fill="rgba(255,255,255,0.85)"
       >
         The error signal walks back through saved activations.
       </text>
 
-      {/* ===================== FORWARD ARROW (top) ===================== */}
-      <g
-        style={{
-          opacity: showForward ? 0.55 : 0,
-          transition: `opacity ${0.5 / speed}s ease`,
-        }}
-      >
+      {/* ===================== FLOOR PLANE ===================== */}
+      {(() => {
+        const fl = bpFloorPoint(BP_FLOOR_LEFT_X, 0)
+        const fr = bpFloorPoint(BP_FLOOR_RIGHT_X, 0)
+        const br = bpFloorPoint(BP_FLOOR_RIGHT_X, 1)
+        const bl = bpFloorPoint(BP_FLOOR_LEFT_X, 1)
+        const floorPoly = `${fl[0]},${fl[1]} ${fr[0]},${fr[1]} ${br[0]},${br[1]} ${bl[0]},${bl[1]}`
+        const verticalLines: ReactNode[] = []
+        for (let x = BP_FLOOR_LEFT_X + 120; x < BP_FLOOR_RIGHT_X; x += 140) {
+          const [x0, y0] = bpFloorPoint(x, 0)
+          const [x1, y1] = bpFloorPoint(x, 1)
+          verticalLines.push(
+            <line
+              key={`fv-${x}`}
+              x1={x0}
+              y1={y0}
+              x2={x1}
+              y2={y1}
+              stroke="rgba(167,139,250,0.10)"
+              strokeWidth={0.6}
+            />,
+          )
+        }
+        const horizontalLines: ReactNode[] = []
+        for (const t of [0.25, 0.5, 0.75]) {
+          const [x0, y0] = bpFloorPoint(BP_FLOOR_LEFT_X, t)
+          const [x1, y1] = bpFloorPoint(BP_FLOOR_RIGHT_X, t)
+          horizontalLines.push(
+            <line
+              key={`fh-${t}`}
+              x1={x0}
+              y1={y0}
+              x2={x1}
+              y2={y1}
+              stroke="rgba(167,139,250,0.10)"
+              strokeWidth={0.6}
+            />,
+          )
+        }
+        return (
+          <g>
+            <polygon
+              points={floorPoly}
+              fill="url(#bp-floor-fade)"
+              stroke="rgba(167,139,250,0.18)"
+              strokeWidth={0.8}
+            />
+            {verticalLines}
+            {horizontalLines}
+          </g>
+        )
+      })()}
+
+      {/* ===================== FORWARD ARROW (top, faint blue) ===================== */}
+      <g opacity={0.55}>
         <text
-          x={BP_INPUT_X}
-          y={BP_BLOCK_Y - 36}
+          x={bpBlockCx(0) - BP_BLOCK_W / 2}
+          y={BP_BLOCK_TOP_Y - BP_BLOCK_DEPTH - 36}
           fontFamily="var(--font-mono)"
           fontSize="10"
           letterSpacing="0.22em"
@@ -2545,17 +2933,17 @@ export function VizBackprop({ phase }: { phase: number }) {
           FORWARD · activations saved
         </text>
         <line
-          x1={BP_INPUT_X}
-          x2={BP_OUTPUT_X + BP_OUTPUT_W}
-          y1={BP_BLOCK_Y - 18}
-          y2={BP_BLOCK_Y - 18}
+          x1={bpBlockCx(0) - BP_BLOCK_W / 2}
+          x2={BP_LOSS_CX + BP_LOSS_R - 6}
+          y1={BP_BLOCK_TOP_Y - BP_BLOCK_DEPTH - 18}
+          y2={BP_BLOCK_TOP_Y - BP_BLOCK_DEPTH - 18}
           stroke={ACCENT.blue}
           strokeOpacity={0.5}
           strokeWidth={1.2}
           strokeDasharray="6 5"
         />
         <polyline
-          points={`${BP_OUTPUT_X + BP_OUTPUT_W - 8},${BP_BLOCK_Y - 22} ${BP_OUTPUT_X + BP_OUTPUT_W},${BP_BLOCK_Y - 18} ${BP_OUTPUT_X + BP_OUTPUT_W - 8},${BP_BLOCK_Y - 14}`}
+          points={`${BP_LOSS_CX + BP_LOSS_R - 14},${BP_BLOCK_TOP_Y - BP_BLOCK_DEPTH - 22} ${BP_LOSS_CX + BP_LOSS_R - 6},${BP_BLOCK_TOP_Y - BP_BLOCK_DEPTH - 18} ${BP_LOSS_CX + BP_LOSS_R - 14},${BP_BLOCK_TOP_Y - BP_BLOCK_DEPTH - 14}`}
           fill="none"
           stroke={ACCENT.blue}
           strokeWidth={1.4}
@@ -2563,272 +2951,75 @@ export function VizBackprop({ phase }: { phase: number }) {
         />
       </g>
 
-      {/* ===================== INPUT SLAB ===================== */}
-      <g>
-        <rect
-          x={BP_INPUT_X}
-          y={BP_BLOCK_Y + 30}
-          width={BP_INPUT_W}
-          height={BP_BLOCK_H - 60}
-          rx={6}
-          fill="rgba(96,165,250,0.10)"
-          stroke={ACCENT.blue}
-          strokeOpacity={0.45}
-          strokeWidth={1}
+      {/* ===================== BACKWARD GLOW LANE (mid-block height) ===================== */}
+      <g
+        style={{
+          opacity: sweepStarted ? 1 : 0,
+          transition: `opacity ${0.4 / speed}s ease`,
+        }}
+      >
+        <line
+          x1={BP_PULSE_END_X}
+          x2={BP_PULSE_START_X}
+          y1={BP_PULSE_Y}
+          y2={BP_PULSE_Y}
+          stroke={ACCENT.red}
+          strokeOpacity={0.10}
+          strokeWidth={28}
+          filter="url(#bp-soft)"
         />
-        <text
-          x={BP_INPUT_X + BP_INPUT_W / 2}
-          y={BP_BLOCK_Y + BP_BLOCK_H / 2 - 4}
-          textAnchor="middle"
-          fontFamily="var(--font-mono)"
-          fontSize="13"
-          fill={ACCENT.blue}
-          letterSpacing="0.18em"
-        >
-          INPUT
-        </text>
-        <text
-          x={BP_INPUT_X + BP_INPUT_W / 2}
-          y={BP_BLOCK_Y + BP_BLOCK_H / 2 + 18}
-          textAnchor="middle"
-          fontFamily="var(--font-mono)"
-          fontSize="11"
-          fill="rgba(255,255,255,0.55)"
-        >
-          tokens
-        </text>
+        <line
+          x1={BP_PULSE_END_X}
+          x2={BP_PULSE_START_X}
+          y1={BP_PULSE_Y}
+          y2={BP_PULSE_Y}
+          stroke={ACCENT.red}
+          strokeOpacity={0.55}
+          strokeWidth={1.6}
+          strokeDasharray="6 6"
+        />
+        <polyline
+          points={`${BP_PULSE_END_X + 10},${BP_PULSE_Y - 6} ${BP_PULSE_END_X},${BP_PULSE_Y} ${BP_PULSE_END_X + 10},${BP_PULSE_Y + 6}`}
+          fill="none"
+          stroke={ACCENT.red}
+          strokeWidth={1.7}
+        />
       </g>
 
-      {/* ===================== TRANSFORMER BLOCKS ===================== */}
+      {/* ===================== BLOCKS ===================== */}
       {Array.from({ length: BP_BLOCKS }, (_, i) => {
-        const x = bpBlockX(i)
-        // Lit when the right-to-left pulse has reached this block.
-        // Block at index BP_BLOCKS-1 (rightmost) lights first.
         const litDelayS = (BP_BLOCKS - 1 - i) * stepS + 0.15
-        const lit = sweepStarted // CSS transition with delay handles timing
-
         return (
-          <g key={`block-${i}`}>
-            {/* Isometric "back face" — small offset rect for depth */}
-            <rect
-              x={x + BP_BLOCK_DEPTH}
-              y={BP_BLOCK_Y - BP_BLOCK_DEPTH}
-              width={BP_BLOCK_W}
-              height={BP_BLOCK_H}
-              rx={6}
-              fill="rgba(255,255,255,0.02)"
-              stroke="rgba(255,255,255,0.05)"
-              strokeWidth={1}
-            />
-
-            {/* Front face — switches fill from forward (blue) to back (red) */}
-            <rect
-              x={x}
-              y={BP_BLOCK_Y}
-              width={BP_BLOCK_W}
-              height={BP_BLOCK_H}
-              rx={8}
-              fill={lit ? 'url(#bp-block-back)' : 'url(#bp-block-fwd)'}
-              stroke={lit ? ACCENT.red : ACCENT.blue}
-              strokeOpacity={0.7}
-              strokeWidth={1.4}
-              style={{
-                transition: `fill ${0.35 / speed}s ease ${litDelayS / speed}s, stroke ${0.35 / speed}s ease ${litDelayS / speed}s`,
-              }}
-            />
-
-            {/* Block label */}
-            <text
-              x={x + BP_BLOCK_W / 2}
-              y={BP_BLOCK_Y + 30}
-              textAnchor="middle"
-              fontFamily="var(--font-mono)"
-              fontSize="11"
-              letterSpacing="0.22em"
-              fill={ACCENT.dim}
-            >
-              BLOCK {i}
-            </text>
-
-            {/* Saved-activations mini grid — faint mint tiles inside the
-                block. Reads as "this block holds its forward state." */}
-            <g transform={`translate(${x + BP_BLOCK_W / 2 - (ACT_COLS * 14) / 2}, ${BP_BLOCK_Y + 60})`}>
-              {Array.from({ length: ACT_ROWS }, (_, r) =>
-                Array.from({ length: ACT_COLS }, (_, c) => {
-                  const cellSeed = i * 31 + r * 7 + c * 3
-                  const a = 0.18 + ((Math.sin(cellSeed) + 1) / 2) * 0.45
-                  return (
-                    <rect
-                      key={`act-${r}-${c}`}
-                      x={c * 14}
-                      y={r * 14}
-                      width={11}
-                      height={11}
-                      rx={1.5}
-                      fill={ACCENT.mint}
-                      opacity={a}
-                    />
-                  )
-                }),
-              )}
-            </g>
-            <text
-              x={x + BP_BLOCK_W / 2}
-              y={BP_BLOCK_Y + 60 + ACT_ROWS * 14 + 16}
-              textAnchor="middle"
-              fontFamily="var(--font-mono)"
-              fontSize="9"
-              letterSpacing="0.18em"
-              fill="rgba(52,211,153,0.55)"
-            >
-              saved a_{i}
-            </text>
-
-            {/* Weights "card" inside the block — lights up red when this
-                block computes its ∂L/∂W. */}
-            <g transform={`translate(${x + 14}, ${BP_BLOCK_Y + BP_BLOCK_H - 64})`}>
-              <rect
-                x={0}
-                y={0}
-                width={BP_BLOCK_W - 28}
-                height={48}
-                rx={5}
-                fill={lit ? 'rgba(248,113,113,0.18)' : 'rgba(255,255,255,0.03)'}
-                stroke={lit ? ACCENT.red : 'rgba(255,255,255,0.10)'}
-                strokeWidth={1.2}
-                style={{
-                  transition: `fill ${0.35 / speed}s ease ${litDelayS / speed}s, stroke ${0.35 / speed}s ease ${litDelayS / speed}s`,
-                }}
-              />
-              <text
-                x={(BP_BLOCK_W - 28) / 2}
-                y={20}
-                textAnchor="middle"
-                fontFamily="var(--font-mono)"
-                fontSize="10"
-                letterSpacing="0.2em"
-                fill={lit ? ACCENT.red : ACCENT.dim}
-                style={{
-                  transition: `fill ${0.35 / speed}s ease ${litDelayS / speed}s`,
-                }}
-              >
-                W_{i}
-              </text>
-              <text
-                x={(BP_BLOCK_W - 28) / 2}
-                y={38}
-                textAnchor="middle"
-                fontFamily="var(--font-mono)"
-                fontSize="9"
-                fill={lit ? ACCENT.red : ACCENT.dim}
-                style={{
-                  transition: `fill ${0.35 / speed}s ease ${litDelayS / speed}s`,
-                }}
-              >
-                {lit ? '∂L/∂W ready' : 'weights'}
-              </text>
-            </g>
-
-            {/* ∂L/∂W glyph above the block — the local-gradient artifact */}
-            <g
-              style={{
-                opacity: lit ? 1 : 0,
-                transition: `opacity ${0.4 / speed}s ease ${(litDelayS + 0.05) / speed}s`,
-              }}
-            >
-              <line
-                x1={x + BP_BLOCK_W / 2}
-                x2={x + BP_BLOCK_W / 2}
-                y1={BP_BLOCK_Y - 6}
-                y2={BP_BLOCK_Y - 56}
-                stroke={ACCENT.red}
-                strokeWidth={1.3}
-                strokeDasharray="3 4"
-              />
-              <rect
-                x={x + BP_BLOCK_W / 2 - 38}
-                y={BP_BLOCK_Y - 86}
-                width={76}
-                height={32}
-                rx={6}
-                fill="rgba(248,113,113,0.16)"
-                stroke={ACCENT.red}
-                strokeWidth={1.2}
-              />
-              <text
-                x={x + BP_BLOCK_W / 2}
-                y={BP_BLOCK_Y - 65}
-                textAnchor="middle"
-                fontFamily="var(--font-display, Georgia, serif)"
-                fontStyle="italic"
-                fontSize="14"
-                fill={ACCENT.red}
-              >
-                ∂L/∂W_{i}
-              </text>
-            </g>
-          </g>
+          <BpBlock
+            key={`bp-block-${i}`}
+            i={i}
+            lit={sweepStarted}
+            litDelayS={litDelayS}
+            speed={speed}
+          />
         )
       })}
 
-      {/* ===================== OUTPUT / LOGITS COLUMN ===================== */}
-      <g>
-        <rect
-          x={BP_OUTPUT_X}
-          y={BP_BLOCK_Y + 30}
-          width={BP_OUTPUT_W}
-          height={BP_BLOCK_H - 60}
-          rx={6}
-          fill="rgba(96,165,250,0.08)"
-          stroke={ACCENT.blue}
-          strokeOpacity={0.4}
-          strokeWidth={1}
-        />
-        <text
-          x={BP_OUTPUT_X + BP_OUTPUT_W / 2}
-          y={BP_BLOCK_Y + BP_BLOCK_H / 2 - 4}
-          textAnchor="middle"
-          fontFamily="var(--font-mono)"
-          fontSize="12"
-          fill={ACCENT.blue}
-          letterSpacing="0.18em"
-        >
-          LOGITS
-        </text>
-        <text
-          x={BP_OUTPUT_X + BP_OUTPUT_W / 2}
-          y={BP_BLOCK_Y + BP_BLOCK_H / 2 + 18}
-          textAnchor="middle"
-          fontFamily="var(--font-mono)"
-          fontSize="10"
-          fill="rgba(255,255,255,0.55)"
-        >
-          → softmax → CE
-        </text>
-      </g>
-
       {/* ===================== LOSS NODE ===================== */}
       <g>
-        {/* Outer halo (always visible, slightly larger) */}
         <circle
-          cx={BP_LOSS_X}
-          cy={BP_LOSS_Y}
-          r={BP_LOSS_R + 10}
+          cx={BP_LOSS_CX}
+          cy={BP_LOSS_CY}
+          r={BP_LOSS_R + 14}
           fill="url(#bp-loss-glow)"
-          opacity={0.55}
         />
         <circle
-          cx={BP_LOSS_X}
-          cy={BP_LOSS_Y}
+          cx={BP_LOSS_CX}
+          cy={BP_LOSS_CY}
           r={BP_LOSS_R}
-          fill="rgba(245,158,11,0.18)"
+          fill="rgba(245,158,11,0.20)"
           stroke={ACCENT.amber}
           strokeWidth={1.6}
           filter="url(#bp-glow)"
         />
         <text
-          x={BP_LOSS_X}
-          y={BP_LOSS_Y - 8}
+          x={BP_LOSS_CX}
+          y={BP_LOSS_CY - 10}
           textAnchor="middle"
           fontFamily="var(--font-mono)"
           fontSize="10"
@@ -2838,21 +3029,33 @@ export function VizBackprop({ phase }: { phase: number }) {
           L_BATCH
         </text>
         <text
-          x={BP_LOSS_X}
-          y={BP_LOSS_Y + 20}
+          x={BP_LOSS_CX}
+          y={BP_LOSS_CY + 18}
           textAnchor="middle"
           fontFamily="var(--font-display, Georgia, serif)"
           fontStyle="italic"
-          fontSize="28"
+          fontSize="26"
           fill={ACCENT.amber}
         >
           {BP_LBATCH.toFixed(2)}
         </text>
       </g>
 
-      {/* ===================== BACKWARD PULSE ===================== */}
-      {/* The protagonist of the scene. A red glowing dot starts at the
-          loss and animates to the input over SWEEP_TOTAL_S seconds. */}
+      {/* ===================== ∂L/∂W TILES ON FLOOR ===================== */}
+      {Array.from({ length: BP_BLOCKS }, (_, i) => {
+        const litDelayS = (BP_BLOCKS - 1 - i) * stepS + 0.30
+        return (
+          <BpGradTile
+            key={`bp-tile-${i}`}
+            i={i}
+            lit={sweepStarted}
+            litDelayS={litDelayS}
+            speed={speed}
+          />
+        )
+      })}
+
+      {/* ===================== TRAVELING PULSE (drawn last) ===================== */}
       <g
         style={{
           opacity: sweepStarted && !sweepDone ? 1 : 0,
@@ -2862,7 +3065,21 @@ export function VizBackprop({ phase }: { phase: number }) {
         <circle
           cx={BP_PULSE_END_X}
           cy={BP_PULSE_Y}
-          r={10}
+          r={28}
+          fill="url(#bp-pulse-glow)"
+          style={{
+            transform: sweepStarted
+              ? `translateX(0px)`
+              : `translateX(${BP_PULSE_START_X - BP_PULSE_END_X}px)`,
+            transition: sweepStarted
+              ? `transform ${SWEEP_TOTAL_S / speed}s linear`
+              : 'none',
+          }}
+        />
+        <circle
+          cx={BP_PULSE_END_X}
+          cy={BP_PULSE_Y}
+          r={9}
           fill={ACCENT.red}
           filter="url(#bp-glow)"
           style={{
@@ -2876,75 +3093,27 @@ export function VizBackprop({ phase }: { phase: number }) {
         />
       </g>
 
-      {/* Backward arrow lane */}
-      <g
-        style={{
-          opacity: sweepStarted ? 1 : 0,
-          transition: `opacity ${0.4 / speed}s ease`,
-        }}
-      >
-        <line
-          x1={BP_PULSE_END_X}
-          x2={BP_PULSE_START_X}
-          y1={BP_PULSE_Y}
-          y2={BP_PULSE_Y}
-          stroke={ACCENT.red}
-          strokeOpacity={0.4}
-          strokeWidth={1.4}
-          strokeDasharray="5 5"
-        />
-        <polyline
-          points={`${BP_PULSE_END_X + 8},${BP_PULSE_Y - 5} ${BP_PULSE_END_X},${BP_PULSE_Y} ${BP_PULSE_END_X + 8},${BP_PULSE_Y + 5}`}
-          fill="none"
-          stroke={ACCENT.red}
-          strokeWidth={1.5}
-          strokeOpacity={0.85}
-        />
+      {/* ===================== LEGEND ===================== */}
+      <g transform={`translate(${BP_FLOOR_LEFT_X + 20}, ${BP_FLOOR_FRONT_Y + 12})`}>
+        <rect x={0} y={0} width={12} height={12} rx={2} fill={ACCENT.blue} opacity={0.7} />
         <text
-          x={BP_VB_W / 2}
-          y={BP_PULSE_Y + 28}
-          textAnchor="middle"
+          x={20}
+          y={10}
           fontFamily="var(--font-mono)"
           fontSize="11"
-          letterSpacing="0.22em"
-          fill={ACCENT.red}
+          fill="rgba(255,255,255,0.65)"
         >
-          BACKWARD ·  ∂L flowing right → left
+          forward activations (saved)
         </text>
-      </g>
-
-      {/* ===================== CHAIN-RULE MICRO-LABEL ===================== */}
-      {/* Show the math attached to the moving object, not floating off. */}
-      <g
-        style={{
-          opacity: sweepStarted ? 1 : 0,
-          transition: `opacity ${0.4 / speed}s ease ${0.6 / speed}s`,
-        }}
-      >
+        <rect x={230} y={0} width={12} height={12} rx={2} fill={ACCENT.red} opacity={0.85} />
         <text
-          x={BP_VB_W / 2}
-          y={BP_BLOCK_Y + BP_BLOCK_H + 100}
-          textAnchor="middle"
-          fontFamily="var(--font-display, Georgia, serif)"
-          fontStyle="italic"
-          fontSize="20"
-          fill="rgba(255,255,255,0.78)"
-        >
-          ∂L/∂x_l = ∂L/∂x_<tspan dy="-4" fontSize="14">l+1</tspan>
-          <tspan dy="4"> · ∂x_</tspan>
-          <tspan dy="-4" fontSize="14">l+1</tspan>
-          <tspan dy="4">/∂x_l</tspan>
-        </text>
-        <text
-          x={BP_VB_W / 2}
-          y={BP_BLOCK_Y + BP_BLOCK_H + 124}
-          textAnchor="middle"
+          x={250}
+          y={10}
           fontFamily="var(--font-mono)"
           fontSize="11"
-          letterSpacing="0.22em"
-          fill={ACCENT.dim}
+          fill="rgba(255,255,255,0.65)"
         >
-          INCOMING GRADIENT × LOCAL DERIVATIVE = OUTGOING GRADIENT (+ ∂L/∂W FOR THIS LAYER)
+          backward gradients (flowing)
         </text>
       </g>
 
@@ -2957,30 +3126,30 @@ export function VizBackprop({ phase }: { phase: number }) {
       >
         <text
           x={BP_VB_W / 2}
-          y={BP_VB_H - 110}
+          y={BP_VB_H - 78}
           textAnchor="middle"
           fontFamily="var(--font-display, Georgia, serif)"
           fontStyle="italic"
-          fontSize="22"
+          fontSize="20"
           fill={ACCENT.red}
         >
           One backward pass → one ∂L/∂W per layer.
         </text>
         <text
           x={BP_VB_W / 2}
-          y={BP_VB_H - 84}
+          y={BP_VB_H - 56}
           textAnchor="middle"
           fontFamily="var(--font-mono)"
-          fontSize="11"
+          fontSize="10"
           letterSpacing="0.22em"
           fill={ACCENT.dim}
         >
-          NEXT: THE OPTIMIZER USES THESE GRADIENTS TO STEP THE WEIGHTS
+          NEXT · THE OPTIMIZER USES THESE GRADIENTS TO STEP THE WEIGHTS
         </text>
       </g>
 
       {/* ===================== BEAT INDICATOR ===================== */}
-      <g transform={`translate(${BP_VB_W / 2}, ${BP_VB_H - 36})`}>
+      <g transform={`translate(${BP_VB_W / 2}, ${BP_VB_H - 26})`}>
         {(['forward · saved', 'backward sweep', 'all gradients in'] as const).map((label, i) => {
           const w = 220
           const gap = 18
@@ -2992,13 +3161,13 @@ export function VizBackprop({ phase }: { phase: number }) {
             <g key={`bp-beat-${i}`} transform={`translate(${cx}, 0)`}>
               <rect
                 x={-w / 2}
-                y={-16}
+                y={-12}
                 width={w}
-                height={32}
-                rx={16}
+                height={24}
+                rx={12}
                 fill={active ? 'rgba(248,113,113,0.18)' : 'rgba(255,255,255,0.02)'}
                 stroke={active ? ACCENT.red : ACCENT.rule}
-                strokeWidth={1.4}
+                strokeWidth={1.2}
                 style={{ transition: `fill ${0.3 / speed}s ease, stroke ${0.3 / speed}s ease` }}
               />
               <text
@@ -3006,7 +3175,7 @@ export function VizBackprop({ phase }: { phase: number }) {
                 y={4}
                 textAnchor="middle"
                 fontFamily="var(--font-mono)"
-                fontSize="11"
+                fontSize="10"
                 letterSpacing="0.18em"
                 fill={active ? ACCENT.red : ACCENT.dim}
                 style={{ transition: `fill ${0.3 / speed}s ease` }}
