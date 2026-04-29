@@ -6240,3 +6240,723 @@ export function GdRavineSplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 29 — gd-adam: "Adam fixes the ravine."
+ *
+ * Reuse Scene 28's ravine (steep w₂, shallow w₁) and run TWO optimizers
+ * on it side-by-side: vanilla GD (red, zig-zags, stalls mid-valley) and
+ * Adam (cyan, smooths and rescales per-direction, walks straight down
+ * the valley to the basin). Same surface, two trajectories, same start.
+ *
+ * Three beats:
+ *
+ *   beat 0 — recap. The faded red vanilla zig-zag from Scene 28 fades
+ *            in on the ravine. Caption: "vanilla GD wastes steps."
+ *   beat 1 — Adam reveals. The cyan Adam path animates step by step
+ *            down the valley with no zig-zag. Annotations point to the
+ *            two ingredients: "momentum smooths direction" and
+ *            "adaptive scaling shrinks steep-direction steps."
+ *   beat 2 — payoff + formula chips. Adam reaches the basin. Three
+ *            chips appear: m = running avg of grads, v = running avg of
+ *            squared grads, step ≈ m/√v. Closing line.
+ * ====================================================================== */
+
+const ADAM_STEPS = 24
+
+// Run the same vanilla GD as Scene 28 (kept in sync) so we can show its
+// stalled trail as a recap.
+const ADAM_VANILLA_TRAIL: Array<{ w1: number; w2: number; sx: number; sy: number }> = (() => {
+  const out: Array<{ w1: number; w2: number; sx: number; sy: number }> = []
+  let w1 = -1.5
+  let w2 = 1.0
+  for (let k = 0; k <= ADAM_STEPS; k++) {
+    const z = grLoss(w1, w2)
+    const [sx, sy] = grProject(w1, w2, z)
+    out.push({ w1, w2, sx, sy })
+    const [g1, g2] = grGradient(w1, w2)
+    w1 -= GR_LR * g1
+    w2 -= GR_LR * g2
+  }
+  return out
+})()
+
+// Adam optimizer on the same loss. Standard Adam with β₁=0.9, β₂=0.999,
+// ε=1e-8, η=0.18. Tuned so the cyan path reaches the basin in ADAM_STEPS.
+const ADAM_BETA1 = 0.9
+const ADAM_BETA2 = 0.999
+const ADAM_EPS = 1e-8
+const ADAM_LR = 0.18
+
+const ADAM_TRAIL: Array<{
+  w1: number
+  w2: number
+  loss: number
+  sx: number
+  sy: number
+  m1: number
+  m2: number
+  v1: number
+  v2: number
+}> = (() => {
+  const out: Array<{ w1: number; w2: number; loss: number; sx: number; sy: number; m1: number; m2: number; v1: number; v2: number }> = []
+  let w1 = -1.5
+  let w2 = 1.0
+  let m1 = 0, m2 = 0, v1 = 0, v2 = 0
+  for (let k = 0; k <= ADAM_STEPS; k++) {
+    const z = grLoss(w1, w2)
+    const [sx, sy] = grProject(w1, w2, z)
+    out.push({ w1, w2, loss: z, sx, sy, m1, m2, v1, v2 })
+    const [g1, g2] = grGradient(w1, w2)
+    m1 = ADAM_BETA1 * m1 + (1 - ADAM_BETA1) * g1
+    m2 = ADAM_BETA1 * m2 + (1 - ADAM_BETA1) * g2
+    v1 = ADAM_BETA2 * v1 + (1 - ADAM_BETA2) * g1 * g1
+    v2 = ADAM_BETA2 * v2 + (1 - ADAM_BETA2) * g2 * g2
+    const t = k + 1
+    const m1Hat = m1 / (1 - Math.pow(ADAM_BETA1, t))
+    const m2Hat = m2 / (1 - Math.pow(ADAM_BETA1, t))
+    const v1Hat = v1 / (1 - Math.pow(ADAM_BETA2, t))
+    const v2Hat = v2 / (1 - Math.pow(ADAM_BETA2, t))
+    w1 -= (ADAM_LR * m1Hat) / (Math.sqrt(v1Hat) + ADAM_EPS)
+    w2 -= (ADAM_LR * m2Hat) / (Math.sqrt(v2Hat) + ADAM_EPS)
+  }
+  return out
+})()
+
+// Layout (mirrors Scene 28). Reuse GR_* constants for the surface.
+const ADAM_CMAP_X = 870
+const ADAM_CMAP_Y = 130
+const ADAM_CMAP_W = 430
+const ADAM_CMAP_H = 320
+const ADAM_CMAP_CX = ADAM_CMAP_X + ADAM_CMAP_W / 2
+const ADAM_CMAP_CY = ADAM_CMAP_Y + ADAM_CMAP_H / 2
+
+function adamCmapPoint(w1: number, w2: number): [number, number] {
+  const u = (w1 - GR_BASIN_W1) / 1.65
+  const v = (w2 - GR_BASIN_W2) / 1.2
+  return [ADAM_CMAP_CX + u * (ADAM_CMAP_W / 2), ADAM_CMAP_CY + v * (ADAM_CMAP_H / 2)]
+}
+
+const ADAM_CHIPS_X = 870
+const ADAM_CHIPS_Y = 510
+const ADAM_CHIPS_W = 430
+const ADAM_CHIPS_H = 230
+
+export function VizGdAdam({ phase, stepIdx }: { phase: number; stepIdx: number }) {
+  const speed = useSpeed()
+
+  const showVanilla = phase >= 0
+  const showAdam = phase >= 1
+  const showAnnots = phase >= 1
+  const showChips = phase >= 2
+
+  const safeIdx = Math.max(0, Math.min(ADAM_TRAIL.length - 1, stepIdx))
+  const cur = ADAM_TRAIL[safeIdx]
+
+  // Wireframe (same loss as Scene 28)
+  const rowPolylines: string[] = []
+  const colPolylines: string[] = []
+  for (let i = 0; i <= GR_GRID; i++) {
+    const w1 = -1.7 + (3.4 * i) / GR_GRID
+    const ptsRow: string[] = []
+    const ptsCol: string[] = []
+    for (let j = 0; j <= GR_GRID; j++) {
+      const w2 = -1.2 + (2.4 * j) / GR_GRID
+      const loss = grLoss(w1, w2)
+      const [sx, sy] = grProject(w1, w2, loss)
+      ptsRow.push(`${sx.toFixed(1)},${sy.toFixed(1)}`)
+      const w1b = -1.7 + (3.4 * j) / GR_GRID
+      const w2b = -1.2 + (2.4 * i) / GR_GRID
+      const lossB = grLoss(w1b, w2b)
+      const [sx2, sy2] = grProject(w1b, w2b, lossB)
+      ptsCol.push(`${sx2.toFixed(1)},${sy2.toFixed(1)}`)
+    }
+    rowPolylines.push(ptsRow.join(' '))
+    colPolylines.push(ptsCol.join(' '))
+  }
+
+  return (
+    <svg viewBox={`0 0 ${GR_VB_W} ${GR_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <radialGradient id="adam-min-glow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor={ACCENT.mint} stopOpacity="0.95" />
+          <stop offset="60%" stopColor={ACCENT.mint} stopOpacity="0.30" />
+          <stop offset="100%" stopColor={ACCENT.mint} stopOpacity="0" />
+        </radialGradient>
+        <filter id="adam-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* ===================== HEADER ===================== */}
+      <text
+        x={GR_VB_W / 2}
+        y={56}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="13"
+        letterSpacing="0.32em"
+        fill={ACCENT.dim}
+      >
+        SAME RAVINE  ·  TWO OPTIMIZERS  ·  ONE WALKS STRAIGHT DOWN
+      </text>
+      <text
+        x={32}
+        y={104}
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={ACCENT.dim}
+      >
+        LOSS LANDSCAPE  L(w₁, w₂)
+      </text>
+      <text
+        x={32}
+        y={126}
+        fontFamily="var(--font-display, Georgia, serif)"
+        fontStyle="italic"
+        fontSize="14"
+        fill="rgba(255,255,255,0.62)"
+      >
+        Same narrow ravine — Adam adapts step size per direction.
+      </text>
+
+      {/* ===================== 3D WIREFRAME RAVINE ===================== */}
+      <g>
+        {rowPolylines.map((pts, i) => (
+          <polyline
+            key={`r-${i}`}
+            points={pts}
+            fill="none"
+            stroke="rgba(248,113,113,0.32)"
+            strokeWidth={0.7}
+          />
+        ))}
+        {colPolylines.map((pts, i) => (
+          <polyline
+            key={`c-${i}`}
+            points={pts}
+            fill="none"
+            stroke="rgba(248,113,113,0.32)"
+            strokeWidth={0.7}
+          />
+        ))}
+      </g>
+
+      {/* ===================== Y-AXIS ===================== */}
+      <text x={28} y={250} fontFamily="var(--font-mono)" fontSize="11" letterSpacing="0.18em" fill="rgba(255,255,255,0.55)">
+        Loss
+      </text>
+      <line x1={28} x2={28} y1={262} y2={550} stroke="rgba(255,255,255,0.18)" strokeWidth={1} />
+      <polyline points="24,266 28,258 32,266" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={1} />
+
+      {/* ===================== VANILLA TRAIL (recap, faded red) ===================== */}
+      <g
+        style={{
+          opacity: showVanilla ? 0.65 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        {/* connecting segments — dashed to read as "the old way" */}
+        {ADAM_VANILLA_TRAIL.slice(1).map((t, i) => {
+          const prev = ADAM_VANILLA_TRAIL[i]
+          return (
+            <line
+              key={`vl-${i}`}
+              x1={prev.sx}
+              y1={prev.sy}
+              x2={t.sx}
+              y2={t.sy}
+              stroke={ACCENT.red}
+              strokeOpacity={0.45}
+              strokeWidth={1.2}
+              strokeDasharray="4 4"
+            />
+          )
+        })}
+        {ADAM_VANILLA_TRAIL.map((t, i) => (
+          <circle key={`vd-${i}`} cx={t.sx} cy={t.sy} r={3} fill={ACCENT.red} opacity={0.55} />
+        ))}
+        {/* Label */}
+        <text
+          x={ADAM_VANILLA_TRAIL[ADAM_VANILLA_TRAIL.length - 1].sx + 14}
+          y={ADAM_VANILLA_TRAIL[ADAM_VANILLA_TRAIL.length - 1].sy + 4}
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="14"
+          fill={ACCENT.red}
+        >
+          vanilla GD (stalled)
+        </text>
+      </g>
+
+      {/* ===================== MINIMUM (green dot at basin) ===================== */}
+      {(() => {
+        const [mx, my] = grProject(GR_BASIN_W1, GR_BASIN_W2, 0)
+        return (
+          <g>
+            <circle cx={mx} cy={my} r={28} fill="url(#adam-min-glow)" />
+            <circle cx={mx} cy={my} r={7} fill={ACCENT.mint} stroke="rgba(255,255,255,0.7)" strokeWidth={1.2} />
+            <text
+              x={mx + 14}
+              y={my + 4}
+              fontFamily="var(--font-display, Georgia, serif)"
+              fontStyle="italic"
+              fontSize="14"
+              fill={ACCENT.mint}
+            >
+              minimum
+            </text>
+          </g>
+        )
+      })()}
+
+      {/* ===================== ADAM TRAIL (bright cyan) ===================== */}
+      <g
+        style={{
+          opacity: showAdam ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        {ADAM_TRAIL.slice(1, safeIdx + 1).map((t, i) => {
+          const prev = ADAM_TRAIL[i]
+          return (
+            <line
+              key={`al-${i}`}
+              x1={prev.sx}
+              y1={prev.sy}
+              x2={t.sx}
+              y2={t.sy}
+              stroke={ACCENT.cyan}
+              strokeOpacity={0.85}
+              strokeWidth={2}
+            />
+          )
+        })}
+        {ADAM_TRAIL.slice(0, safeIdx + 1).map((t, i) => (
+          <circle
+            key={`ad-${i}`}
+            cx={t.sx}
+            cy={t.sy}
+            r={i === safeIdx ? 0 : 4}
+            fill={ACCENT.cyan}
+            opacity={0.6 + 0.4 * (i / Math.max(1, safeIdx))}
+          />
+        ))}
+      </g>
+
+      {/* Adam current dot (cyan) */}
+      <g
+        style={{
+          opacity: showAdam ? 1 : 0,
+          transform: `translate(${cur.sx - ADAM_TRAIL[0].sx}px, ${cur.sy - ADAM_TRAIL[0].sy}px)`,
+          transition: `opacity ${0.4 / speed}s ease, transform ${0.28 / speed}s ease-out`,
+        }}
+      >
+        <circle cx={ADAM_TRAIL[0].sx} cy={ADAM_TRAIL[0].sy} r={20} fill={ACCENT.cyan} opacity={0.25} filter="url(#adam-glow)" />
+        <circle cx={ADAM_TRAIL[0].sx} cy={ADAM_TRAIL[0].sy} r={9} fill={ACCENT.cyan} stroke="rgba(255,255,255,0.85)" strokeWidth={1.4} />
+      </g>
+
+      {/* ===================== ANNOTATIONS ===================== */}
+      <g
+        style={{
+          opacity: showAnnots ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        {/* "momentum smooths direction" pointer */}
+        {(() => {
+          if (safeIdx < 4) return null
+          const t = ADAM_TRAIL[Math.max(0, safeIdx - 3)]
+          const tx = t.sx - 110
+          const ty = t.sy - 30
+          return (
+            <g>
+              <line x1={tx + 100} y1={ty + 10} x2={t.sx - 8} y2={t.sy - 4} stroke={ACCENT.cyan} strokeOpacity={0.55} strokeWidth={1.2} strokeDasharray="3 4" />
+              <text x={tx} y={ty - 4} fontFamily="var(--font-display, Georgia, serif)" fontStyle="italic" fontSize="14" fill={ACCENT.cyan}>
+                momentum
+              </text>
+              <text x={tx} y={ty + 12} fontFamily="var(--font-mono)" fontSize="10" fill="rgba(255,255,255,0.62)">
+                smooths direction
+              </text>
+            </g>
+          )
+        })()}
+
+        {/* "adaptive scaling" pointer */}
+        {(() => {
+          if (safeIdx < 8) return null
+          const t = ADAM_TRAIL[Math.min(ADAM_STEPS, safeIdx)]
+          const tx = t.sx + 60
+          const ty = t.sy + 28
+          return (
+            <g>
+              <line x1={t.sx + 6} y1={t.sy + 4} x2={tx - 6} y2={ty - 4} stroke={ACCENT.cyan} strokeOpacity={0.55} strokeWidth={1.2} strokeDasharray="3 4" />
+              <text x={tx} y={ty} fontFamily="var(--font-display, Georgia, serif)" fontStyle="italic" fontSize="14" fill={ACCENT.cyan}>
+                adaptive scaling
+              </text>
+              <text x={tx} y={ty + 16} fontFamily="var(--font-mono)" fontSize="10" fill="rgba(255,255,255,0.62)">
+                shrinks steep-direction steps
+              </text>
+            </g>
+          )
+        })()}
+      </g>
+
+      {/* ===================== LEGEND (bottom-left) ===================== */}
+      <g transform="translate(40, 760)">
+        <rect x={0} y={0} width={230} height={86} rx={8} fill="rgba(255,255,255,0.025)" stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+        <circle cx={18} cy={20} r={5} fill={ACCENT.red} opacity={0.55} />
+        <text x={32} y={24} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.78)">
+          vanilla GD (zig-zag)
+        </text>
+        <circle cx={18} cy={42} r={5} fill={ACCENT.cyan} />
+        <text x={32} y={46} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.78)">
+          Adam (smoother)
+        </text>
+        <circle cx={18} cy={64} r={5} fill={ACCENT.mint} />
+        <text x={32} y={68} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.78)">
+          minimum
+        </text>
+      </g>
+
+      {/* ===================== CONTOUR MAP COMPARISON ===================== */}
+      <g>
+        <text
+          x={ADAM_CMAP_X + ADAM_CMAP_W / 2}
+          y={ADAM_CMAP_Y - 14}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.dim}
+        >
+          CONTOUR VIEW  ·  SAME RAVINE, SMARTER STEPS
+        </text>
+        <rect
+          x={ADAM_CMAP_X - 6}
+          y={ADAM_CMAP_Y - 6}
+          width={ADAM_CMAP_W + 12}
+          height={ADAM_CMAP_H + 12}
+          rx={10}
+          fill="rgba(255,255,255,0.02)"
+          stroke="rgba(255,255,255,0.10)"
+          strokeWidth={1}
+        />
+        {/* axes */}
+        <line x1={ADAM_CMAP_X + 30} x2={ADAM_CMAP_X + ADAM_CMAP_W - 10} y1={ADAM_CMAP_CY} y2={ADAM_CMAP_CY} stroke="rgba(255,255,255,0.20)" strokeWidth={1} />
+        <text x={ADAM_CMAP_X + ADAM_CMAP_W - 6} y={ADAM_CMAP_CY - 8} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.55)">w₁</text>
+        <line x1={ADAM_CMAP_CX} x2={ADAM_CMAP_CX} y1={ADAM_CMAP_Y + 10} y2={ADAM_CMAP_Y + ADAM_CMAP_H - 10} stroke="rgba(255,255,255,0.20)" strokeWidth={1} />
+        <text x={ADAM_CMAP_CX + 6} y={ADAM_CMAP_Y + 18} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.55)">w₂</text>
+
+        {/* Anisotropic level-set ellipses */}
+        {[0.6, 0.35, 0.18, 0.07, 0.02].map((k, i) => {
+          const xR = (Math.sqrt(k / GR_K_SHALLOW) / 1.65) * (ADAM_CMAP_W / 2)
+          const yR = (Math.sqrt(k / GR_K_STEEP) / 1.2) * (ADAM_CMAP_H / 2)
+          return (
+            <ellipse
+              key={`ec-${i}`}
+              cx={ADAM_CMAP_CX}
+              cy={ADAM_CMAP_CY}
+              rx={Math.min(xR, ADAM_CMAP_W / 2 - 10)}
+              ry={yR}
+              fill="none"
+              stroke={i < 2 ? ACCENT.red : i < 4 ? ACCENT.dim : ACCENT.mint}
+              strokeOpacity={0.35}
+              strokeWidth={1}
+            />
+          )
+        })}
+
+        {/* Vanilla GD path (faded red) */}
+        <g style={{ opacity: showVanilla ? 0.55 : 0, transition: `opacity ${0.5 / speed}s ease` }}>
+          {ADAM_VANILLA_TRAIL.slice(1).map((t, i) => {
+            const prev = ADAM_VANILLA_TRAIL[i]
+            const [x0, y0] = adamCmapPoint(prev.w1, prev.w2)
+            const [x1, y1] = adamCmapPoint(t.w1, t.w2)
+            return (
+              <line
+                key={`cv-${i}`}
+                x1={x0}
+                y1={y0}
+                x2={x1}
+                y2={y1}
+                stroke={ACCENT.red}
+                strokeOpacity={0.55}
+                strokeWidth={1.2}
+                strokeDasharray="4 4"
+              />
+            )
+          })}
+          {ADAM_VANILLA_TRAIL.map((t, i) => {
+            const [cx, cy] = adamCmapPoint(t.w1, t.w2)
+            return <circle key={`cvd-${i}`} cx={cx} cy={cy} r={2.5} fill={ACCENT.red} opacity={0.55} />
+          })}
+        </g>
+
+        {/* Adam path (bright cyan) */}
+        <g style={{ opacity: showAdam ? 1 : 0, transition: `opacity ${0.5 / speed}s ease` }}>
+          {ADAM_TRAIL.slice(1, safeIdx + 1).map((t, i) => {
+            const prev = ADAM_TRAIL[i]
+            const [x0, y0] = adamCmapPoint(prev.w1, prev.w2)
+            const [x1, y1] = adamCmapPoint(t.w1, t.w2)
+            return (
+              <line
+                key={`ca-${i}`}
+                x1={x0}
+                y1={y0}
+                x2={x1}
+                y2={y1}
+                stroke={ACCENT.cyan}
+                strokeOpacity={0.95}
+                strokeWidth={2}
+              />
+            )
+          })}
+          {ADAM_TRAIL.slice(0, safeIdx + 1).map((t, i) => {
+            const [cx, cy] = adamCmapPoint(t.w1, t.w2)
+            return (
+              <circle
+                key={`cad-${i}`}
+                cx={cx}
+                cy={cy}
+                r={i === safeIdx ? 5 : 2.8}
+                fill={ACCENT.cyan}
+                opacity={i === safeIdx ? 1 : 0.55 + 0.4 * (i / Math.max(1, safeIdx))}
+              />
+            )
+          })}
+        </g>
+
+        {/* Minimum (green) */}
+        <circle cx={ADAM_CMAP_CX} cy={ADAM_CMAP_CY} r={6} fill={ACCENT.mint} />
+        <circle cx={ADAM_CMAP_CX} cy={ADAM_CMAP_CY} r={14} fill={ACCENT.mint} opacity={0.18} />
+      </g>
+
+      {/* ===================== FORMULA CHIPS ===================== */}
+      <g
+        style={{
+          opacity: showChips ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        <rect
+          x={ADAM_CHIPS_X}
+          y={ADAM_CHIPS_Y}
+          width={ADAM_CHIPS_W}
+          height={ADAM_CHIPS_H}
+          rx={10}
+          fill="rgba(34,211,238,0.06)"
+          stroke={ACCENT.cyan}
+          strokeOpacity={0.45}
+          strokeWidth={1}
+        />
+        <text x={ADAM_CHIPS_X + 22} y={ADAM_CHIPS_Y + 30} fontFamily="var(--font-mono)" fontSize="11" letterSpacing="0.22em" fill={ACCENT.cyan}>
+          ADAM IN TWO RUNNING AVERAGES
+        </text>
+
+        {/* Chip: m */}
+        <g transform={`translate(${ADAM_CHIPS_X + 22}, ${ADAM_CHIPS_Y + 50})`}>
+          <rect x={0} y={0} width={ADAM_CHIPS_W - 44} height={48} rx={8} fill="rgba(255,255,255,0.025)" stroke={ACCENT.cyan} strokeOpacity={0.35} strokeWidth={1} />
+          <text x={14} y={20} fontFamily="var(--font-display, Georgia, serif)" fontStyle="italic" fontSize="18" fill={ACCENT.cyan}>m</text>
+          <text x={36} y={22} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.65)">
+            running average of gradients   ·   "where the path has been heading"
+          </text>
+          <text x={14} y={40} fontFamily="var(--font-mono)" fontSize="10" fill={ACCENT.dim}>
+            momentum — smooths direction across noisy steps
+          </text>
+        </g>
+        {/* Chip: v */}
+        <g transform={`translate(${ADAM_CHIPS_X + 22}, ${ADAM_CHIPS_Y + 108})`}>
+          <rect x={0} y={0} width={ADAM_CHIPS_W - 44} height={48} rx={8} fill="rgba(255,255,255,0.025)" stroke={ACCENT.cyan} strokeOpacity={0.35} strokeWidth={1} />
+          <text x={14} y={20} fontFamily="var(--font-display, Georgia, serif)" fontStyle="italic" fontSize="18" fill={ACCENT.cyan}>v</text>
+          <text x={36} y={22} fontFamily="var(--font-mono)" fontSize="11" fill="rgba(255,255,255,0.65)">
+            running average of squared gradients   ·   "how steep this direction is"
+          </text>
+          <text x={14} y={40} fontFamily="var(--font-mono)" fontSize="10" fill={ACCENT.dim}>
+            adaptive scaling — divide by √v so steep dims take smaller steps
+          </text>
+        </g>
+        {/* Step rule */}
+        <text x={ADAM_CHIPS_X + ADAM_CHIPS_W / 2} y={ADAM_CHIPS_Y + 200} textAnchor="middle" fontFamily="var(--font-display, Georgia, serif)" fontStyle="italic" fontSize="20" fill="rgba(255,255,255,0.92)">
+          step  ≈  <tspan fill={ACCENT.cyan}>m</tspan>  /  √
+          <tspan fill={ACCENT.cyan}>v</tspan>
+        </text>
+      </g>
+
+      {/* ===================== ENDING CAPTION ===================== */}
+      <text
+        x={GR_VB_W / 2}
+        y={GR_VB_H - 92}
+        textAnchor="middle"
+        fontFamily="var(--font-display, Georgia, serif)"
+        fontStyle="italic"
+        fontSize="18"
+        fill="rgba(255,255,255,0.85)"
+      >
+        Adam <tspan fill={ACCENT.cyan}>remembers direction</tspan> and{' '}
+        <tspan fill={ACCENT.cyan}>rescales each coordinate</tspan> — steep directions stop dominating the update.
+      </text>
+      <text
+        x={GR_VB_W / 2}
+        y={GR_VB_H - 68}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={ACCENT.dim}
+      >
+        SAME RAVINE  ·  SMARTER STEPS  ·  STRAIGHT TO THE BASIN
+      </text>
+
+      {/* ===================== BEAT INDICATOR ===================== */}
+      <g transform={`translate(${GR_VB_W / 2}, ${GR_VB_H - 30})`}>
+        {(['vanilla recap', 'Adam descends', 'm and v explained'] as const).map((label, i) => {
+          const w = 240
+          const gap = 18
+          const total = 3 * w + 2 * gap
+          const startX = -total / 2
+          const cx = startX + i * (w + gap) + w / 2
+          const active = i === phase
+          return (
+            <g key={`adam-beat-${i}`} transform={`translate(${cx}, 0)`}>
+              <rect
+                x={-w / 2}
+                y={-12}
+                width={w}
+                height={24}
+                rx={12}
+                fill={active ? 'rgba(34,211,238,0.18)' : 'rgba(255,255,255,0.02)'}
+                stroke={active ? ACCENT.cyan : ACCENT.rule}
+                strokeWidth={1.2}
+                style={{ transition: `fill ${0.3 / speed}s ease, stroke ${0.3 / speed}s ease` }}
+              />
+              <text
+                x={0}
+                y={4}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="10"
+                letterSpacing="0.18em"
+                fill={active ? ACCENT.cyan : ACCENT.dim}
+                style={{ transition: `fill ${0.3 / speed}s ease` }}
+              >
+                {label.toUpperCase()}
+              </text>
+            </g>
+          )
+        })}
+      </g>
+    </svg>
+  )
+}
+
+export function GdAdamSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 3
+  const PHASE_DURATIONS_MS = [4500, 8500, 6000] as const
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setTimeout(
+      () => setPhase((p) => (p + 1) % PHASES),
+      PHASE_DURATIONS_MS[phase] / speed,
+    )
+    return () => clearTimeout(id)
+  }, [phase, speed])
+
+  // Adam step counter — beat 1 advances 0→ADAM_STEPS over ~7s.
+  const [stepIdx, setStepIdx] = useState(0)
+  useEffect(() => {
+    if (phase < 1) {
+      setStepIdx(0)
+      return
+    }
+    if (phase >= 2) {
+      setStepIdx(ADAM_STEPS)
+      return
+    }
+    setStepIdx(0)
+    let i = 0
+    const totalMs = 7000 / speed
+    const stepMs = totalMs / ADAM_STEPS
+    const id = setInterval(() => {
+      i += 1
+      if (i >= ADAM_STEPS) {
+        setStepIdx(ADAM_STEPS)
+        clearInterval(id)
+      } else {
+        setStepIdx(i)
+      }
+    }, stepMs)
+    return () => clearInterval(id)
+  }, [phase, speed])
+
+  const safeIdx = Math.max(0, Math.min(ADAM_TRAIL.length - 1, stepIdx))
+  const cur = ADAM_TRAIL[safeIdx]
+
+  const phaseLabels = ['vanilla recap', 'Adam descends', 'm and v explained']
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      Same ravine as Scene 28. Vanilla GD&apos;s zig-zag fades back in
+      so we can see what it left behind: a path that bounced off both
+      walls and never reached the bottom.
+    </>,
+    <>
+      Adam (cyan) walks the same surface. Two ingredients: a running
+      average of the gradient (<em>m</em>) smooths the direction, and a
+      running average of the squared gradient (<em>v</em>) shrinks the
+      step in directions where the gradient has been big. Together: a
+      smoother path that goes mostly along the valley.
+    </>,
+    <>
+      Each parameter ends up with its own effective learning rate{' '}
+      <em>η / √v</em>. Steep directions get small steps; shallow
+      directions get full steps. The optimizer adapts to the local
+      geometry of the loss.
+    </>,
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'The vanilla path stalled at roughly w₁ ≈ -0.59, w₂ ≈ 0.08 in Scene 28. The cross-valley component dies fast (the bouncing decays) but the along-valley drift is glacial because the gradient there is tiny.',
+    'Both moments are exponentially weighted: m_t = β₁·m_{t-1} + (1-β₁)·g, v_t = β₂·v_{t-1} + (1-β₂)·g². With β₁=0.9, β₂=0.999 the optimizer remembers the last ~10 and ~1000 steps respectively.',
+    'AdamW (used in most modern transformer training) decouples weight decay from the m/v scaling. Lion uses sign(m) instead of m/√v for ~50% memory savings. They all build on the same momentum + per-parameter scaling idea.',
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizGdAdam phase={phase} stepIdx={stepIdx} />}
+      text={{
+        kicker: 'ACT IV · GD · MODERN',
+        title: 'Adam fixes the ravine.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.cyan,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.cyan}
+          />
+        ),
+        stats: [
+          { label: 'w₁  (along)', value: cur.w1.toFixed(2), color: ACCENT.cyan },
+          { label: 'w₂  (across)', value: cur.w2.toFixed(2), color: ACCENT.cyan },
+          { label: 'loss', value: cur.loss.toFixed(3), color: ACCENT.amber },
+          { label: 'step', value: `${safeIdx} / ${ADAM_STEPS}` },
+          { label: 'effective η₁', value: (ADAM_LR / (Math.sqrt(cur.v1 / Math.max(1e-12, 1 - Math.pow(ADAM_BETA2, Math.max(1, safeIdx)))) + ADAM_EPS)).toFixed(3), color: ACCENT.cyan },
+          { label: 'effective η₂', value: (ADAM_LR / (Math.sqrt(cur.v2 / Math.max(1e-12, 1 - Math.pow(ADAM_BETA2, Math.max(1, safeIdx)))) + ADAM_EPS)).toFixed(3), color: ACCENT.red },
+        ],
+        equation: {
+          label: 'one rule, per-direction step',
+          body: <>W ← W − η · m / (√v + ε)</>,
+        },
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}

@@ -5,7 +5,6 @@ import {
   SceneAttention,
   SceneBPE,
   SceneEmbedding,
-  SceneGDAdam,
   SceneLayerNorm,
   SceneModern,
   SceneMultiHead,
@@ -63,6 +62,7 @@ import {
   CELossBatchSplitPane,
   CELossSeqSplitPane,
   CrossEntropySplitPane,
+  GdAdamSplitPane,
   GdRavineSplitPane,
   GradientDescentSplitPane,
 } from './act4Scenes'
@@ -654,7 +654,8 @@ This is exactly what motivated Adam and other adaptive optimizers.`,
 Effect: per-parameter adaptive learning rates, automatic damping in high-curvature directions, smooth progress down the ravine. Adam isn't magic — it's just the right preconditioner for most deep-learning loss landscapes.
 
 Modern variants: AdamW (decouples weight decay), Lion (uses sign only, cheaper memory), Shampoo (block-diagonal second-order info). All build on the same idea.`,
-    render: () => <SceneGDAdam />,
+    render: () => <GdAdamSplitPane />,
+    panelAnchor: 'fullscreen',
   },
 
   // =============== ACT V — MODERN UPGRADES ===============
