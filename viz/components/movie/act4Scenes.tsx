@@ -1855,3 +1855,545 @@ export function CELossSeqSplitPane() {
     />
   )
 }
+
+/* =========================================================================
+ * Scene 23 — loss-batch: "Average across the batch."
+ *
+ * The third and final loss scene. Scene 21 = one prediction, one loss.
+ * Scene 22 = one sequence, T per-position losses, one L_seq. Scene 23 =
+ * B sequences, B×T per-position losses, one L_batch.
+ *
+ * Four beats:
+ *
+ *   beat 0 — hero echo. The single sequence row from Scene 22 fades in
+ *            with its 9 per-position cells and L_seq = 0.84. Caption:
+ *            "From Scene 22 — one sequence, one L_seq."
+ *   beat 1 — multiply across the batch. The hero row duplicates into
+ *            B = 6 stacked rows. Each new row gets its own per-position
+ *            cells and its own L_seq scalar at the right edge. Caption:
+ *            "The GPU runs B sequences in parallel."
+ *   beat 2 — frame the grid. A bracket appears around the B×T grid with
+ *            the label "B sequences × T positions = B·T losses." Cells
+ *            stay still, just better explained.
+ *   beat 3 — collapse into one scalar. Each row's L_seq sends a thin
+ *            amber pulse into the central batch-mean operator on the
+ *            right. The big L_batch scalar lights up. Caption:
+ *            "↓ backprop runs on this one scalar."
+ * ====================================================================== */
+
+const CELB_VB_W = 1400
+const CELB_VB_H = 1000
+
+const CELB_B = 6 // sequences in batch
+const CELB_T = 9 // positions per sequence
+
+// Per-sequence L_seq values. seq 1 echoes Scene 22 (0.84). Picked so the
+// batch mean comes out to a clean number: their sum is 9.55 → mean 1.59.
+const CELB_LSEQ = [0.84, 1.42, 2.10, 1.68, 0.96, 2.55] as const
+const CELB_LBATCH = +(CELB_LSEQ.reduce((a, b) => a + b, 0) / CELB_B).toFixed(2) // 1.59
+
+// Per-cell losses, deterministically generated so each row's mean equals
+// the row's L_seq. Used purely for cell coloring, not numeric display.
+const CELB_CELLS: number[][] = (() => {
+  const out: number[][] = []
+  for (let r = 0; r < CELB_B; r++) {
+    const target = CELB_LSEQ[r]
+    const seeds: number[] = []
+    let sum = 0
+    for (let c = 0; c < CELB_T; c++) {
+      const noise = 0.5 + ((Math.sin(r * 13.7 + c * 5.3) + 1) / 2) * 2.4
+      seeds.push(noise)
+      sum += noise
+    }
+    // Rescale so the row mean equals the target L_seq.
+    const scale = target / (sum / CELB_T)
+    out.push(seeds.map((v) => +(v * scale).toFixed(2)))
+  }
+  return out
+})()
+
+const CELB_GRID_X = 90
+const CELB_GRID_Y = 230
+const CELB_ROW_H = 60
+const CELB_ROW_GAP = 12
+const CELB_ROW_LABEL_W = 64
+const CELB_CELL_W = 60
+const CELB_CELL_GAP = 6
+const CELB_CELLS_X = CELB_GRID_X + CELB_ROW_LABEL_W + 14
+const CELB_CELLS_W = CELB_T * CELB_CELL_W + (CELB_T - 1) * CELB_CELL_GAP
+const CELB_LSEQ_X = CELB_CELLS_X + CELB_CELLS_W + 24
+const CELB_LSEQ_W = 130
+const CELB_GRID_RIGHT = CELB_LSEQ_X + CELB_LSEQ_W
+
+const CELB_MEAN_X = 1020
+const CELB_MEAN_Y = 320
+const CELB_MEAN_W = 320
+const CELB_MEAN_H = 280
+
+function celbCellColor(loss: number): string {
+  if (loss < 1.0) return ACCENT.mint
+  if (loss < 2.0) return ACCENT.amber
+  return ACCENT.red
+}
+
+function celbLseqColor(l: number): string {
+  if (l < 1.2) return ACCENT.mint
+  if (l < 2.2) return ACCENT.amber
+  return ACCENT.red
+}
+
+export function VizCELossBatch({ phase }: { phase: number }) {
+  const speed = useSpeed()
+
+  // beat 0 — only seq 1 row visible
+  // beat 1 — all 6 sequence rows
+  // beat 2 — grid bracket + axis labels
+  // beat 3 — collapse arrows + final L_batch
+  const showAllRows = phase >= 1
+  const showGridFrame = phase >= 2
+  const showCollapse = phase >= 3
+
+  // Mean displayed in the central box. Beats 0–2 show only the hero
+  // sequence's L_seq (so the box reads 0.84 — the Scene 22 carry-over).
+  // Beat 3 shows the full batch mean.
+  const displayedMean = showCollapse ? CELB_LBATCH : CELB_LSEQ[0]
+  const displayedMeanLabel = showCollapse
+    ? 'L_batch — averaged over the batch'
+    : 'so far — only seq 1 (Scene 22)'
+
+  return (
+    <svg viewBox={`0 0 ${CELB_VB_W} ${CELB_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="celb-row-fill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={ACCENT.violet} stopOpacity="0.10" />
+          <stop offset="100%" stopColor={ACCENT.violet} stopOpacity="0.03" />
+        </linearGradient>
+        <filter id="celb-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3.5" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* ===================== HEADER ===================== */}
+      <text
+        x={CELB_VB_W / 2}
+        y={70}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="13"
+        letterSpacing="0.32em"
+        fill={ACCENT.dim}
+      >
+        MANY SEQUENCES · MANY LOSSES · ONE SCALAR
+      </text>
+      <text
+        x={CELB_VB_W / 2}
+        y={108}
+        textAnchor="middle"
+        fontFamily="var(--font-display, Georgia, serif)"
+        fontStyle="italic"
+        fontSize="26"
+        fill="rgba(255,255,255,0.85)"
+      >
+        Every sequence in the batch contributes one L_seq. Average them.
+      </text>
+
+      {/* ===================== AXIS LABELS ===================== */}
+      <g
+        style={{
+          opacity: showGridFrame ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        {/* "positions →" along the top of the cell grid */}
+        <text
+          x={CELB_CELLS_X + CELB_CELLS_W / 2}
+          y={CELB_GRID_Y - 16}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.blue}
+        >
+          T POSITIONS →  (per-sequence, like Scene 22)
+        </text>
+        {/* "B sequences ↓" along the left of the grid */}
+        <text
+          x={CELB_GRID_X - 6}
+          y={CELB_GRID_Y + (CELB_B * (CELB_ROW_H + CELB_ROW_GAP)) / 2}
+          textAnchor="end"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.violet}
+          transform={`rotate(-90 ${CELB_GRID_X - 6} ${CELB_GRID_Y + (CELB_B * (CELB_ROW_H + CELB_ROW_GAP)) / 2})`}
+        >
+          B SEQUENCES ↓
+        </text>
+      </g>
+
+      {/* ===================== ROWS ===================== */}
+      {CELB_LSEQ.map((lseq, r) => {
+        const isHero = r === 0
+        const visibleRow = isHero || showAllRows
+        const rowY = CELB_GRID_Y + r * (CELB_ROW_H + CELB_ROW_GAP)
+        const rowDelay = isHero ? 0 : 0.06 * r
+        const rowMidY = rowY + CELB_ROW_H / 2
+
+        return (
+          <g
+            key={`row-${r}`}
+            style={{
+              opacity: visibleRow ? 1 : 0,
+              transition: `opacity ${0.4 / speed}s ease ${rowDelay / speed}s`,
+            }}
+          >
+            {/* Hero ring marker — only on row 0 to remind viewer this is
+                the Scene-22 sequence we just learned. */}
+            {isHero && (
+              <rect
+                x={CELB_GRID_X - 6}
+                y={rowY - 4}
+                width={CELB_GRID_RIGHT - CELB_GRID_X + 14}
+                height={CELB_ROW_H + 8}
+                rx={8}
+                fill={ACCENT.cyan}
+                opacity={0.06}
+                style={{
+                  transition: `opacity ${0.5 / speed}s ease`,
+                  opacity: showAllRows ? 0.04 : 0.10,
+                }}
+              />
+            )}
+
+            {/* Row label box */}
+            <rect
+              x={CELB_GRID_X}
+              y={rowY}
+              width={CELB_ROW_LABEL_W}
+              height={CELB_ROW_H}
+              rx={5}
+              fill="url(#celb-row-fill)"
+              stroke={ACCENT.violet}
+              strokeOpacity={0.4}
+              strokeWidth={1}
+            />
+            <text
+              x={CELB_GRID_X + CELB_ROW_LABEL_W / 2}
+              y={rowMidY + 4}
+              textAnchor="middle"
+              fontFamily="var(--font-mono)"
+              fontSize="13"
+              fill={ACCENT.violet}
+            >
+              seq {r + 1}
+            </text>
+
+            {/* Cells (per-position losses for this sequence) */}
+            {CELB_CELLS[r].map((cellLoss, c) => {
+              const cx = CELB_CELLS_X + c * (CELB_CELL_W + CELB_CELL_GAP)
+              return (
+                <rect
+                  key={`cell-${r}-${c}`}
+                  x={cx}
+                  y={rowY + 4}
+                  width={CELB_CELL_W}
+                  height={CELB_ROW_H - 8}
+                  rx={4}
+                  fill={celbCellColor(cellLoss)}
+                  opacity={Math.min(0.85, 0.25 + cellLoss * 0.18)}
+                />
+              )
+            })}
+
+            {/* L_seq scalar at the row's right edge */}
+            <rect
+              x={CELB_LSEQ_X}
+              y={rowY}
+              width={CELB_LSEQ_W}
+              height={CELB_ROW_H}
+              rx={6}
+              fill={`${celbLseqColor(lseq)}1A`}
+              stroke={celbLseqColor(lseq)}
+              strokeWidth={1.4}
+            />
+            <text
+              x={CELB_LSEQ_X + 12}
+              y={rowY + 22}
+              fontFamily="var(--font-mono)"
+              fontSize="10"
+              letterSpacing="0.18em"
+              fill={celbLseqColor(lseq)}
+            >
+              L_SEQ
+            </text>
+            <text
+              x={CELB_LSEQ_X + CELB_LSEQ_W - 14}
+              y={rowY + CELB_ROW_H - 14}
+              textAnchor="end"
+              fontFamily="var(--font-display, Georgia, serif)"
+              fontStyle="italic"
+              fontSize="26"
+              fill={celbLseqColor(lseq)}
+            >
+              {lseq.toFixed(2)}
+            </text>
+
+            {/* Collapse arrow — only beat 3. Goes from this row's L_seq
+                box to the central batch-mean box. */}
+            <path
+              d={`M ${CELB_LSEQ_X + CELB_LSEQ_W} ${rowMidY}
+                  C ${CELB_LSEQ_X + CELB_LSEQ_W + 80} ${rowMidY}
+                    ${CELB_MEAN_X - 80} ${CELB_MEAN_Y + CELB_MEAN_H / 2}
+                    ${CELB_MEAN_X} ${CELB_MEAN_Y + CELB_MEAN_H / 2}`}
+              fill="none"
+              stroke={ACCENT.amber}
+              strokeWidth={1.2}
+              strokeDasharray="4 5"
+              style={{
+                opacity: showCollapse ? 0.55 : 0,
+                transition: `opacity ${0.6 / speed}s ease ${(0.1 * r) / speed}s`,
+              }}
+            />
+          </g>
+        )
+      })}
+
+      {/* ===================== "B × T = B·T" CAPTION ===================== */}
+      <text
+        x={CELB_GRID_X}
+        y={CELB_GRID_Y + CELB_B * (CELB_ROW_H + CELB_ROW_GAP) + 22}
+        fontFamily="var(--font-mono)"
+        fontSize="11"
+        letterSpacing="0.22em"
+        fill={ACCENT.dim}
+        style={{
+          opacity: showGridFrame ? 1 : 0,
+          transition: `opacity ${0.5 / speed}s ease`,
+        }}
+      >
+        B SEQUENCES × T POSITIONS = {CELB_B}·{CELB_T} = {CELB_B * CELB_T} CROSS-ENTROPY LOSSES IN ONE FORWARD PASS
+      </text>
+
+      {/* ===================== BATCH MEAN BOX ===================== */}
+      <g>
+        <rect
+          x={CELB_MEAN_X}
+          y={CELB_MEAN_Y}
+          width={CELB_MEAN_W}
+          height={CELB_MEAN_H}
+          rx={12}
+          fill="rgba(245,158,11,0.08)"
+          stroke={ACCENT.amber}
+          strokeWidth={1.6}
+        />
+        <text
+          x={CELB_MEAN_X + 20}
+          y={CELB_MEAN_Y + 32}
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          letterSpacing="0.22em"
+          fill={ACCENT.amber}
+        >
+          BATCH MEAN · L_BATCH
+        </text>
+        <text
+          x={CELB_MEAN_X + 20}
+          y={CELB_MEAN_Y + 56}
+          fontFamily="var(--font-mono)"
+          fontSize="12"
+          fill="rgba(255,255,255,0.55)"
+        >
+          (1/B) · Σᵢ L_seq(i)
+        </text>
+
+        {/* Big scalar */}
+        <text
+          key={`mean-${phase}`}
+          x={CELB_MEAN_X + CELB_MEAN_W / 2}
+          y={CELB_MEAN_Y + CELB_MEAN_H / 2 + 16}
+          textAnchor="middle"
+          fontFamily="var(--font-display, Georgia, serif)"
+          fontStyle="italic"
+          fontSize="76"
+          fill={ACCENT.amber}
+          filter="url(#celb-glow)"
+          style={{
+            transition: `opacity ${0.5 / speed}s ease`,
+            opacity: 1,
+          }}
+        >
+          {displayedMean.toFixed(2)}
+        </text>
+
+        <text
+          x={CELB_MEAN_X + CELB_MEAN_W / 2}
+          y={CELB_MEAN_Y + CELB_MEAN_H - 30}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="11"
+          fill={ACCENT.dim}
+        >
+          {displayedMeanLabel}
+        </text>
+
+        {/* "↓ backprop runs on this scalar" — surfaces in beat 3 */}
+        <g
+          style={{
+            opacity: showCollapse ? 1 : 0,
+            transition: `opacity ${0.5 / speed}s ease ${0.6 / speed}s`,
+          }}
+        >
+          <line
+            x1={CELB_MEAN_X + CELB_MEAN_W / 2}
+            x2={CELB_MEAN_X + CELB_MEAN_W / 2}
+            y1={CELB_MEAN_Y + CELB_MEAN_H + 10}
+            y2={CELB_MEAN_Y + CELB_MEAN_H + 50}
+            stroke={ACCENT.amber}
+            strokeWidth={1.5}
+          />
+          <polyline
+            points={`${CELB_MEAN_X + CELB_MEAN_W / 2 - 6},${CELB_MEAN_Y + CELB_MEAN_H + 44} ${CELB_MEAN_X + CELB_MEAN_W / 2},${CELB_MEAN_Y + CELB_MEAN_H + 54} ${CELB_MEAN_X + CELB_MEAN_W / 2 + 6},${CELB_MEAN_Y + CELB_MEAN_H + 44}`}
+            fill="none"
+            stroke={ACCENT.amber}
+            strokeWidth={1.5}
+          />
+          <text
+            x={CELB_MEAN_X + CELB_MEAN_W / 2}
+            y={CELB_MEAN_Y + CELB_MEAN_H + 80}
+            textAnchor="middle"
+            fontFamily="var(--font-mono)"
+            fontSize="12"
+            letterSpacing="0.22em"
+            fill={ACCENT.amber}
+          >
+            BACKPROP RUNS ON THIS SCALAR
+          </text>
+        </g>
+      </g>
+
+      {/* ===================== BEAT INDICATOR ===================== */}
+      <g transform={`translate(${CELB_VB_W / 2}, ${CELB_VB_H - 50})`}>
+        {(['hero echo', 'B sequences', 'B×T grid', 'collapse to L_batch'] as const).map((label, i) => {
+          const w = 180
+          const gap = 14
+          const total = 4 * w + 3 * gap
+          const startX = -total / 2
+          const cx = startX + i * (w + gap) + w / 2
+          const active = i === phase
+          return (
+            <g key={`beat-${i}`} transform={`translate(${cx}, 0)`}>
+              <rect
+                x={-w / 2}
+                y={-18}
+                width={w}
+                height={36}
+                rx={18}
+                fill={active ? 'rgba(245,158,11,0.18)' : 'rgba(255,255,255,0.02)'}
+                stroke={active ? ACCENT.amber : ACCENT.rule}
+                strokeWidth={1.4}
+                style={{ transition: `fill ${0.3 / speed}s ease, stroke ${0.3 / speed}s ease` }}
+              />
+              <text
+                x={0}
+                y={4}
+                textAnchor="middle"
+                fontFamily="var(--font-mono)"
+                fontSize="11"
+                letterSpacing="0.18em"
+                fill={active ? ACCENT.amber : ACCENT.dim}
+                style={{ transition: `fill ${0.3 / speed}s ease` }}
+              >
+                {label.toUpperCase()}
+              </text>
+            </g>
+          )
+        })}
+      </g>
+    </svg>
+  )
+}
+
+export function CELossBatchSplitPane() {
+  const speed = useSpeed()
+  const PHASES = 4
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(
+      () => setPhase((p) => (p + 1) % PHASES),
+      4500 / speed,
+    )
+    return () => clearInterval(id)
+  }, [speed])
+
+  const phaseLabels = [
+    'hero echo',
+    'B sequences',
+    'B×T grid',
+    'collapse to L_batch',
+  ]
+
+  const subtitleByPhase: ReactNode[] = [
+    <>
+      Scene 22 ended with one sequence loss: <em>L_seq</em> = 0.84. That
+      is the unit we are about to multiply across a whole batch.
+    </>,
+    <>
+      The GPU runs <em>B</em> sequences side by side in one forward pass.
+      Each sequence pays its own cross-entropy at every position and ends
+      up with its own <em>L_seq</em>.
+    </>,
+    <>
+      A whole batch produces <em>B × T</em> per-position losses — every
+      cell here is one cross-entropy. Rows are sequences, columns are
+      token positions. Same shape we built in Scene 22, repeated <em>B</em>{' '}
+      times.
+    </>,
+    <>
+      Average the per-sequence losses → one scalar <em>L_batch</em>.
+      That is the only number backprop sees. Every weight update follows
+      from this single value.
+    </>,
+  ]
+
+  const calloutByPhase: ReactNode[] = [
+    'Hold this in your head: the rest of Scene 23 is just this row, repeated and averaged. Nothing new is added — the model is doing the same thing in parallel.',
+    `B = ${CELB_B} here. Real training uses B = 256, 512, even thousands. Larger batches reduce gradient noise but cost more memory. The formula is the same regardless of B.`,
+    `${CELB_B} × ${CELB_T} = ${CELB_B * CELB_T} cross-entropy values, all computed in one forward pass. The GPU eats this entire grid for breakfast — that is the point of batching.`,
+    `L_batch = ${CELB_LBATCH.toFixed(2)} for this batch. Backprop uses one number to drive every weight update. The next scene shows how that single scalar travels backward through every layer of the model.`,
+  ]
+
+  return (
+    <SplitPaneScene
+      viz={<VizCELossBatch phase={phase} />}
+      text={{
+        kicker: 'ACT IV · LOSS · PER-BATCH',
+        title: 'Average across the batch.',
+        subtitle: subtitleByPhase[phase],
+        accent: ACCENT.amber,
+        phase: (
+          <PhaseChip
+            current={phase + 1}
+            total={PHASES}
+            label={phaseLabels[phase]}
+            accent={ACCENT.amber}
+          />
+        ),
+        stats: [
+          { label: 'batch size', value: `B = ${CELB_B}`, color: ACCENT.violet },
+          { label: 'seq length', value: `T = ${CELB_T}`, color: ACCENT.blue },
+          { label: 'losses / pass', value: `${CELB_B * CELB_T}` },
+          { label: 'L_batch', value: CELB_LBATCH.toFixed(2), color: ACCENT.amber },
+        ],
+        equation: {
+          label: 'one rule, B sequences',
+          body: <>L_batch = (1/B) · Σᵢ L_seq(i)</>,
+        },
+        infoCallout: calloutByPhase[phase],
+      }}
+    />
+  )
+}

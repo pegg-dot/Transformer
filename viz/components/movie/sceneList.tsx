@@ -7,7 +7,6 @@ import {
   SceneBackprop,
   SceneBackpropAccumulation,
   SceneBackpropJacobian,
-  SceneCELossBatch,
   SceneEmbedding,
   SceneGDAdam,
   SceneGDRavine,
@@ -64,6 +63,7 @@ import {
 } from './act3Scenes'
 import {
   Act4IntroSplitPane,
+  CELossBatchSplitPane,
   CELossSeqSplitPane,
   CrossEntropySplitPane,
 } from './act4Scenes'
@@ -537,7 +537,8 @@ Result: one scalar loss per sequence, computed efficiently in a single forward p
 That ONE scalar is what drives gradient descent. Backprop starts from this number and walks backward through the network, computing ∂loss/∂w for every parameter.
 
 Batch size matters: bigger batches give less noisy gradients but each step costs more compute. Most frontier models use batch sizes in the hundreds to tens of thousands of sequences.`,
-    render: () => <SceneCELossBatch />,
+    render: () => <CELossBatchSplitPane />,
+    panelAnchor: 'fullscreen',
   },
 
   // ── BACKPROP (comes before GD — it COMPUTES the gradient GD uses) ──
