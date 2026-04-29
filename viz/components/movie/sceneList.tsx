@@ -6,30 +6,19 @@ import {
   SceneBPE,
   SceneEmbedding,
   SceneLayerNorm,
-  SceneModern,
   SceneMultiHead,
-  SceneOutput,
   ScenePositional,
   SceneQKV,
-  SceneRoPE,
   SceneTokenization,
 } from './scenes'
-import {
-  IntroColdOpenPanel,
-  ActFramingPanel,
-  Act6LogitOverlay,
-} from './introScenes'
+import { IntroColdOpenPanel } from './introScenes'
 import {
   PanelQKV,
   PanelFFN,
   PanelLayerNorm,
-  PanelOutput,
   PanelAttention,
   PanelMulti,
-  PanelRope,
-  PanelModern,
 } from './scenePanels'
-import { PanelThenScene } from './panelKit'
 import {
   Act1IntroSplitPane,
   TokensSplitPane,
@@ -66,6 +55,12 @@ import {
   GdRavineSplitPane,
   GradientDescentSplitPane,
 } from './act4Scenes'
+import {
+  Act5IntroSplitPane,
+  RopeSplitPane,
+  ModernSplitPane,
+} from './act5Scenes'
+import { Act6IntroSplitPane, OutputSplitPane } from './act6Scenes'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -663,28 +658,21 @@ Modern variants: AdamW (decouples weight decay), Lion (uses sign only, cheaper m
     id: 'act5-intro',
     section: ACT_V,
     kicker: 'act five',
-    title: 'What modern models changed.',
-    caption: 'Same skeleton. A few surgical upgrades that make real-world LLMs work.',
+    title: 'Same skeleton. Smarter parts.',
+    caption: 'A glassy cutaway of the transformer block, with four upgrade badges (RoPE, RMSNorm, SwiGLU, GQA) wired into the parts they replace.',
     accent: ACCENT.mint,
-    durationMs: 10000,
-    details: `The architecture you just saw is GPT-2 vintage (2019). Llama 3 and friends keep the same backbone but swap in: rotary position embeddings (RoPE), grouped-query attention (GQA), SwiGLU activations, RMSNorm. Each is a small local change.`,
-    render: () => (
-      <ActFramingPanel
-        actLabel={ACT_V}
-        headline="Same skeleton, a few surgical upgrades."
-        accent={ACCENT.mint}
-        recap="loss, gradients, gradient descent"
-        teaser="RoPE · RMSNorm · SwiGLU · GQA"
-      />
-    ),
+    durationMs: 14000,
+    details: `Act V is a roadmap, not a rewrite. The transformer block you just walked through still describes today's LLMs: residual stream → norm → attention → add → norm → FFN → add. Modern models swap a handful of internals: RoPE for position handling on Q/K, RMSNorm for cheaper normalization, SwiGLU for a gated FFN activation, and GQA for shared K/V across head groups.`,
+    render: () => <Act5IntroSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'rope',
     section: ACT_V,
     kicker: 'rotary position',
-    title: 'RoPE rotates instead of adds.',
+    title: 'Rotate, don’t add.',
     caption:
-      'Modern transformers apply position by rotating Q and K vectors. Relative position emerges from dot products.',
+      'Old PE: token + position. RoPE: rotate Q and K by position. Relative offset (j − i) falls out of Q · K for free.',
     accent: ACCENT.pink,
     durationMs: 21000,
     part: 'modern',
@@ -693,18 +681,19 @@ Modern variants: AdamW (decouples weight decay), Lion (uses sign only, cheaper m
 The key property: the dot product between Q at position i and K at position j depends only on their RELATIVE position (j − i), not their absolute positions. That's exactly what attention wants — "how far apart are we?" not "where am I on the number line?"
 
 RoPE also extrapolates better to longer sequences than training length, which matters for long-context models (100k–1M tokens).`,
-    render: () => <PanelThenScene panel={<PanelRope />} scene={<SceneRoPE />} />,
+    render: () => <RopeSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'modern',
     section: ACT_V,
     kicker: 'modern upgrades',
-    title: 'RMSNorm · SwiGLU · GQA.',
+    title: 'Three more surgical upgrades.',
     subGroup: { label: 'comparisons', index: 3, total: 3, color: ACCENT.mint },
     caption:
-      'Simpler normalization, smoother activation, shared K/V across head groups. Same shape — smaller, faster, better.',
+      'RoPE was Scene 31. Three swaps left: LayerNorm → RMSNorm, GELU → SwiGLU, MHA → GQA. Same skeleton, smaller/faster/more stable internals.',
     accent: ACCENT.mint,
-    durationMs: 27000,  // 3 × 8s
+    durationMs: 27000, // 3 × 9s
     part: 'modern',
     details: `Three tweaks appear in almost every frontier open-source model:
 
@@ -715,7 +704,8 @@ SwiGLU: replace FFN's single activation with a gated pair (two linear projection
 GQA (grouped-query attention): instead of N Q/K/V heads, use N Q heads and a smaller number G of shared K/V heads. Slashes the KV cache by a factor of N/G. Used by LLaMA-2 and most frontier open models.
 
 Stacked together, these changes give a faster, smaller, slightly better model with no architecture change.`,
-    render: () => <PanelThenScene panel={<PanelModern />} scene={<SceneModern />} />,
+    render: () => <ModernSplitPane />,
+    panelAnchor: 'fullscreen',
   },
 
   // =============== ACT VI — THE OUTPUT ===============
@@ -724,23 +714,27 @@ Stacked together, these changes give a faster, smaller, slightly better model wi
     section: ACT_VI,
     kicker: 'act six',
     title: 'And the final pick.',
-    caption: 'The network outputs a probability over every possible next token. One gets chosen.',
-    accent: ACCENT.red,
-    durationMs: 10000,
-    details: `The top of the stack produces one vector per token position. We only care about the last one — it represents the model's best guess at what should come next. A final linear layer projects that vector to a vector of size vocab_size; softmax turns it into probabilities; we sample one.`,
-    render: () => <Act6LogitOverlay />,
+    caption:
+      'Last hidden state → output head → logits → softmax → one sampled token. Then it gets appended to your prompt.',
+    accent: ACCENT.mint,
+    durationMs: 20000,
+    promptAware: true,
+    details: `The top of the stack produces one vector per token position. We only care about the last one — it represents the model's best guess at what should come next. A final linear layer projects that vector to a vector of size vocab_size; softmax turns it into probabilities; we sample one.
+
+A forward pass does NOT output a sentence. It outputs a probability distribution over the next token, and one token gets selected. Scene 34 shows what happens when you run that loop over and over.`,
+    render: () => <Act6IntroSplitPane />,
+    panelAnchor: 'fullscreen',
   },
   {
     id: 'output',
     section: ACT_VI,
-    breadcrumb: ['Output', 'Forward pass replay'],
-    focusedToken: 11,
+    breadcrumb: ['Output', 'Generation loop'],
     kicker: 'the generation',
-    title: 'And this is what comes out.',
+    title: 'Generation = repeat the pass.',
     caption:
-      'Every step you just saw runs once per character. Your prompt goes in. The model types its continuation one token at a time, each token the result of one full forward pass through all six blocks.',
+      "Scene 33 in motion. The pulse runs through the six blocks, a token lands, the sequence grows. With the default prompt, it lands on Hamlet's line.",
     accent: ACCENT.mint,
-    durationMs: 31000,
+    durationMs: 28000,
     promptAware: true,
     part: 'generation',
     details: `Everything you just saw runs ONCE per generated token. Tokenize the prompt, embed, add positional, six residual blocks, unembed, softmax, sample. That's one forward pass.
@@ -750,6 +744,7 @@ Append the sampled token to the prompt, run again. Repeat until a stop condition
 With KV caching, the second pass is MUCH cheaper than the first: only the new token's work is done from scratch; everything else is cached.
 
 This loop is how ChatGPT, Claude, and every other LLM generates text. Scale up the model, train longer, and the same loop produces surprisingly coherent long-form output.`,
-    render: () => <PanelThenScene panel={<PanelOutput />} scene={<SceneOutput />} />,
+    render: () => <OutputSplitPane />,
+    panelAnchor: 'fullscreen',
   },
 ]
