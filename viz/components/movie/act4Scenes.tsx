@@ -4681,21 +4681,21 @@ const GD_VB_W = 1400
 const GD_VB_H = 1000
 
 // 3D loss-surface zone (left)
-const GD_SURF_OX = 380 // surface origin x in screen coords
-const GD_SURF_OY = 540 // surface origin y in screen coords
-const GD_SURF_SCALE = 230
-const GD_SURF_H_SCALE = 240 // height scale (loss → screen y)
-const GD_GRID = 18 // wireframe resolution
+const GD_SURF_OX = 360 // surface origin x in screen coords
+const GD_SURF_OY = 480 // surface origin y in screen coords
+const GD_SURF_SCALE = 145
+const GD_SURF_H_SCALE = 78 // height scale (loss → screen y)
+const GD_GRID = 16 // wireframe resolution
 
-// Loss surface — a slightly off-center bowl. Min at (-0.5, 0.4), pos
-// loss values everywhere else.
+// Loss surface — a clean bowl. Min at (0.5, -0.5). Loss is 0 at the
+// minimum, growing quadratically outward.
 function gdLoss(wx: number, wy: number): number {
-  const a = wx + 0.5
-  const b = wy - 0.4
-  return 0.30 * a * a + 0.55 * b * b
+  const a = wx - 0.5
+  const b = wy + 0.5
+  return 0.70 * (a * a + b * b)
 }
 function gdGradient(wx: number, wy: number): [number, number] {
-  return [0.60 * (wx + 0.5), 1.10 * (wy - 0.4)]
+  return [1.40 * (wx - 0.5), 1.40 * (wy + 0.5)]
 }
 
 // Project (world x, world y, loss) → screen (x, y) using a simple
@@ -4708,13 +4708,14 @@ function gdProject(wx: number, wy: number, z: number): [number, number] {
   return [sx, sy]
 }
 
-// Trail: 32 steps of actual gradient descent from start (0.85, -0.7) to
-// minimum at (-0.5, 0.4). Uses η = 0.20 for a curved path.
+// Trail: 32 steps of actual gradient descent from start (-0.7, 0.7)
+// (high loss, far from basin) to minimum at (0.5, -0.5). Uses η = 0.10
+// for a smooth, visibly progressive path.
 const GD_TRAIL: Array<{ wx: number; wy: number; loss: number; sx: number; sy: number }> = (() => {
   const out: Array<{ wx: number; wy: number; loss: number; sx: number; sy: number }> = []
-  let wx = 0.85
-  let wy = -0.70
-  const eta = 0.20
+  let wx = -0.70
+  let wy = 0.70
+  const eta = 0.10
   for (let k = 0; k <= 32; k++) {
     const z = gdLoss(wx, wy)
     const [sx, sy] = gdProject(wx, wy, z)
@@ -4726,9 +4727,6 @@ const GD_TRAIL: Array<{ wx: number; wy: number; loss: number; sx: number; sy: nu
   return out
 })()
 
-// Per-phase "current step" along the trail.
-const GD_PHASE_STEP = [0, 0, 22, 32] as const
-
 // Contour map zone (top right of viz)
 const GD_CMAP_X = 950
 const GD_CMAP_Y = 100
@@ -4737,12 +4735,11 @@ const GD_CMAP_H = 360
 const GD_CMAP_CX = GD_CMAP_X + GD_CMAP_W / 2
 const GD_CMAP_CY = GD_CMAP_Y + GD_CMAP_H / 2
 
-// Project (wx, wy) into top-down contour map coords.
+// Project (wx, wy) into top-down contour map coords. Basin (0.5, -0.5)
+// maps to map center; world wx ∈ [-1, 1] maps across the map width.
 function gdCmapPoint(wx: number, wy: number): [number, number] {
-  // The basin is at (-0.5, 0.4). Map world (-1.5..1.5, -1.5..1.5) to
-  // CMAP_X..CMAP_X+W / CMAP_Y..CMAP_Y+H so the basin sits at center.
-  const u = (wx + 0.5) / 3 // -1.5 → wx=-2; +1.5 → wx=+2.5 etc.
-  const v = (wy - 0.4) / 3
+  const u = (wx - 0.5) / 1.5
+  const v = (wy + 0.5) / 1.5
   const cx = GD_CMAP_CX + u * (GD_CMAP_W / 2)
   const cy = GD_CMAP_CY + v * (GD_CMAP_H / 2)
   return [cx, cy]
@@ -4771,14 +4768,14 @@ function gdLchartPoint(stepIdx: number, loss: number): [number, number] {
 // Constants for phase-driven UI fields
 const GD_LR = 0.20
 
-export function VizGradientDescent({ phase }: { phase: number }) {
+export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx: number }) {
   const speed = useSpeed()
 
   const showArrows = phase >= 1
   const showTrail = phase >= 2
 
-  const stepIdx = Math.min(32, GD_PHASE_STEP[phase] ?? 32)
-  const cur = GD_TRAIL[stepIdx]
+  const safeIdx = Math.max(0, Math.min(GD_TRAIL.length - 1, stepIdx))
+  const cur = GD_TRAIL[safeIdx]
   const start = GD_TRAIL[0]
 
   // ---------- WIREFRAME GRID polylines ----------
@@ -4815,7 +4812,7 @@ export function VizGradientDescent({ phase }: { phase: number }) {
   const gxN = gx / gMag
   const gyN = gy / gMag
   // Tail at current point on surface
-  const arrowLen = 0.7
+  const arrowLen = 0.32
   const upWx = cur.wx + arrowLen * gxN
   const upWy = cur.wy + arrowLen * gyN
   const upLoss = gdLoss(upWx, upWy)
@@ -4992,7 +4989,7 @@ export function VizGradientDescent({ phase }: { phase: number }) {
       <g
         style={{
           transform: `translate(${cur.sx - start.sx}px, ${cur.sy - start.sy}px)`,
-          transition: `transform ${0.9 / speed}s ease-out`,
+          transition: `transform ${0.18 / speed}s linear`,
         }}
       >
         <circle cx={start.sx} cy={start.sy} r={22} fill="url(#gd-current-glow)" />
@@ -5403,8 +5400,37 @@ export function GradientDescentSplitPane() {
     return () => clearInterval(id)
   }, [speed])
 
-  const stepIdx = Math.min(32, GD_PHASE_STEP[phase] ?? 32)
-  const cur = GD_TRAIL[stepIdx]
+  // Smooth step counter. Beats 0–1 hold at step 0; beat 2 advances from
+  // 0→32 over ~4.8s so the yellow point visibly rolls down the hill;
+  // beat 3 holds at 32. Drives both the viz and the stats panel.
+  const [stepIdx, setStepIdx] = useState(0)
+  useEffect(() => {
+    if (phase < 2) {
+      setStepIdx(0)
+      return
+    }
+    if (phase >= 3) {
+      setStepIdx(32)
+      return
+    }
+    setStepIdx(0)
+    let i = 0
+    const totalMs = 4800 / speed
+    const stepMs = totalMs / 32
+    const id = setInterval(() => {
+      i += 1
+      if (i >= 32) {
+        setStepIdx(32)
+        clearInterval(id)
+      } else {
+        setStepIdx(i)
+      }
+    }, stepMs)
+    return () => clearInterval(id)
+  }, [phase, speed])
+
+  const safeIdx = Math.max(0, Math.min(GD_TRAIL.length - 1, stepIdx))
+  const cur = GD_TRAIL[safeIdx]
 
   const phaseLabels = [
     'set the metaphor',
@@ -5447,7 +5473,7 @@ export function GradientDescentSplitPane() {
 
   return (
     <SplitPaneScene
-      viz={<VizGradientDescent phase={phase} />}
+      viz={<VizGradientDescent phase={phase} stepIdx={stepIdx} />}
       text={{
         kicker: 'ACT IV · GD · IDEAL',
         title: 'Roll down the loss hill.',
