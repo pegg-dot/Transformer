@@ -5903,12 +5903,26 @@ export function VizGdRavine({ phase, stepIdx }: { phase: number; stepIdx: number
         ))}
       </g>
 
-      {/* ===================== MINIMUM (green dot at basin) ===================== */}
+      {/* ===================== MINIMUM (green dot at basin) =====================
+          Halo pulses continuously so the target never sits dead during phase
+          holds — gives Scene 28 a steady heartbeat at its destination. */}
       {(() => {
         const [mx, my] = grProject(GR_BASIN_W1, GR_BASIN_W2, 0)
         return (
           <g>
-            <circle cx={mx} cy={my} r={28} fill="url(#gr-min-glow)" />
+            <motion.circle
+              cx={mx}
+              cy={my}
+              r={28}
+              fill="url(#gr-min-glow)"
+              animate={{ scale: [1, 1.18, 1], opacity: [0.7, 1, 0.7] }}
+              transition={{
+                duration: 2.6 / speed,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+              style={{ transformOrigin: `${mx}px ${my}px` }}
+            />
             <circle cx={mx} cy={my} r={7} fill={ACCENT.mint} stroke="rgba(255,255,255,0.7)" strokeWidth={1.2} />
           </g>
         )
@@ -6637,12 +6651,25 @@ export function VizGdAdam({ phase, stepIdx }: { phase: number; stepIdx: number }
         </text>
       </g>
 
-      {/* ===================== MINIMUM (green dot at basin) ===================== */}
+      {/* ===================== MINIMUM (green dot at basin) =====================
+          Halo pulses so the target stays alive during phase holds. */}
       {(() => {
         const [mx, my] = grProject(GR_BASIN_W1, GR_BASIN_W2, 0)
         return (
           <g>
-            <circle cx={mx} cy={my} r={28} fill="url(#adam-min-glow)" />
+            <motion.circle
+              cx={mx}
+              cy={my}
+              r={28}
+              fill="url(#adam-min-glow)"
+              animate={{ scale: [1, 1.18, 1], opacity: [0.7, 1, 0.7] }}
+              transition={{
+                duration: 2.6 / speed,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+              style={{ transformOrigin: `${mx}px ${my}px` }}
+            />
             <circle cx={mx} cy={my} r={7} fill={ACCENT.mint} stroke="rgba(255,255,255,0.7)" strokeWidth={1.2} />
             <text
               x={mx + 14}
