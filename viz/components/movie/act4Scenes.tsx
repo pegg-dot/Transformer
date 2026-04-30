@@ -417,6 +417,9 @@ export function VizAct4Intro() {
         {/* Glowing head dot riding the end of the visible curve */}
         <CurveHead progress={curveProgress} />
 
+        {/* Y-axis marker that follows the curve head */}
+        <LossAxisMarker progress={curveProgress} />
+
         {/* Starting marker — "high loss" */}
         <g transform={`translate(${LOSS_PTS[0][0]}, ${LOSS_PTS[0][1]})`}>
           <circle r={5} fill={ACCENT.red} opacity={0.85} />
@@ -601,6 +604,60 @@ function CurveHead({ progress }: { progress: number }) {
       />
       <circle cx={x} cy={y} r={4.5} fill={ACCENT.amber} />
     </g>
+  )
+}
+
+/**
+ * Mint pill on the loss y-axis that follows the curve head's vertical
+ * position. As the curve draws right and the head falls, the marker
+ * springs down — gives continuous "loss is dropping" feedback that
+ * doesn't depend on watching the curve itself.
+ */
+function LossAxisMarker({ progress }: { progress: number }) {
+  const N = LOSS_PTS.length
+  const idxF = Math.max(0, Math.min(N - 1, progress * (N - 1)))
+  const i0 = Math.floor(idxF)
+  const i1 = Math.min(N - 1, i0 + 1)
+  const t = idxF - i0
+  const y = LOSS_PTS[i0][1] + (LOSS_PTS[i1][1] - LOSS_PTS[i0][1]) * t
+  return (
+    <motion.g
+      initial={false}
+      animate={{ y }}
+      transition={{ type: 'spring', stiffness: 70, damping: 22 }}
+    >
+      {/* tick on the axis */}
+      <line
+        x1={CHART_PAD_L - 4}
+        y1={0}
+        x2={CHART_PAD_L + 4}
+        y2={0}
+        stroke={ACCENT.mint}
+        strokeWidth={1.4}
+        strokeOpacity={0.85}
+      />
+      {/* pill */}
+      <rect
+        x={CHART_PAD_L - 30}
+        y={-7}
+        width={22}
+        height={14}
+        rx={3}
+        fill={ACCENT.mint}
+        fillOpacity={0.85}
+      />
+      <text
+        x={CHART_PAD_L - 19}
+        y={3}
+        textAnchor="middle"
+        fontFamily="var(--font-mono)"
+        fontSize="9"
+        fontWeight={700}
+        fill="rgba(0,0,0,0.85)"
+      >
+        L
+      </text>
+    </motion.g>
   )
 }
 
@@ -1673,6 +1730,36 @@ export function VizCELossSeq({ phase }: { phase: number }) {
         )
       })}
 
+      {/* Column sweep — a translucent vertical bar that travels left→right
+          across the columns as soon as beat 1 begins. Sells "we're computing
+          loss at every position, one after the other" before the targets
+          finish revealing. */}
+      {showAllCols && (
+        <motion.rect
+          key={`cels-sweep-${phase}`}
+          y={CELS_INPUT_Y - 16}
+          width={CELS_COL_PITCH * 1.1}
+          height={CELS_BAR_BASE_Y - CELS_INPUT_Y + 60}
+          rx={10}
+          fill={ACCENT.mint}
+          fillOpacity={0.10}
+          initial={{ x: CELS_GRID_X - CELS_COL_PITCH * 1.1, opacity: 0 }}
+          animate={{
+            x: [
+              CELS_GRID_X - CELS_COL_PITCH * 1.1,
+              CELS_GRID_X + CELS_T * CELS_COL_PITCH,
+            ],
+            opacity: [0, 0.85, 0.85, 0],
+          }}
+          transition={{
+            duration: 1.6 / speed,
+            delay: 0.15 / speed,
+            ease: 'easeInOut',
+            times: [0, 0.12, 0.88, 1],
+          }}
+        />
+      )}
+
       {/* ===================== "T = 9" + shift caption ===================== */}
       <motion.text
         x={CELS_VB_W / 2}
@@ -2092,11 +2179,16 @@ export function VizCELossBatch({ phase }: { phase: number }) {
               seq {r + 1}
             </text>
 
-            {/* Cells (per-position losses for this sequence) */}
+            {/* Cells (per-position losses for this sequence). When the
+                collapse beat starts, each cell briefly brightens to 1.0
+                in row-major cascade order, then dims as it "feeds" the
+                central mean — visually the reduce step. */}
             {CELB_CELLS[r].map((cellLoss, c) => {
               const cx = CELB_CELLS_X + c * (CELB_CELL_W + CELB_CELL_GAP)
+              const baseOp = Math.min(0.85, 0.25 + cellLoss * 0.18)
+              const cellOrder = r * CELB_T + c
               return (
-                <rect
+                <motion.rect
                   key={`cell-${r}-${c}`}
                   x={cx}
                   y={rowY + 4}
@@ -2104,7 +2196,22 @@ export function VizCELossBatch({ phase }: { phase: number }) {
                   height={CELB_ROW_H - 8}
                   rx={4}
                   fill={celbCellColor(cellLoss)}
-                  opacity={Math.min(0.85, 0.25 + cellLoss * 0.18)}
+                  initial={false}
+                  animate={
+                    showCollapse
+                      ? { opacity: [baseOp, 1, baseOp * 0.55] }
+                      : { opacity: baseOp }
+                  }
+                  transition={
+                    showCollapse
+                      ? {
+                          duration: 1.0 / speed,
+                          delay: (cellOrder * 0.018) / speed,
+                          ease: 'easeInOut',
+                          times: [0, 0.4, 1],
+                        }
+                      : { duration: 0.25 / speed }
+                  }
                 />
               )
             })}

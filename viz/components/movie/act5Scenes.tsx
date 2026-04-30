@@ -528,6 +528,30 @@ export function VizAct5Intro() {
         strokeDasharray="2 6"
         {...drawIn(t.res, 1.0)}
       />
+      {/* Flowing-data overlay — subtle drifting dashes that read as
+          "the residual is carrying signal forward" once the line has
+          drawn in. */}
+      <motion.line
+        x1={RES_X}
+        y1={RES_TOP}
+        x2={RES_X}
+        y2={RES_BOT}
+        stroke={ACCENT.mint}
+        strokeOpacity={0.55}
+        strokeWidth={2}
+        strokeDasharray="4 10"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.6, strokeDashoffset: [0, -28] }}
+        transition={{
+          opacity: { duration: 0.5, delay: t.res + 1.0 },
+          strokeDashoffset: {
+            duration: 1.6,
+            repeat: Infinity,
+            ease: 'linear',
+            delay: t.res + 1.0,
+          },
+        }}
+      />
       <motion.text
         x={RES_X - 14}
         y={RES_TOP - 6}
@@ -873,6 +897,27 @@ const REL_RIGHT_CX = 1010
 const REL_CY = 815
 const REL_R = 120
 
+/**
+ * SVG arc-path string from one angle to another around (cx, cy) with radius r.
+ * Used by Scene 31 to visualize Q's rotation as an actual arc.
+ */
+function arcPath(
+  cx: number,
+  cy: number,
+  r: number,
+  startAngle: number,
+  endAngle: number,
+): string {
+  const sx = cx + Math.cos(startAngle) * r
+  const sy = cy + Math.sin(startAngle) * r
+  const ex = cx + Math.cos(endAngle) * r
+  const ey = cy + Math.sin(endAngle) * r
+  const delta = endAngle - startAngle
+  const sweep = delta >= 0 ? 1 : 0
+  const largeArc = Math.abs(delta) > Math.PI ? 1 : 0
+  return `M ${sx} ${sy} A ${r} ${r} 0 ${largeArc} ${sweep} ${ex} ${ey}`
+}
+
 /* ─────────── ADD method (left half) ─────────── */
 function AddPanel({ dim }: { dim: boolean }) {
   const tokenColors = [
@@ -938,7 +983,7 @@ function AddPanel({ dim }: { dim: boolean }) {
         token
       </text>
       {tokenColors.map((c, i) => (
-        <rect
+        <motion.rect
           key={`t${i}`}
           x={rowX0 + i * (cellW + gap)}
           y={tokenY}
@@ -949,20 +994,27 @@ function AddPanel({ dim }: { dim: boolean }) {
           fill={c}
           stroke="rgba(167,139,250,0.55)"
           strokeWidth={0.8}
+          initial={{ opacity: 0, scaleY: 0.4 }}
+          animate={{ opacity: 1, scaleY: 1 }}
+          style={{ transformOrigin: `${rowX0 + i * (cellW + gap) + cellW / 2}px ${tokenY + 21}px` }}
+          transition={{ duration: 0.4, delay: 0.25 + i * 0.04, ease: 'easeOut' }}
         />
       ))}
 
-      {/* + */}
-      <text
+      {/* + (pulses gently) */}
+      <motion.text
         x={(ADD_X0 + ADD_X1) / 2}
         y={plusY + 14}
         textAnchor="middle"
         fill="rgba(255,255,255,0.7)"
         fontFamily="ui-sans-serif, system-ui"
         fontSize={28}
+        initial={{ opacity: 0, scale: 0.6 }}
+        animate={{ opacity: [0, 1, 0.85, 1], scale: 1 }}
+        transition={{ duration: 1.2, delay: 0.65, ease: 'easeOut' }}
       >
         +
-      </text>
+      </motion.text>
 
       {/* Position row */}
       <text
@@ -977,7 +1029,7 @@ function AddPanel({ dim }: { dim: boolean }) {
         position
       </text>
       {posColors.map((c, i) => (
-        <rect
+        <motion.rect
           key={`p${i}`}
           x={rowX0 + i * (cellW + gap)}
           y={posY}
@@ -988,6 +1040,10 @@ function AddPanel({ dim }: { dim: boolean }) {
           fill={c}
           stroke="rgba(34,211,238,0.55)"
           strokeWidth={0.8}
+          initial={{ opacity: 0, scaleY: 0.4 }}
+          animate={{ opacity: 1, scaleY: 1 }}
+          style={{ transformOrigin: `${rowX0 + i * (cellW + gap) + cellW / 2}px ${posY + 21}px` }}
+          transition={{ duration: 0.4, delay: 0.85 + i * 0.04, ease: 'easeOut' }}
         />
       ))}
 
@@ -1022,7 +1078,7 @@ function AddPanel({ dim }: { dim: boolean }) {
         const posAlpha = parseFloat(posColors[i].split(',')[3]) || 0.5
         const fill = `rgba(160,180,255,${(tokenAlpha + posAlpha) / 2})`
         return (
-          <rect
+          <motion.rect
             key={`s${i}`}
             x={rowX0 + i * (cellW + gap)}
             y={sumY}
@@ -1031,6 +1087,10 @@ function AddPanel({ dim }: { dim: boolean }) {
             rx={4}
             ry={4}
             fill={fill}
+            initial={{ opacity: 0, scaleY: 0.4 }}
+            animate={{ opacity: 1, scaleY: 1 }}
+            style={{ transformOrigin: `${rowX0 + i * (cellW + gap) + cellW / 2}px ${sumY + 21}px` }}
+            transition={{ duration: 0.4, delay: 1.6 + i * 0.04, ease: 'easeOut' }}
             stroke="rgba(200,210,255,0.65)"
             strokeWidth={0.8}
           />
@@ -1096,16 +1156,34 @@ function RotationPlane({
   const arcEndY = cy + Math.sin(relEnd) * arcR
   const sweep = relEnd > relStart ? 1 : 0
 
+  // Rotation arcs — visualize how much each vector has rotated from its
+  // base. As posIdx grows, the arc grows. Only meaningful in the active
+  // (cycling) plane; in phase-2 demo planes both qPos and kPos are fixed.
+  const qArcR = r * 0.78
+  const kArcR = r * 0.86
+  const qArcD = arcPath(cx, cy, qArcR, Q_BASE, qAngle)
+  const kArcD = arcPath(cx, cy, kArcR, K_BASE, kAngle)
+
   return (
     <g style={{ opacity: active ? 1 : 0.35 }}>
-      {/* Outer ring */}
-      <circle
+      {/* Outer ring — pulses softly when active so the plane feels powered on */}
+      <motion.circle
         cx={cx}
         cy={cy}
         r={r}
         fill="none"
         stroke="rgba(255,255,255,0.18)"
         strokeWidth={1}
+        animate={
+          active
+            ? { strokeOpacity: [0.18, 0.4, 0.18] }
+            : { strokeOpacity: 0.18 }
+        }
+        transition={
+          active
+            ? { duration: 2.6, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 0.4 }
+        }
       />
       {/* Inner ring */}
       <circle
@@ -1123,17 +1201,63 @@ function RotationPlane({
       {/* Origin dot */}
       <circle cx={cx} cy={cy} r={2.4} fill="rgba(255,255,255,0.55)" />
 
-      {/* Relative angle arc (optional) */}
+      {/* Q rotation arc — shows the angle Q has swept from its base. */}
+      {qPos !== 0 && (
+        <path
+          d={qArcD}
+          fill="none"
+          stroke={ACCENT.amber}
+          strokeOpacity={0.4}
+          strokeWidth={1.4}
+          strokeLinecap="round"
+          strokeDasharray="3 4"
+        />
+      )}
+      {/* K rotation arc */}
+      {kPos !== 0 && (
+        <path
+          d={kArcD}
+          fill="none"
+          stroke={ACCENT.blue}
+          strokeOpacity={0.4}
+          strokeWidth={1.4}
+          strokeLinecap="round"
+          strokeDasharray="3 4"
+        />
+      )}
+
+      {/* Relative angle arc — draws in cleanly when revealed (phase 2). */}
       {showRelArc && (
         <>
-          <path
+          <motion.path
+            key={`rel-arc-${qPos}-${kPos}`}
             d={`M ${arcStartX} ${arcStartY} A ${arcR} ${arcR} 0 0 ${sweep} ${arcEndX} ${arcEndY}`}
             fill="none"
             stroke={ACCENT.mint}
-            strokeWidth={2}
-            strokeOpacity={0.85}
+            strokeWidth={2.4}
+            strokeOpacity={0.9}
+            strokeLinecap="round"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 0.9, delay: 0.25, ease: 'easeOut' }}
           />
-          <text
+          {/* Q-K connecting line — emphasizes "the dot product is between
+              these two vectors". */}
+          <motion.line
+            x1={qx}
+            y1={qy}
+            x2={kx}
+            y2={ky}
+            stroke={ACCENT.mint}
+            strokeOpacity={0.45}
+            strokeWidth={1}
+            strokeDasharray="2 5"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 0.55 }}
+            transition={{ duration: 0.7, delay: 0.85 }}
+          />
+          <motion.text
+            key={`rel-label-${qPos}-${kPos}`}
             x={cx}
             y={cy + 6}
             textAnchor="middle"
@@ -1141,13 +1265,38 @@ function RotationPlane({
             fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
             fontSize={14}
             fontWeight={600}
+            initial={{ opacity: 0, scale: 0.6 }}
+            animate={{ opacity: 1, scale: [0.6, 1.15, 1] }}
+            transition={{ duration: 0.8, delay: 0.9, ease: 'easeOut' }}
           >
             Δ = {kPos - qPos}
-          </text>
+          </motion.text>
         </>
       )}
 
-      {/* Q vector (amber) */}
+      {/* Q vector (amber) — halo behind tip pulses, line + dot spring to new pos */}
+      {active && (
+        <motion.circle
+          cx={qx}
+          cy={qy}
+          r={11}
+          fill={ACCENT.amber}
+          fillOpacity={0.18}
+          animate={{
+            cx: qx,
+            cy: qy,
+            scale: [1, 1.6, 1],
+            opacity: [0.18, 0.4, 0.18],
+          }}
+          transition={{
+            cx: { type: 'spring', stiffness: 110, damping: 18 },
+            cy: { type: 'spring', stiffness: 110, damping: 18 },
+            scale: { duration: 1.8, repeat: Infinity, ease: 'easeInOut' },
+            opacity: { duration: 1.8, repeat: Infinity, ease: 'easeInOut' },
+          }}
+          style={{ transformOrigin: `${qx}px ${qy}px` }}
+        />
+      )}
       <motion.line
         x1={cx}
         y1={cy}
@@ -1178,7 +1327,29 @@ function RotationPlane({
         {qLabel}
       </text>
 
-      {/* K vector (blue) */}
+      {/* K vector (blue) — same pattern */}
+      {active && (
+        <motion.circle
+          cx={kx}
+          cy={ky}
+          r={11}
+          fill={ACCENT.blue}
+          fillOpacity={0.18}
+          animate={{
+            cx: kx,
+            cy: ky,
+            scale: [1, 1.6, 1],
+            opacity: [0.18, 0.4, 0.18],
+          }}
+          transition={{
+            cx: { type: 'spring', stiffness: 110, damping: 18 },
+            cy: { type: 'spring', stiffness: 110, damping: 18 },
+            scale: { duration: 1.8, repeat: Infinity, ease: 'easeInOut', delay: 0.3 },
+            opacity: { duration: 1.8, repeat: Infinity, ease: 'easeInOut', delay: 0.3 },
+          }}
+          style={{ transformOrigin: `${kx}px ${ky}px` }}
+        />
+      )}
       <motion.line
         x1={cx}
         y1={cy}
@@ -1346,7 +1517,8 @@ function AttentionInset({ active }: { active: boolean }) {
         INSIDE THE ATTENTION BLOCK
       </text>
 
-      {/* Q / K / V tags */}
+      {/* Q / K / V tags. When the inset becomes active, Q and K briefly
+          pulse pink to mark "RoPE applies here". V stays dim. */}
       {(['Q', 'K', 'V'] as const).map((lbl, i) => {
         const isV = lbl === 'V'
         const color = isV ? 'rgba(255,255,255,0.45)' : lbl === 'Q' ? ACCENT.amber : ACCENT.blue
@@ -1377,6 +1549,32 @@ function AttentionInset({ active }: { active: boolean }) {
             >
               {lbl}
             </text>
+            {/* RoPE-applies pulse — animated pink ring on Q and K only,
+                only when the inset is active. */}
+            {!isV && active && (
+              <motion.rect
+                x={tagX - 3}
+                y={tagY - 3}
+                width={66}
+                height={30}
+                rx={6}
+                ry={6}
+                fill="none"
+                stroke={ACCENT.pink}
+                strokeWidth={1.6}
+                animate={{ opacity: [0, 0.85, 0], scale: [0.95, 1.08, 1] }}
+                transition={{
+                  duration: 1.6,
+                  delay: 0.3 + i * 0.18,
+                  repeat: Infinity,
+                  repeatDelay: 1.2,
+                  ease: 'easeInOut',
+                }}
+                style={{
+                  transformOrigin: `${tagX + 30}px ${tagY + 12}px`,
+                }}
+              />
+            )}
           </g>
         )
       })}
@@ -1804,14 +2002,18 @@ function MiniBox({
         {label}
       </text>
       {strikethrough && (
-        <line
+        <motion.line
           x1={x + 6}
           y1={y + h / 2}
           x2={x + w - 6}
           y2={y + h / 2}
           stroke="#f87171"
-          strokeWidth={2}
-          strokeOpacity={0.85}
+          strokeWidth={2.4}
+          strokeOpacity={0.95}
+          strokeLinecap="round"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 0.95 }}
+          transition={{ duration: 0.55, delay: 0.4, ease: 'easeOut' }}
         />
       )}
     </g>

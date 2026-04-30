@@ -1669,14 +1669,13 @@ export function VizEmbedding() {
           </text>
 
           {/* Final settled vector — cells with the same diverging values.
-              Keyed on cursor so it remounts with the new row each cycle. */}
-          <motion.g
-            key={`vec-${cursor}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4 / speed, delay: 1.05 / speed }}
-          >
-            <rect x={-2} y={-2}
+              Keyed on cursor so it remounts with the new row each cycle.
+              Cells stagger in left→right so the row extraction reads as a
+              real lookup, not a teleport. */}
+          <motion.g key={`vec-${cursor}`}>
+            <motion.rect
+              x={-2}
+              y={-2}
               width={COLS * vecCellW + 4}
               height={CELL_H + 3}
               rx={3}
@@ -1684,15 +1683,26 @@ export function VizEmbedding() {
               stroke={ACCENT.violet}
               strokeOpacity={0.55}
               strokeWidth={1.2}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3 / speed, delay: 1.0 / speed }}
             />
             {activeRowValues.map((v, c) => (
-              <rect
+              <motion.rect
                 key={c}
                 x={c * vecCellW}
                 y={0}
                 width={vecCellW - 0.5}
                 height={CELL_H - 1}
                 fill={colorFor(v)}
+                initial={{ opacity: 0, scaleY: 0.5 }}
+                animate={{ opacity: 1, scaleY: 1 }}
+                style={{ transformOrigin: `${c * vecCellW + (vecCellW - 0.5) / 2}px ${(CELL_H - 1) / 2}px` }}
+                transition={{
+                  duration: 0.28 / speed,
+                  delay: (1.05 + c * 0.025) / speed,
+                  ease: 'easeOut',
+                }}
               />
             ))}
             <text x={0} y={CELL_H + 18} fontSize="10" fontFamily="var(--font-mono)"
@@ -2241,21 +2251,24 @@ export function VizPositional() {
         />
         {Array.from({ length: NUM_DIMS }).map((_, d) => {
           const peColor = colorFor(peValue(pos, d), 'wave', d)
+          const cy = OPS_TOP_Y + d * CELL_H + 1 + (CELL_H - 2) / 2
           return (
-          <motion.rect
-            key={`pe-${d}-${pos}`}
-            x={X_PE + 1}
-            y={OPS_TOP_Y + d * CELL_H + 1}
-            width={VEC_W - 2}
-            height={CELL_H - 2}
-            fill={peColor}
-            initial={{ opacity: 0.5, fill: peColor }}
-            animate={{
-              fill: peColor,
-              opacity: 1,
-            }}
-            transition={{ duration: 0.4 / speed, delay: d * 0.015 / speed }}
-          />
+            <motion.rect
+              key={`pe-${d}-${pos}`}
+              x={X_PE + 1}
+              y={OPS_TOP_Y + d * CELL_H + 1}
+              width={VEC_W - 2}
+              height={CELL_H - 2}
+              fill={peColor}
+              initial={{ opacity: 0, scaleY: 0.5 }}
+              animate={{ opacity: 1, scaleY: 1 }}
+              style={{ transformOrigin: `${X_PE + 1 + (VEC_W - 2) / 2}px ${cy}px` }}
+              transition={{
+                duration: 0.36 / speed,
+                delay: (0.05 + d * 0.022) / speed,
+                ease: 'easeOut',
+              }}
+            />
           )
         })}
 
@@ -2318,6 +2331,7 @@ export function VizPositional() {
         {Array.from({ length: NUM_DIMS }).map((_, d) => {
           const v = inputValue(pos, d)
           const inColor = colorFor(v)
+          const cy = OPS_TOP_Y + d * CELL_H + 1 + (CELL_H - 2) / 2
           return (
             <motion.rect
               key={`in-${d}-${pos}`}
@@ -2326,14 +2340,13 @@ export function VizPositional() {
               width={VEC_W - 2}
               height={CELL_H - 2}
               fill={inColor}
-              initial={{ opacity: 0, fill: inColor }}
-              animate={{
-                fill: inColor,
-                opacity: 1,
-              }}
+              initial={{ opacity: 0, scaleY: 0.4 }}
+              animate={{ opacity: 1, scaleY: 1 }}
+              style={{ transformOrigin: `${X_INPUT + 1 + (VEC_W - 2) / 2}px ${cy}px` }}
               transition={{
-                duration: 0.5 / speed,
-                delay: (0.3 + d * 0.025) / speed,
+                duration: 0.45 / speed,
+                delay: (0.4 + d * 0.026) / speed,
+                ease: 'easeOut',
               }}
             />
           )

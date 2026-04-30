@@ -1546,15 +1546,33 @@ function SampleLogitsColumn({ phase, speed }: { phase: number; speed: number }) 
         const maxLogit = 5
         const t = (logit - minLogit) / (maxLogit - minLogit)
         const barW = Math.max(0, Math.min(1, t)) * SAMPLE_LOGITS_W
+        // Cascade-grow each logit bar in when phase 1 first activates.
+        // Before phase 1, width is 0 (the column reads as "raw scores
+        // not yet computed"). On phase 1 entry, bars stagger in.
+        const targetW = phase >= 1 ? barW : 0
         return (
           <g key={`logit-${i}`}>
             <rect x={SAMPLE_LOGITS_X} y={y + 2}
               width={SAMPLE_LOGITS_W} height={SAMPLE_LOGITS_ROW_H - 4} rx={2}
               fill="rgba(255,255,255,0.025)"
               stroke="rgba(255,255,255,0.08)" strokeWidth={0.5} />
-            <rect x={SAMPLE_LOGITS_X} y={y + 2}
-              width={barW} height={SAMPLE_LOGITS_ROW_H - 4} rx={2}
-              fill={`rgba(96,165,250,${0.35 + (1 - i / SAMPLE_CHARS.length) * 0.5})`} />
+            <motion.rect
+              x={SAMPLE_LOGITS_X}
+              y={y + 2}
+              height={SAMPLE_LOGITS_ROW_H - 4}
+              rx={2}
+              fill={`rgba(96,165,250,${0.35 + (1 - i / SAMPLE_CHARS.length) * 0.5})`}
+              initial={false}
+              animate={{ width: targetW }}
+              transition={{
+                duration: 0.55 / speed,
+                delay:
+                  phase === 1
+                    ? (i * 0.045) / speed
+                    : 0,
+                ease: 'easeOut',
+              }}
+            />
             <text x={SAMPLE_LOGITS_X - 8} y={y + SAMPLE_LOGITS_ROW_H / 2 + 4}
               textAnchor="end"
               fontSize="11" fontFamily="var(--font-mono)" fontStyle="italic"
@@ -2560,6 +2578,33 @@ function KVReuseArrows({
             repeat: Infinity,
             repeatDelay: 0.5 / speed,
             ease: 'easeInOut',
+          }}
+        />
+      ))}
+      {/* Per-row scan bar — a narrow vertical highlight that travels
+          left→right across each reused row, sells "attention is reading
+          through this row" rather than the row sitting inert. */}
+      {Array.from({ length: step + 1 }).map((_, r) => (
+        <motion.rect
+          key={`reuse-scan-${r}`}
+          y={KV_K_Y + r * KV_K_ROW_H + 2}
+          width={KV_K_CELL_W * 0.6}
+          height={KV_K_ROW_H - 4}
+          rx={1}
+          fill={COL_KV_NEW}
+          fillOpacity={0.55}
+          initial={{ x: KV_K_X - KV_K_CELL_W * 0.6, opacity: 0 }}
+          animate={{
+            x: [KV_K_X - KV_K_CELL_W * 0.6, KV_K_X + KV_K_W],
+            opacity: [0, 0.85, 0.85, 0],
+          }}
+          transition={{
+            duration: 1.0 / speed,
+            delay: (0.15 + r * 0.07) / speed,
+            repeat: Infinity,
+            repeatDelay: 0.7 / speed,
+            ease: 'easeInOut',
+            times: [0, 0.15, 0.85, 1],
           }}
         />
       ))}

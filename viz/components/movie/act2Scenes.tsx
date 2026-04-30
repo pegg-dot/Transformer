@@ -1954,6 +1954,33 @@ export function VizQKV() {
                   fill={colorForVal(v, accent)}
                 />
               ))}
+              {/* Sweep glow — a narrow vertical bar that traverses the
+                  output once when the lane becomes active. Sells "this
+                  vector was just computed" without changing the static
+                  cell colors. */}
+              {isActive && (
+                <motion.rect
+                  key={`sweep-${lane}-${phase}`}
+                  y={yTop - 2}
+                  width={6}
+                  height={OUT_H + 4}
+                  rx={2}
+                  fill={accent}
+                  fillOpacity={0.9}
+                  filter="url(#qkv-glow)"
+                  initial={{ x: OUT_X - 10, opacity: 0 }}
+                  animate={{
+                    x: [OUT_X - 10, OUT_X + OUT_W + 4],
+                    opacity: [0, 1, 1, 0],
+                  }}
+                  transition={{
+                    duration: 0.95 / speed,
+                    delay: 1.55 / speed,
+                    ease: 'easeInOut',
+                    times: [0, 0.18, 0.85, 1],
+                  }}
+                />
+              )}
               {/* Big italic letter overlay (Q, K, V) above the vector */}
               <text
                 x={OUT_X + OUT_W / 2}
