@@ -78,6 +78,18 @@ export function SplitPaneScene({
             backgroundSize: '32px 32px',
           }}
         />
+        {/* Ambient bottom accent bar — barely visible, slowly oscillates.
+            Bridges the "pause and go" feel of phase machines so even when
+            the active phase content is briefly quiet, the eye registers
+            that the scene is alive. Color picks up the scene's accent
+            from text.accent. */}
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute bottom-0 left-0 right-0 h-[2px]"
+          style={{ background: text.accent, mixBlendMode: 'screen' }}
+          animate={{ opacity: [0.10, 0.32, 0.10] }}
+          transition={{ duration: 3.4, repeat: Infinity, ease: 'easeInOut' }}
+        />
         {/* The viz itself, centered, filling the pane.
             The descendant selector hides legacy in-SVG number-chip strips
             (NumberPanelDiv) which were positioned for the old fullscreen
@@ -88,8 +100,14 @@ export function SplitPaneScene({
         </div>
       </div>
 
-      {/* Vertical rule between panes */}
-      <div className="w-px shrink-0 bg-[var(--rule)]" />
+      {/* Vertical rule between panes — itself pulses subtly so it never
+          looks like a dead seam during quiet phase moments. */}
+      <motion.div
+        className="w-px shrink-0"
+        style={{ background: 'var(--rule)' }}
+        animate={{ opacity: [0.85, 1, 0.85] }}
+        transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}
+      />
 
       {/* Right pane — persistent commentary. ~32% width. */}
       <div
