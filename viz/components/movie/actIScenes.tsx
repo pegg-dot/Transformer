@@ -2096,7 +2096,15 @@ export function VizPositional() {
         {/* ────── Header ────── */}
         <text x={WAVE_X0 - 40} y={70} fontSize="11" fontFamily="var(--font-mono)"
           fill={ACCENT.dim} letterSpacing="0.22em">
-          POSITIONAL ENCODING (PE)
+          POSITIONAL ENCODING (PE) · 2017 SINUSOIDAL FORM
+        </text>
+        <text x={WAVE_X0 - 40} y={92} fontSize="11" fontFamily="var(--font-mono)"
+          fill="rgba(245,158,11,0.85)" letterSpacing="0.18em">
+          this nanoGPT actually uses a LEARNED table, not waves —
+        </text>
+        <text x={WAVE_X0 - 40} y={108} fontSize="11" fontFamily="var(--font-mono)"
+          fill="rgba(255,255,255,0.55)" letterSpacing="0.18em">
+          same lookup style as Scene 5, indexed by position instead of token id.
         </text>
 
         {/* ────── Wave bank ────── */}
