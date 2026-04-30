@@ -2965,13 +2965,14 @@ function BlockAnchor({
 /* ─────────── Phase A — one-query backward arcs ─────────── */
 function PhaseA({
   tokens,
-  focused,
+  focused: _focused, // kept for prop compatibility; PhaseA now drives its own query
   speed,
 }: {
   tokens: string[]
   focused: number
   speed: number
 }) {
+  void _focused
   const T = tokens.length
   // Token row geometry (right-side viz area)
   const X0 = 460
@@ -2980,6 +2981,57 @@ function PhaseA({
   const cellW = (X1 - X0 - 20) / T
   const cellH = 60
   const tokX = (i: number) => X0 + i * cellW + cellW / 2
+
+  // ── Curated salient (query → keys) scenarios. Builds them from the
+  // prompt by scanning back from each interesting position for earlier
+  // occurrences of the same character — gives the same "this token
+  // attends to its earlier siblings" feel as 3B1B's pronoun-antecedent
+  // style attention, without rendering every backward arc at once.
+  const SCENARIOS: Array<{ query: number; keys: number[] }> = (() => {
+    const out: Array<{ query: number; keys: number[] }> = []
+    const seen = new Set<number>()
+    for (let i = T - 1; i >= 2 && out.length < 5; i--) {
+      if (seen.has(i)) continue
+      const ch = tokens[i]
+      if (!ch || ch === ' ') continue
+      const matches: number[] = []
+      for (let j = i - 1; j >= 0 && matches.length < 2; j--) {
+        if (tokens[j].toLowerCase() === ch.toLowerCase() && tokens[j] !== ' ') {
+          matches.push(j)
+        }
+      }
+      // Fallback: if no matching char, use a couple of earlier positions
+      // anyway so the scenario isn't empty.
+      const keys =
+        matches.length > 0
+          ? matches
+          : i >= 3
+            ? [i - 1, Math.max(0, Math.floor(i / 2))]
+            : [0]
+      out.push({ query: i, keys })
+      seen.add(i)
+    }
+    if (out.length === 0) {
+      out.push({ query: Math.max(1, T - 1), keys: [0] })
+    }
+    return out
+  })()
+
+  const [scenarioIdx, setScenarioIdx] = useState(0)
+  useEffect(() => {
+    if (SCENARIOS.length <= 1) return
+    const id = setInterval(() => {
+      setScenarioIdx((i) => (i + 1) % SCENARIOS.length)
+    }, 3400 / speed)
+    return () => clearInterval(id)
+    // SCENARIOS is derived from tokens which is stable across renders;
+    // changing prompt remounts PhaseA via parent key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speed, SCENARIOS.length])
+
+  const cur = SCENARIOS[Math.min(scenarioIdx, SCENARIOS.length - 1)]
+  const focused = cur.query
+  const activeKeys = new Set(cur.keys)
 
   return (
     <g>
@@ -3038,138 +3090,158 @@ function PhaseA({
       {tokens.map((ch, i) => {
         const x = tokX(i)
         const isFocused = i === focused
-        const isKey = i < focused
+        const isKey = activeKeys.has(i)
         return (
           <g key={`a-tok-${i}`}>
-            <rect
+            <motion.rect
               x={x - cellW / 2 + 2}
               y={ROW_Y - cellH / 2}
               width={cellW - 4}
               height={cellH}
               rx={4}
-              fill={
-                isFocused
-                  ? 'rgba(96,165,250,0.20)'
+              animate={{
+                fill: isFocused
+                  ? 'rgba(96,165,250,0.22)'
                   : isKey
-                    ? 'rgba(245,158,11,0.06)'
-                    : 'rgba(255,255,255,0.015)'
-              }
-              stroke={
-                isFocused
+                    ? 'rgba(245,158,11,0.18)'
+                    : 'rgba(255,255,255,0.02)',
+                stroke: isFocused
                   ? COL_K_ATT
                   : isKey
                     ? COL_Q_ATT
-                    : 'rgba(255,255,255,0.18)'
-              }
-              strokeWidth={isFocused ? 2 : isKey ? 1.4 : 0.8}
-              strokeOpacity={isFocused ? 1 : isKey ? 0.7 : 0.4}
+                    : 'rgba(255,255,255,0.18)',
+                strokeWidth: isFocused ? 2 : isKey ? 1.6 : 0.8,
+                strokeOpacity: isFocused ? 1 : isKey ? 0.95 : 0.4,
+              }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
             />
-            <text
+            <motion.text
               x={x}
               y={ROW_Y + 8}
               textAnchor="middle"
               fontSize="20"
               fontFamily="var(--font-display)"
               fontStyle="italic"
-              fill={isFocused ? '#fff' : isKey ? '#fff' : 'rgba(255,255,255,0.4)'}
+              animate={{
+                fill: isFocused ? '#fff' : isKey ? '#fff' : 'rgba(255,255,255,0.4)',
+              }}
+              transition={{ duration: 0.4 }}
             >
               {ch === ' ' ? '·' : ch}
-            </text>
-            <text
+            </motion.text>
+            <motion.text
               x={x}
               y={ROW_Y + cellH / 2 + 18}
               textAnchor="middle"
               fontSize="10"
               fontFamily="var(--font-mono)"
-              fill={isFocused ? COL_K_ATT : isKey ? COL_Q_ATT : ACCENT.dim}
+              animate={{
+                fill: isFocused ? COL_K_ATT : isKey ? COL_Q_ATT : 'rgba(255,255,255,0.45)',
+              }}
+              transition={{ duration: 0.4 }}
             >
               {i}
-            </text>
+            </motion.text>
           </g>
         )
       })}
 
-      {/* Backward arcs from focused token to each earlier key */}
-      {Array.from({ length: focused }).map((_, j) => {
-        const fromX = tokX(focused)
-        const fromY = ROW_Y - cellH / 2
-        const toX = tokX(j)
-        const toY = ROW_Y - cellH / 2
-        const arcHeight = 70 + (focused - j) * 8
-        const ctrlY = fromY - arcHeight
-        // Sample points along the quadratic Bezier for traveling particle
-        const ts = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1]
-        const cxs = ts.map(
-          (t) => Math.pow(1 - t, 2) * fromX + 2 * (1 - t) * t * ((fromX + toX) / 2) + t * t * toX,
-        )
-        const cys = ts.map(
-          (t) => Math.pow(1 - t, 2) * fromY + 2 * (1 - t) * t * ctrlY + t * t * toY,
-        )
-        return (
-          <motion.g key={`arc-${j}`}>
-            {/* Initial draw — once */}
-            <motion.path
-              d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
-              stroke={COL_Q_ATT}
-              strokeWidth={2}
-              strokeOpacity={0.85}
-              fill="none"
-              filter="url(#attn-glow)"
-              initial={{ pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{
-                duration: 0.6 / speed,
-                delay: (0.4 + j * 0.12) / speed,
-              }}
-            />
-            {/* Continuous opacity pulse on top of the drawn arc */}
-            <motion.path
-              d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
-              stroke={COL_Q_ATT}
-              strokeWidth={2.4}
-              fill="none"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: [0, 0.55, 0] }}
-              transition={{
-                duration: 2.4 / speed,
-                delay: (1.2 + j * 0.18) / speed,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-            />
-            {/* Arrowhead near the key */}
-            <motion.path
-              d={`M ${toX - 5} ${toY - 8} L ${toX} ${toY - 2} L ${toX + 5} ${toY - 8}`}
-              stroke={COL_Q_ATT}
-              strokeWidth={2}
-              strokeOpacity={0.9}
-              fill="none"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: (1.0 + j * 0.12) / speed }}
-            />
-            {/* Continuously traveling particle along the arc */}
-            <motion.circle
-              r={3.5}
-              fill={COL_Q_ATT}
-              filter="url(#attn-glow)"
-              initial={{ cx: fromX, cy: fromY, opacity: 0 }}
-              animate={{
-                cx: cxs,
-                cy: cys,
-                opacity: [0, 1, 1, 1, 1, 1, 1, 0],
-              }}
-              transition={{
-                duration: 1.7 / speed,
-                delay: (1.4 + j * 0.18) / speed,
-                repeat: Infinity,
-                repeatDelay: 0.6 / speed,
-                ease: 'easeInOut',
-              }}
-            />
-          </motion.g>
-        )
-      })}
+      {/* Salient backward arcs — only the keys for the current scenario,
+          re-keyed on scenario index so old arcs fade out and new ones
+          draw in fresh as the focus jumps between query-key pairs. */}
+      <motion.g
+        key={`scenario-${scenarioIdx}`}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 / speed, ease: 'easeOut' }}
+      >
+        {cur.keys.map((j, kIdx) => {
+          const fromX = tokX(focused)
+          const fromY = ROW_Y - cellH / 2
+          const toX = tokX(j)
+          const toY = ROW_Y - cellH / 2
+          // Arc height scales with distance so far-apart pairs arch higher,
+          // matching the 3B1B-style nested arches.
+          const dist = Math.abs(focused - j)
+          const arcHeight = 80 + dist * 12
+          const ctrlY = fromY - arcHeight
+          const ts = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1]
+          const cxs = ts.map(
+            (t) => Math.pow(1 - t, 2) * fromX + 2 * (1 - t) * t * ((fromX + toX) / 2) + t * t * toX,
+          )
+          const cys = ts.map(
+            (t) => Math.pow(1 - t, 2) * fromY + 2 * (1 - t) * t * ctrlY + t * t * toY,
+          )
+          return (
+            <g key={`arc-${focused}-${j}-${kIdx}`}>
+              {/* Draw-in path */}
+              <motion.path
+                d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
+                stroke={COL_Q_ATT}
+                strokeWidth={2.4}
+                strokeOpacity={0.9}
+                fill="none"
+                strokeLinecap="round"
+                filter="url(#attn-glow)"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{
+                  duration: 0.7 / speed,
+                  delay: (0.2 + kIdx * 0.18) / speed,
+                  ease: 'easeOut',
+                }}
+              />
+              {/* Continuous opacity pulse */}
+              <motion.path
+                d={`M ${fromX} ${fromY} Q ${(fromX + toX) / 2} ${ctrlY}, ${toX} ${toY}`}
+                stroke={COL_Q_ATT}
+                strokeWidth={3}
+                fill="none"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0, 0.6, 0] }}
+                transition={{
+                  duration: 2.0 / speed,
+                  delay: (1.0 + kIdx * 0.2) / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+              />
+              {/* Arrowhead near the key */}
+              <motion.path
+                d={`M ${toX - 6} ${toY - 10} L ${toX} ${toY - 2} L ${toX + 6} ${toY - 10}`}
+                stroke={COL_Q_ATT}
+                strokeWidth={2.2}
+                strokeOpacity={0.95}
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: (0.85 + kIdx * 0.18) / speed }}
+              />
+              {/* Traveling particle along the arc */}
+              <motion.circle
+                r={4}
+                fill={COL_Q_ATT}
+                filter="url(#attn-glow)"
+                initial={{ cx: fromX, cy: fromY, opacity: 0 }}
+                animate={{
+                  cx: cxs,
+                  cy: cys,
+                  opacity: [0, 1, 1, 1, 1, 1, 1, 0],
+                }}
+                transition={{
+                  duration: 1.5 / speed,
+                  delay: (1.1 + kIdx * 0.18) / speed,
+                  repeat: Infinity,
+                  repeatDelay: 0.5 / speed,
+                  ease: 'easeInOut',
+                }}
+              />
+            </g>
+          )
+        })}
+      </motion.g>
 
       {/* "POSITIONS" label */}
       <text
@@ -3183,19 +3255,26 @@ function PhaseA({
         POSITIONS
       </text>
 
-      {/* Bottom caption box */}
+      {/* Bottom caption — names the live query and which keys it's
+          attending to. Updates each scenario tick. */}
       <PhaseFooter>
         <tspan>
-          Query at position{' '}
-          <tspan fill={COL_K_ATT} fontStyle="italic">i</tspan>
-          {' '}(here{' '}
-          <tspan fill={COL_K_ATT} fontStyle="italic">i</tspan>
-          {' = '}
-          <tspan fill={COL_K_ATT}>{focused}</tspan>
-          ) compares with keys at positions{' '}
-          <tspan fill={COL_Q_ATT}>0</tspan>
-          ..
-          <tspan fill={COL_Q_ATT} fontStyle="italic">i</tspan>
+          Query{' '}
+          <tspan fill={COL_K_ATT} fontStyle="italic">
+            &lsquo;{(tokens[focused] || '').replace(' ', '·')}&rsquo;
+          </tspan>{' '}
+          @ <tspan fill={COL_K_ATT}>{focused}</tspan>
+          {' attends to '}
+          {cur.keys.map((j, idx) => (
+            <tspan key={`cap-k-${j}-${idx}`}>
+              {idx > 0 ? ', ' : ''}
+              <tspan fill={COL_Q_ATT} fontStyle="italic">
+                &lsquo;{(tokens[j] || '').replace(' ', '·')}&rsquo;
+              </tspan>
+              {' @ '}
+              <tspan fill={COL_Q_ATT}>{j}</tspan>
+            </tspan>
+          ))}
           .
         </tspan>
       </PhaseFooter>
