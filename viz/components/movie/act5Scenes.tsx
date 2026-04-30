@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { useSpeed } from './speedContext'
+import { usePrompt } from './promptContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
 
 const ACCENT = {
@@ -1386,6 +1387,22 @@ function RotationPlane({
 /* ─────────── ROTATE method (right half of top row) ─────────── */
 function RotatePanel({ active, posIdx }: { active: boolean; posIdx: number }) {
   const p = ROPE_POS_CYCLE[posIdx]
+  const { prompt } = usePrompt()
+  // Use the actual character at the cycled position (mod prompt length).
+  const promptStr = prompt.length > 0 ? prompt : 'To be, or not to be'
+  const tokIdx = p % promptStr.length
+  const tokChar = promptStr[tokIdx] ?? '·'
+  const tokLabel = tokChar === ' ' ? '·' : tokChar
+
+  // Token grounding pipeline geometry — sits to the LEFT of the unit
+  // circle, so the viewer sees:
+  //   token tile  →  × W_Q  →  rotating Q  (in the unit circle)
+  // The same token also produces K via × W_K. Sells "those rotating
+  // arrows are projections of an actual character from your prompt".
+  const PIPE_X = ROT_X0 + 16
+  const PIPE_W = 110
+  const TOK_TILE_Y = 200
+  const TOK_TILE_H = 56
 
   return (
     <motion.g
@@ -1443,6 +1460,181 @@ function RotatePanel({ active, posIdx }: { active: boolean; posIdx: number }) {
       >
         p = {p}
       </motion.text>
+
+      {/* ── Token grounding pipeline (left of the unit circle) ──
+          Shows "this character → × W_Q → that Q vector" so the
+          rotating vectors aren't abstract math objects, they're the
+          Q and K projections of a real prompt character. */}
+      <text
+        x={PIPE_X + PIPE_W / 2}
+        y={TOK_TILE_Y - 22}
+        textAnchor="middle"
+        fill="rgba(255,255,255,0.55)"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontSize={10}
+        letterSpacing={2}
+      >
+        FROM YOUR PROMPT
+      </text>
+      <motion.g
+        key={`tok-${p}-${tokChar}`}
+        initial={{ opacity: 0, scale: 0.85 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+      >
+        <rect
+          x={PIPE_X}
+          y={TOK_TILE_Y}
+          width={PIPE_W}
+          height={TOK_TILE_H}
+          rx={8}
+          fill="rgba(255,255,255,0.06)"
+          stroke="rgba(255,255,255,0.55)"
+          strokeWidth={1.4}
+        />
+        <text
+          x={PIPE_X + PIPE_W / 2}
+          y={TOK_TILE_Y + TOK_TILE_H / 2 + 12}
+          textAnchor="middle"
+          fill="rgba(255,255,255,0.95)"
+          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+          fontSize={32}
+          fontWeight={700}
+        >
+          {tokLabel}
+        </text>
+        <text
+          x={PIPE_X + PIPE_W / 2}
+          y={TOK_TILE_Y + TOK_TILE_H + 16}
+          textAnchor="middle"
+          fill="rgba(255,255,255,0.55)"
+          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+          fontSize={10}
+          letterSpacing={1.2}
+        >
+          @ pos {p}
+        </text>
+      </motion.g>
+
+      {/* × W_Q badge + arrow toward Q (amber) */}
+      {(() => {
+        const fromX = PIPE_X + PIPE_W
+        const toX = ROT_CX - ROT_R - 12
+        const yQ = TOK_TILE_Y + 12
+        const yK = TOK_TILE_Y + TOK_TILE_H - 12
+        return (
+          <g>
+            {/* Q line */}
+            <motion.path
+              d={`M ${fromX + 6} ${TOK_TILE_Y + TOK_TILE_H / 2} Q ${(fromX + toX) / 2} ${yQ}, ${toX} ${yQ}`}
+              fill="none"
+              stroke={ACCENT.amber}
+              strokeOpacity={0.85}
+              strokeWidth={1.6}
+              strokeLinecap="round"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: active ? 1 : 0.4 }}
+              transition={{ duration: 0.6, delay: active ? 0.3 : 0 }}
+            />
+            {/* Q label */}
+            <motion.text
+              x={(fromX + toX) / 2}
+              y={yQ - 6}
+              textAnchor="middle"
+              fill={ACCENT.amber}
+              fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+              fontSize={11}
+              fontWeight={600}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: active ? 1 : 0.4 }}
+              transition={{ duration: 0.3, delay: 0.6 }}
+            >
+              × W_Q
+            </motion.text>
+            {/* K line */}
+            <motion.path
+              d={`M ${fromX + 6} ${TOK_TILE_Y + TOK_TILE_H / 2} Q ${(fromX + toX) / 2} ${yK}, ${toX} ${yK}`}
+              fill="none"
+              stroke={ACCENT.blue}
+              strokeOpacity={0.85}
+              strokeWidth={1.6}
+              strokeLinecap="round"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: active ? 1 : 0.4 }}
+              transition={{ duration: 0.6, delay: active ? 0.45 : 0 }}
+            />
+            {/* K label */}
+            <motion.text
+              x={(fromX + toX) / 2}
+              y={yK + 16}
+              textAnchor="middle"
+              fill={ACCENT.blue}
+              fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+              fontSize={11}
+              fontWeight={600}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: active ? 1 : 0.4 }}
+              transition={{ duration: 0.3, delay: 0.75 }}
+            >
+              × W_K
+            </motion.text>
+            {/* Particle traveling Q line — sells the projection happening */}
+            {active && (
+              <motion.circle
+                key={`pq-particle-${p}`}
+                r={4}
+                fill={ACCENT.amber}
+                fillOpacity={0.95}
+                initial={{
+                  cx: fromX + 6,
+                  cy: TOK_TILE_Y + TOK_TILE_H / 2,
+                  opacity: 0,
+                }}
+                animate={{
+                  cx: [fromX + 6, (fromX + toX) / 2, toX],
+                  cy: [TOK_TILE_Y + TOK_TILE_H / 2, yQ, yQ],
+                  opacity: [0, 1, 1, 0],
+                }}
+                transition={{
+                  duration: 1.0,
+                  delay: 0.5,
+                  ease: 'easeInOut',
+                  times: [0, 0.15, 0.85, 1],
+                  repeat: Infinity,
+                  repeatDelay: 1.4,
+                }}
+              />
+            )}
+            {/* Particle traveling K line */}
+            {active && (
+              <motion.circle
+                key={`pk-particle-${p}`}
+                r={4}
+                fill={ACCENT.blue}
+                fillOpacity={0.95}
+                initial={{
+                  cx: fromX + 6,
+                  cy: TOK_TILE_Y + TOK_TILE_H / 2,
+                  opacity: 0,
+                }}
+                animate={{
+                  cx: [fromX + 6, (fromX + toX) / 2, toX],
+                  cy: [TOK_TILE_Y + TOK_TILE_H / 2, yK, yK],
+                  opacity: [0, 1, 1, 0],
+                }}
+                transition={{
+                  duration: 1.0,
+                  delay: 0.7,
+                  ease: 'easeInOut',
+                  times: [0, 0.15, 0.85, 1],
+                  repeat: Infinity,
+                  repeatDelay: 1.4,
+                }}
+              />
+            )}
+          </g>
+        )
+      })()}
 
       <RotationPlane
         cx={ROT_CX}
@@ -1786,15 +1978,19 @@ export function RopeSplitPane() {
       saw the same way.
     </>,
     <>
-      RoPE replaces the addition with a <em>rotation</em>. Inside the
-      attention block, every Q and K vector is rotated by an angle proportional
-      to its position. V is untouched.
+      Pick a token from your prompt. Project to{' '}
+      <strong style={{ color: ACCENT.amber }}>Q</strong> via{' '}
+      <code>W_Q</code> and to <strong style={{ color: ACCENT.blue }}>K</strong>{' '}
+      via <code>W_K</code>. <strong style={{ color: ACCENT.pink }}>RoPE</strong>{' '}
+      then rotates each by an angle proportional to its position{' '}
+      <code>p</code>. <strong style={{ color: ACCENT.violet }}>V</strong> is
+      untouched.
     </>,
     <>
       Because both Q at position <em>i</em> and K at position <em>j</em> get
       rotated, the dot product <em>q · k</em> depends only on the{' '}
       <em>relative offset (j − i)</em>. Position falls out of attention for
-      free.
+      free — no learned position table required.
     </>,
   ]
 
