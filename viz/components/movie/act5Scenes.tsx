@@ -1874,6 +1874,40 @@ function modCardX(i: number) {
 }
 
 /* ─────────── Card shell ─────────── */
+/**
+ * Returns a motion-prop spread for a Scene-32 card-body subsection. The
+ * subsection sits at opacity 0.5 when the card is inactive, and animates
+ * up to opacity 1 with a per-stage `delay` when the card becomes active.
+ * That gives every card a clear classic → swap → modern → badge flow.
+ */
+function stage(active: boolean, delay: number) {
+  return {
+    initial: { opacity: 0.4 },
+    animate: { opacity: active ? 1 : 0.4 },
+    transition: {
+      duration: 0.42,
+      delay: active ? delay : 0,
+      ease: 'easeOut' as const,
+    },
+  }
+}
+
+/**
+ * Same idea but for path elements that should draw in via pathLength when
+ * the card activates.
+ */
+function stagePath(active: boolean, delay: number, dur = 0.55) {
+  return {
+    initial: { pathLength: 0, opacity: 0 },
+    animate: { pathLength: active ? 1 : 0, opacity: active ? 1 : 0 },
+    transition: {
+      duration: dur,
+      delay: active ? delay : 0,
+      ease: 'easeOut' as const,
+    },
+  }
+}
+
 function ModCard({
   i,
   active,
@@ -1896,7 +1930,7 @@ function ModCard({
       transition={{ duration: 0.6 }}
     >
       {/* Card background */}
-      <rect
+      <motion.rect
         x={x}
         y={MOD_CARD_Y}
         width={MOD_CARD_W}
@@ -1905,8 +1939,11 @@ function ModCard({
         ry={MOD_CARD_R}
         fill="rgba(255,255,255,0.04)"
         stroke={accent}
-        strokeOpacity={active ? 0.85 : 0.4}
-        strokeWidth={active ? 1.8 : 1.2}
+        animate={{
+          strokeOpacity: active ? 0.85 : 0.4,
+          strokeWidth: active ? 1.8 : 1.2,
+        }}
+        transition={{ duration: 0.6 }}
       />
 
       {/* Title */}
@@ -1923,9 +1960,10 @@ function ModCard({
         {title}
       </text>
 
-      {/* Highlight badge — bottom of card */}
+      {/* Highlight badge — bottom of card. Pulses once on activation
+          (after the classic→modern flow has finished). */}
       <g>
-        <rect
+        <motion.rect
           x={x + 26}
           y={MOD_CARD_Y + MOD_CARD_H - 56}
           width={MOD_CARD_W - 52}
@@ -1936,6 +1974,28 @@ function ModCard({
           stroke={accent}
           strokeOpacity={0.6}
           strokeWidth={1}
+          animate={
+            active
+              ? {
+                  strokeOpacity: [0.6, 1, 0.85],
+                  scale: [1, 1.03, 1],
+                }
+              : { strokeOpacity: 0.6, scale: 1 }
+          }
+          transition={
+            active
+              ? {
+                  duration: 1.2,
+                  delay: 4.0,
+                  ease: 'easeInOut',
+                  repeat: Infinity,
+                  repeatDelay: 2.4,
+                }
+              : { duration: 0.4 }
+          }
+          style={{
+            transformOrigin: `${x + MOD_CARD_W / 2}px ${MOD_CARD_Y + MOD_CARD_H - 40}px`,
+          }}
         />
         <text
           x={x + MOD_CARD_W / 2}
@@ -2090,39 +2150,56 @@ function RMSNormCardBody({ active }: { active: boolean }) {
   const cellW = (innerW - 60) / cellCount
   const cellGap = 4
 
+  // Stage delays — classic appears first (0.0–1.0), drop arrow draws
+  // (~1.2–1.8), modern appears (~2.0–3.0), then captions / strip.
+  const dArrowX = innerX + innerW / 2
+
   return (
     <g>
-      <CardSubLabel x={innerX} y={MOD_CARD_Y + 86} text="CLASSIC · LAYERNORM" color="rgba(255,255,255,0.65)" />
+      <motion.g {...stage(active, 0.0)}>
+        <CardSubLabel x={innerX} y={MOD_CARD_Y + 86} text="CLASSIC · LAYERNORM" color="rgba(255,255,255,0.65)" />
+      </motion.g>
 
-      {/* Classic pipeline: subtract μ → ÷ σ → γ·x+β */}
-      <MiniBox
-        x={classicX0}
-        y={classicY}
-        w={opW}
-        h={opH}
-        label="− μ"
-        accent={accent}
-        strikethrough={active}
-      />
-      <Arrow x={classicX0 + opW + arrowGap / 2} y={classicY + opH / 2} accent={accent} />
-      <MiniBox
-        x={classicX0 + opW + arrowGap}
-        y={classicY}
-        w={opW}
-        h={opH}
-        label="÷ σ"
-        accent={accent}
-      />
-      <Arrow x={classicX0 + 2 * (opW + arrowGap) - arrowGap / 2} y={classicY + opH / 2} accent={accent} />
-      <MiniBox
-        x={classicX0 + 2 * (opW + arrowGap)}
-        y={classicY}
-        w={opW}
-        h={opH}
-        label="γ·x + β"
-        accent={accent}
-      />
-      <text
+      {/* Classic pipeline: subtract μ → ÷ σ → γ·x+β. Each box pops in. */}
+      <motion.g {...stage(active, 0.18)}>
+        <MiniBox
+          x={classicX0}
+          y={classicY}
+          w={opW}
+          h={opH}
+          label="− μ"
+          accent={accent}
+          strikethrough={active}
+        />
+      </motion.g>
+      <motion.g {...stage(active, 0.34)}>
+        <Arrow x={classicX0 + opW + arrowGap / 2} y={classicY + opH / 2} accent={accent} />
+      </motion.g>
+      <motion.g {...stage(active, 0.50)}>
+        <MiniBox
+          x={classicX0 + opW + arrowGap}
+          y={classicY}
+          w={opW}
+          h={opH}
+          label="÷ σ"
+          accent={accent}
+        />
+      </motion.g>
+      <motion.g {...stage(active, 0.66)}>
+        <Arrow x={classicX0 + 2 * (opW + arrowGap) - arrowGap / 2} y={classicY + opH / 2} accent={accent} />
+      </motion.g>
+      <motion.g {...stage(active, 0.82)}>
+        <MiniBox
+          x={classicX0 + 2 * (opW + arrowGap)}
+          y={classicY}
+          w={opW}
+          h={opH}
+          label="γ·x + β"
+          accent={accent}
+        />
+      </motion.g>
+      <motion.text
+        {...stage(active, 1.05)}
         x={innerX + innerW / 2}
         y={classicY + opH + 38}
         textAnchor="middle"
@@ -2132,62 +2209,70 @@ function RMSNormCardBody({ active }: { active: boolean }) {
         fontStyle="italic"
       >
         center first, then scale
-      </text>
+      </motion.text>
 
-      {/* Vertical drop arrow */}
-      <motion.g
-        initial={{ opacity: 0 }}
-        animate={{ opacity: active ? 1 : 0.4 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
+      {/* Vertical drop arrow — line draws via pathLength then arrowhead pops */}
+      <motion.line
+        x1={dArrowX}
+        y1={classicY + opH + 60}
+        x2={dArrowX}
+        y2={modernY - 20}
+        stroke={ACCENT.mint}
+        strokeOpacity={0.85}
+        strokeWidth={1.6}
+        strokeDasharray="3 5"
+        {...stagePath(active, 1.25, 0.6)}
+      />
+      <motion.polygon
+        points={`${dArrowX},${modernY - 12} ${dArrowX - 6},${modernY - 22} ${dArrowX + 6},${modernY - 22}`}
+        fill={ACCENT.mint}
+        fillOpacity={0.95}
+        initial={{ opacity: 0, scale: 0.4 }}
+        animate={{ opacity: active ? 1 : 0.3, scale: active ? 1 : 0.7 }}
+        transition={{ duration: 0.3, delay: active ? 1.85 : 0, ease: 'easeOut' }}
+        style={{ transformOrigin: `${dArrowX}px ${modernY - 17}px` }}
+      />
+      <motion.text
+        x={dArrowX + 14}
+        y={(classicY + opH + modernY) / 2}
+        fill={ACCENT.mint}
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontSize={11}
+        letterSpacing={1.4}
+        {...stage(active, 1.7)}
       >
-        <line
-          x1={innerX + innerW / 2}
-          y1={classicY + opH + 60}
-          x2={innerX + innerW / 2}
-          y2={modernY - 20}
-          stroke={ACCENT.mint}
-          strokeOpacity={0.7}
-          strokeWidth={1.6}
-          strokeDasharray="3 5"
-        />
-        <polygon
-          points={`${innerX + innerW / 2},${modernY - 12} ${innerX + innerW / 2 - 6},${modernY - 22} ${innerX + innerW / 2 + 6},${modernY - 22}`}
-          fill={ACCENT.mint}
-          fillOpacity={0.85}
-        />
-        <text
-          x={innerX + innerW / 2 + 14}
-          y={(classicY + opH + modernY) / 2}
-          fill={ACCENT.mint}
-          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-          fontSize={11}
-          letterSpacing={1.4}
-        >
-          drop − μ
-        </text>
+        drop − μ
+      </motion.text>
+
+      <motion.g {...stage(active, 2.0)}>
+        <CardSubLabel x={innerX} y={modernY - 24} text="MODERN · RMSNORM" color={accent} />
       </motion.g>
 
-      <CardSubLabel x={innerX} y={modernY - 24} text="MODERN · RMSNORM" color={accent} />
-
-      {/* Modern pipeline */}
-      <MiniBox
-        x={modernX0}
-        y={modernY}
-        w={opW}
-        h={opH}
-        label="÷ RMS"
-        accent={accent}
-      />
-      <Arrow x={modernX0 + opW + arrowGap / 2} y={modernY + opH / 2} accent={accent} />
-      <MiniBox
-        x={modernX0 + opW + arrowGap}
-        y={modernY}
-        w={opW}
-        h={opH}
-        label="γ·x"
-        accent={accent}
-      />
-      <text
+      {/* Modern pipeline — only 2 boxes */}
+      <motion.g {...stage(active, 2.2)}>
+        <MiniBox
+          x={modernX0}
+          y={modernY}
+          w={opW}
+          h={opH}
+          label="÷ RMS"
+          accent={accent}
+        />
+      </motion.g>
+      <motion.g {...stage(active, 2.4)}>
+        <Arrow x={modernX0 + opW + arrowGap / 2} y={modernY + opH / 2} accent={accent} />
+      </motion.g>
+      <motion.g {...stage(active, 2.6)}>
+        <MiniBox
+          x={modernX0 + opW + arrowGap}
+          y={modernY}
+          w={opW}
+          h={opH}
+          label="γ·x"
+          accent={accent}
+        />
+      </motion.g>
+      <motion.text
         x={innerX + innerW / 2}
         y={modernY + opH + 38}
         textAnchor="middle"
@@ -2195,14 +2280,26 @@ function RMSNormCardBody({ active }: { active: boolean }) {
         fontSize={11}
         fontFamily="ui-sans-serif, system-ui"
         fontStyle="italic"
+        {...stage(active, 2.85)}
       >
         scale only
-      </text>
+      </motion.text>
 
-      {/* Vector strip — same input vector, before vs after */}
-      <text x={innerX + 4} y={stripY - 10} fill="rgba(255,255,255,0.5)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize={10} letterSpacing={1.4}>VECTOR</text>
+      {/* Vector strip — cells stagger in left→right, then a sweep glow
+          travels across once to suggest "this is the data flowing through". */}
+      <motion.text
+        x={innerX + 4}
+        y={stripY - 10}
+        fill="rgba(255,255,255,0.5)"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontSize={10}
+        letterSpacing={1.4}
+        {...stage(active, 3.1)}
+      >
+        VECTOR
+      </motion.text>
       {Array.from({ length: cellCount }).map((_, j) => (
-        <rect
+        <motion.rect
           key={j}
           x={innerX + 60 + j * (cellW + cellGap)}
           y={stripY}
@@ -2214,18 +2311,57 @@ function RMSNormCardBody({ active }: { active: boolean }) {
           stroke={accent}
           strokeOpacity={0.5}
           strokeWidth={0.8}
+          initial={{ opacity: 0, scaleY: 0.4 }}
+          animate={{ opacity: active ? 1 : 0.4, scaleY: 1 }}
+          transition={{
+            duration: 0.4,
+            delay: active ? 3.2 + j * 0.04 : 0,
+            ease: 'easeOut',
+          }}
+          style={{
+            transformOrigin: `${innerX + 60 + j * (cellW + cellGap) + cellW / 2}px ${stripY + 13}px`,
+          }}
         />
       ))}
-      <text
+      {/* Sweep glow across the strip — visual hint that the modern pipeline
+          processes the same vector in fewer steps. */}
+      {active && (
+        <motion.rect
+          y={stripY - 1}
+          width={cellW * 0.7}
+          height={28}
+          rx={2}
+          fill={accent}
+          fillOpacity={0.6}
+          initial={{ x: innerX + 60 - cellW, opacity: 0 }}
+          animate={{
+            x: [
+              innerX + 60 - cellW,
+              innerX + 60 + cellCount * (cellW + cellGap),
+            ],
+            opacity: [0, 0.8, 0.8, 0],
+          }}
+          transition={{
+            duration: 1.4,
+            delay: 4.0,
+            ease: 'easeInOut',
+            times: [0, 0.15, 0.85, 1],
+            repeat: Infinity,
+            repeatDelay: 2.4,
+          }}
+        />
+      )}
+      <motion.text
         x={innerX + innerW / 2}
         y={stripY + 56}
         textAnchor="middle"
         fill="rgba(255,255,255,0.55)"
         fontFamily="ui-sans-serif, system-ui"
         fontSize={12}
+        {...stage(active, 3.7)}
       >
         ~30% fewer ops, same stability
-      </text>
+      </motion.text>
     </g>
   )
 }
@@ -2246,21 +2382,47 @@ function SwiGLUCardBody({ active }: { active: boolean }) {
   // Modern: two streams — top [Wx + Swish], bottom [Vx], merged via ⊙ gate
   const modernY = MOD_CARD_Y + 310
 
+  // Pre-compute coords for the modern two-stream layout so we can
+  // animate splitter lines, stream boxes, gate, and output in sequence.
+  const xBoxX = innerX + 10
+  const xBoxY = modernY + 60
+  const topStreamX = innerX + 130
+  const topStreamY = modernY + 18
+  const botStreamY = modernY + 102
+  const streamW = opW + 16
+  const gx = innerX + 270
+  const gy = modernY + 60 + opH / 2 - 2
+  const dArrowX = innerX + innerW / 2
+
   return (
     <g>
-      <CardSubLabel x={innerX} y={MOD_CARD_Y + 86} text="CLASSIC · GELU / RELU" color="rgba(255,255,255,0.65)" />
+      <motion.g {...stage(active, 0.0)}>
+        <CardSubLabel x={innerX} y={MOD_CARD_Y + 86} text="CLASSIC · GELU / RELU" color="rgba(255,255,255,0.65)" />
+      </motion.g>
 
-      {/* Classic single-stream pipeline */}
-      <g>
+      {/* Classic single-stream pipeline — each box pops in left→right */}
+      <motion.g {...stage(active, 0.18)}>
         <MiniBox x={innerX + 10} y={classicY} w={opW} h={opH} label="x" accent={accent} faded />
+      </motion.g>
+      <motion.g {...stage(active, 0.30)}>
         <Arrow x={innerX + 10 + opW + 12} y={classicY + opH / 2} accent={accent} />
+      </motion.g>
+      <motion.g {...stage(active, 0.42)}>
         <MiniBox x={innerX + 10 + opW + 24} y={classicY} w={opW} h={opH} label="W·x" accent={accent} faded />
+      </motion.g>
+      <motion.g {...stage(active, 0.54)}>
         <Arrow x={innerX + 10 + 2 * (opW + 12) + 12} y={classicY + opH / 2} accent={accent} />
+      </motion.g>
+      <motion.g {...stage(active, 0.66)}>
         <MiniBox x={innerX + 10 + 2 * (opW + 24)} y={classicY} w={opW} h={opH} label="σ" accent={accent} faded />
+      </motion.g>
+      <motion.g {...stage(active, 0.78)}>
         <Arrow x={innerX + 10 + 3 * (opW + 12) + 12 + 12} y={classicY + opH / 2} accent={accent} />
+      </motion.g>
+      <motion.g {...stage(active, 0.90)}>
         <MiniBox x={innerX + 10 + 3 * (opW + 24)} y={classicY} w={opW + 4} h={opH} label="out" accent={accent} faded />
-      </g>
-      <text
+      </motion.g>
+      <motion.text
         x={innerX + innerW / 2}
         y={classicY + opH + 30}
         textAnchor="middle"
@@ -2268,79 +2430,194 @@ function SwiGLUCardBody({ active }: { active: boolean }) {
         fontSize={11}
         fontFamily="ui-sans-serif, system-ui"
         fontStyle="italic"
+        {...stage(active, 1.05)}
       >
         one stream, smooth activation
-      </text>
+      </motion.text>
 
-      {/* Vertical drop arrow */}
-      <motion.g
-        initial={{ opacity: 0 }}
-        animate={{ opacity: active ? 1 : 0.4 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
+      {/* Vertical drop arrow — line draws then arrowhead pops */}
+      <motion.line
+        x1={dArrowX}
+        y1={classicY + opH + 50}
+        x2={dArrowX}
+        y2={modernY - 20}
+        stroke={ACCENT.mint}
+        strokeOpacity={0.85}
+        strokeWidth={1.6}
+        strokeDasharray="3 5"
+        {...stagePath(active, 1.3, 0.6)}
+      />
+      <motion.polygon
+        points={`${dArrowX},${modernY - 12} ${dArrowX - 6},${modernY - 22} ${dArrowX + 6},${modernY - 22}`}
+        fill={ACCENT.mint}
+        fillOpacity={0.95}
+        initial={{ opacity: 0, scale: 0.4 }}
+        animate={{ opacity: active ? 1 : 0.3, scale: active ? 1 : 0.7 }}
+        transition={{ duration: 0.3, delay: active ? 1.85 : 0, ease: 'easeOut' }}
+        style={{ transformOrigin: `${dArrowX}px ${modernY - 17}px` }}
+      />
+      <motion.text
+        x={dArrowX + 14}
+        y={(classicY + opH + modernY) / 2}
+        fill={ACCENT.mint}
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontSize={11}
+        letterSpacing={1.4}
+        {...stage(active, 1.7)}
       >
-        <line
-          x1={innerX + innerW / 2}
-          y1={classicY + opH + 50}
-          x2={innerX + innerW / 2}
-          y2={modernY - 20}
-          stroke={ACCENT.mint}
-          strokeOpacity={0.7}
-          strokeWidth={1.6}
-          strokeDasharray="3 5"
-        />
-        <polygon
-          points={`${innerX + innerW / 2},${modernY - 12} ${innerX + innerW / 2 - 6},${modernY - 22} ${innerX + innerW / 2 + 6},${modernY - 22}`}
-          fill={ACCENT.mint}
-          fillOpacity={0.85}
-        />
-        <text
-          x={innerX + innerW / 2 + 14}
-          y={(classicY + opH + modernY) / 2}
-          fill={ACCENT.mint}
-          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-          fontSize={11}
-          letterSpacing={1.4}
-        >
-          add a gate
-        </text>
+        add a gate
+      </motion.text>
+
+      <motion.g {...stage(active, 2.0)}>
+        <CardSubLabel x={innerX} y={modernY - 24} text="MODERN · SWIGLU" color={accent} />
       </motion.g>
 
-      <CardSubLabel x={innerX} y={modernY - 24} text="MODERN · SWIGLU" color={accent} />
-
       {/* Modern two-stream gated FFN */}
-      {/* Input box */}
-      <MiniBox x={innerX + 10} y={modernY + 60} w={opW} h={opH} label="x" accent={accent} />
-      {/* Top stream: W₁ + Swish */}
-      <MiniBox x={innerX + 130} y={modernY + 18} w={opW + 16} h={opH} label="W₁·x  Swish" accent={accent} />
-      {/* Bottom stream: V */}
-      <MiniBox x={innerX + 130} y={modernY + 102} w={opW + 16} h={opH} label="V·x" accent={accent} />
-      {/* Splitter lines from x to streams */}
-      <line x1={innerX + 10 + opW} y1={modernY + 60 + opH / 2} x2={innerX + 130} y2={modernY + 18 + opH / 2} stroke={accent} strokeOpacity={0.7} strokeWidth={1.3} />
-      <line x1={innerX + 10 + opW} y1={modernY + 60 + opH / 2} x2={innerX + 130} y2={modernY + 102 + opH / 2} stroke={accent} strokeOpacity={0.7} strokeWidth={1.3} />
+      {/* Input box appears first */}
+      <motion.g {...stage(active, 2.18)}>
+        <MiniBox x={xBoxX} y={xBoxY} w={opW} h={opH} label="x" accent={accent} />
+      </motion.g>
+      {/* Splitter lines from x to top + bottom streams (draw via pathLength) */}
+      <motion.line
+        x1={xBoxX + opW}
+        y1={xBoxY + opH / 2}
+        x2={topStreamX}
+        y2={topStreamY + opH / 2}
+        stroke={accent}
+        strokeOpacity={0.85}
+        strokeWidth={1.4}
+        {...stagePath(active, 2.32, 0.45)}
+      />
+      <motion.line
+        x1={xBoxX + opW}
+        y1={xBoxY + opH / 2}
+        x2={topStreamX}
+        y2={botStreamY + opH / 2}
+        stroke={accent}
+        strokeOpacity={0.85}
+        strokeWidth={1.4}
+        {...stagePath(active, 2.32, 0.45)}
+      />
       {/* Stream labels */}
-      <text x={innerX + 130 - 28} y={modernY + 14} fill="rgba(255,255,255,0.55)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize={9} letterSpacing={1.2}>GATE</text>
-      <text x={innerX + 130 - 30} y={modernY + 152} fill="rgba(255,255,255,0.55)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize={9} letterSpacing={1.2}>VALUE</text>
+      <motion.text
+        x={topStreamX - 28}
+        y={modernY + 14}
+        fill="rgba(255,255,255,0.65)"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontSize={9}
+        letterSpacing={1.2}
+        {...stage(active, 2.52)}
+      >
+        GATE
+      </motion.text>
+      <motion.text
+        x={topStreamX - 30}
+        y={modernY + 152}
+        fill="rgba(255,255,255,0.65)"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontSize={9}
+        letterSpacing={1.2}
+        {...stage(active, 2.52)}
+      >
+        VALUE
+      </motion.text>
+      {/* Top stream: W₁ + Swish */}
+      <motion.g {...stage(active, 2.62)}>
+        <MiniBox x={topStreamX} y={topStreamY} w={streamW} h={opH} label="W₁·x  Swish" accent={accent} />
+      </motion.g>
+      {/* Bottom stream: V */}
+      <motion.g {...stage(active, 2.76)}>
+        <MiniBox x={topStreamX} y={botStreamY} w={streamW} h={opH} label="V·x" accent={accent} />
+      </motion.g>
+      {/* Gate connector lines (both streams converge into ⊙) */}
+      <motion.line
+        x1={topStreamX + streamW}
+        y1={topStreamY + opH / 2}
+        x2={gx - 14}
+        y2={gy}
+        stroke={accent}
+        strokeOpacity={0.95}
+        strokeWidth={1.6}
+        {...stagePath(active, 2.95, 0.45)}
+      />
+      <motion.line
+        x1={topStreamX + streamW}
+        y1={botStreamY + opH / 2}
+        x2={gx - 14}
+        y2={gy}
+        stroke={accent}
+        strokeOpacity={0.95}
+        strokeWidth={1.6}
+        {...stagePath(active, 2.95, 0.45)}
+      />
+      {/* ⊙ Multiply gate — circle pops, then × inside fades in */}
+      <motion.circle
+        cx={gx}
+        cy={gy}
+        r={16}
+        fill="rgba(245,158,11,0.18)"
+        stroke={accent}
+        strokeWidth={1.6}
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={
+          active
+            ? { opacity: 1, scale: [0.5, 1.18, 1] }
+            : { opacity: 0.4, scale: 0.85 }
+        }
+        transition={{
+          duration: 0.55,
+          delay: active ? 3.25 : 0,
+          ease: 'easeOut',
+        }}
+        style={{ transformOrigin: `${gx}px ${gy}px` }}
+      />
+      <motion.line
+        x1={gx - 7}
+        y1={gy - 7}
+        x2={gx + 7}
+        y2={gy + 7}
+        stroke={accent}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        {...stagePath(active, 3.55, 0.3)}
+      />
+      <motion.line
+        x1={gx - 7}
+        y1={gy + 7}
+        x2={gx + 7}
+        y2={gy - 7}
+        stroke={accent}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        {...stagePath(active, 3.55, 0.3)}
+      />
+      <motion.text
+        x={gx + 28}
+        y={gy - 22}
+        fill={accent}
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontSize={11}
+        letterSpacing={1.2}
+        {...stage(active, 3.55)}
+      >
+        ⊙
+      </motion.text>
+      {/* Output line + box */}
+      <motion.line
+        x1={gx + 16}
+        y1={gy}
+        x2={gx + 50}
+        y2={gy}
+        stroke={accent}
+        strokeOpacity={0.95}
+        strokeWidth={1.6}
+        {...stagePath(active, 3.7, 0.3)}
+      />
+      <motion.g {...stage(active, 3.82)}>
+        <MiniBox x={gx + 50} y={gy - opH / 2} w={opW} h={opH} label="out" accent={accent} />
+      </motion.g>
 
-      {/* Multiply gate ⊙ */}
-      {(() => {
-        const gx = innerX + 270
-        const gy = modernY + 60 + opH / 2 - 2
-        return (
-          <g>
-            <line x1={innerX + 130 + opW + 16} y1={modernY + 18 + opH / 2} x2={gx - 14} y2={gy} stroke={accent} strokeOpacity={0.85} strokeWidth={1.5} />
-            <line x1={innerX + 130 + opW + 16} y1={modernY + 102 + opH / 2} x2={gx - 14} y2={gy} stroke={accent} strokeOpacity={0.85} strokeWidth={1.5} />
-            <circle cx={gx} cy={gy} r={16} fill="rgba(245,158,11,0.18)" stroke={accent} strokeWidth={1.6} />
-            <line x1={gx - 7} y1={gy - 7} x2={gx + 7} y2={gy + 7} stroke={accent} strokeWidth={1.4} />
-            <line x1={gx - 7} y1={gy + 7} x2={gx + 7} y2={gy - 7} stroke={accent} strokeWidth={1.4} />
-            <text x={gx + 28} y={gy - 22} fill={accent} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize={11} letterSpacing={1.2}>⊙</text>
-            {/* Output */}
-            <line x1={gx + 16} y1={gy} x2={gx + 50} y2={gy} stroke={accent} strokeOpacity={0.85} strokeWidth={1.5} />
-            <MiniBox x={gx + 50} y={gy - opH / 2} w={opW} h={opH} label="out" accent={accent} />
-          </g>
-        )
-      })()}
-
-      <text
+      <motion.text
         x={innerX + innerW / 2}
         y={modernY + 200}
         textAnchor="middle"
@@ -2348,20 +2625,22 @@ function SwiGLUCardBody({ active }: { active: boolean }) {
         fontSize={11}
         fontFamily="ui-sans-serif, system-ui"
         fontStyle="italic"
+        {...stage(active, 4.0)}
       >
         gate selects which features to keep
-      </text>
+      </motion.text>
 
-      <text
+      <motion.text
         x={innerX + innerW / 2}
         y={MOD_CARD_Y + MOD_CARD_H - 110}
         textAnchor="middle"
         fill="rgba(255,255,255,0.55)"
         fontFamily="ui-sans-serif, system-ui"
         fontSize={12}
+        {...stage(active, 4.2)}
       >
         ~2% better loss, ~50% more params
-      </text>
+      </motion.text>
     </g>
   )
 }
@@ -2388,19 +2667,46 @@ function GQACardBody({ active }: { active: boolean }) {
   const kvW = 38
   const kvH = 30
 
-  // Helper to draw q→kv connector lines
-  function drawConn(qIdx: number, kvCenterX: number, qY: number, kvY: number, color: string, opacity = 0.6) {
+  const dArrowX = innerX + innerW / 2
+
+  // Animated connector helper — line draws via pathLength when card is active.
+  function ConnLine({
+    qIdx,
+    kvCenterX,
+    qY,
+    kvY,
+    color,
+    opacity,
+    delay,
+  }: {
+    qIdx: number
+    kvCenterX: number
+    qY: number
+    kvY: number
+    color: string
+    opacity: number
+    delay: number
+  }) {
     const qX = qRowX0 + qIdx * qSpacing
     return (
-      <line
-        key={`l${qIdx}`}
+      <motion.line
         x1={qX}
         y1={qY + qDotR}
         x2={kvCenterX}
         y2={kvY}
         stroke={color}
         strokeOpacity={opacity}
-        strokeWidth={1}
+        strokeWidth={1.1}
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{
+          pathLength: active ? 1 : 0,
+          opacity: active ? opacity : 0,
+        }}
+        transition={{
+          duration: 0.4,
+          delay: active ? delay : 0,
+          ease: 'easeOut',
+        }}
       />
     )
   }
@@ -2408,11 +2714,28 @@ function GQACardBody({ active }: { active: boolean }) {
   return (
     <g>
       {/* CLASSIC: 8 Q dots, each owns its own K/V pair */}
-      <CardSubLabel x={innerX} y={MOD_CARD_Y + 86} text="CLASSIC · MHA" color="rgba(255,255,255,0.65)" />
+      <motion.g {...stage(active, 0.0)}>
+        <CardSubLabel x={innerX} y={MOD_CARD_Y + 86} text="CLASSIC · MHA" color="rgba(255,255,255,0.65)" />
+      </motion.g>
 
-      {/* Q row */}
+      {/* Q dots cascade in left→right (8 dots over ~0.4 s) */}
       {Array.from({ length: Q_HEADS }).map((_, i) => (
-        <g key={`cq${i}`}>
+        <motion.g
+          key={`cq${i}`}
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{
+            opacity: active ? 1 : 0.4,
+            scale: active ? 1 : 0.85,
+          }}
+          transition={{
+            duration: 0.32,
+            delay: active ? 0.15 + i * 0.05 : 0,
+            ease: 'easeOut',
+          }}
+          style={{
+            transformOrigin: `${qRowX0 + i * qSpacing}px ${classicY}px`,
+          }}
+        >
           <circle
             cx={qRowX0 + i * qSpacing}
             cy={classicY}
@@ -2432,42 +2755,63 @@ function GQACardBody({ active }: { active: boolean }) {
           >
             Q
           </text>
-        </g>
+        </motion.g>
       ))}
-      {/* K/V boxes — one per Q */}
+      {/* K/V boxes — one per Q. Connector line draws first, then KV box drops in */}
       {Array.from({ length: Q_HEADS }).map((_, i) => {
         const cx = qRowX0 + i * qSpacing
         const kvY = classicY + 50
         return (
           <g key={`ckv${i}`}>
-            {drawConn(i, cx, classicY, kvY, accentKV, 0.55)}
-            <rect
-              x={cx - kvW / 2}
-              y={kvY}
-              width={kvW}
-              height={kvH}
-              rx={3}
-              ry={3}
-              fill={`${accentKV}22`}
-              stroke={accentKV}
-              strokeOpacity={0.75}
-              strokeWidth={1}
+            <ConnLine
+              qIdx={i}
+              kvCenterX={cx}
+              qY={classicY}
+              kvY={kvY}
+              color={accentKV}
+              opacity={0.55}
+              delay={0.55 + i * 0.05}
             />
-            <text
-              x={cx}
-              y={kvY + kvH / 2 + 4}
-              textAnchor="middle"
-              fill={accentKV}
-              fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-              fontSize={9}
-              fontWeight={600}
+            <motion.g
+              initial={{ opacity: 0, y: -8 }}
+              animate={{
+                opacity: active ? 1 : 0.4,
+                y: 0,
+              }}
+              transition={{
+                duration: 0.32,
+                delay: active ? 0.7 + i * 0.05 : 0,
+                ease: 'easeOut',
+              }}
             >
-              KV
-            </text>
+              <rect
+                x={cx - kvW / 2}
+                y={kvY}
+                width={kvW}
+                height={kvH}
+                rx={3}
+                ry={3}
+                fill={`${accentKV}22`}
+                stroke={accentKV}
+                strokeOpacity={0.75}
+                strokeWidth={1}
+              />
+              <text
+                x={cx}
+                y={kvY + kvH / 2 + 4}
+                textAnchor="middle"
+                fill={accentKV}
+                fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                fontSize={9}
+                fontWeight={600}
+              >
+                KV
+              </text>
+            </motion.g>
           </g>
         )
       })}
-      <text
+      <motion.text
         x={innerX + innerW / 2}
         y={classicY + 110}
         textAnchor="middle"
@@ -2475,49 +2819,67 @@ function GQACardBody({ active }: { active: boolean }) {
         fontFamily="ui-sans-serif, system-ui"
         fontSize={11}
         fontStyle="italic"
+        {...stage(active, 1.25)}
       >
         8 Q · 8 K · 8 V (16 KV tensors)
-      </text>
+      </motion.text>
 
-      {/* Drop arrow */}
-      <motion.g
-        initial={{ opacity: 0 }}
-        animate={{ opacity: active ? 1 : 0.4 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
+      {/* Drop arrow — line draws via pathLength then arrowhead pops */}
+      <motion.line
+        x1={dArrowX}
+        y1={classicY + 130}
+        x2={dArrowX}
+        y2={modernY - 60}
+        stroke={ACCENT.mint}
+        strokeOpacity={0.85}
+        strokeWidth={1.6}
+        strokeDasharray="3 5"
+        {...stagePath(active, 1.5, 0.6)}
+      />
+      <motion.polygon
+        points={`${dArrowX},${modernY - 52} ${dArrowX - 6},${modernY - 62} ${dArrowX + 6},${modernY - 62}`}
+        fill={ACCENT.mint}
+        fillOpacity={0.95}
+        initial={{ opacity: 0, scale: 0.4 }}
+        animate={{ opacity: active ? 1 : 0.3, scale: active ? 1 : 0.7 }}
+        transition={{ duration: 0.3, delay: active ? 2.05 : 0, ease: 'easeOut' }}
+        style={{ transformOrigin: `${dArrowX}px ${modernY - 57}px` }}
+      />
+      <motion.text
+        x={dArrowX + 14}
+        y={(classicY + 130 + modernY - 60) / 2}
+        fill={ACCENT.mint}
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontSize={11}
+        letterSpacing={1.4}
+        {...stage(active, 1.9)}
       >
-        <line
-          x1={innerX + innerW / 2}
-          y1={classicY + 130}
-          x2={innerX + innerW / 2}
-          y2={modernY - 60}
-          stroke={ACCENT.mint}
-          strokeOpacity={0.7}
-          strokeWidth={1.6}
-          strokeDasharray="3 5"
-        />
-        <polygon
-          points={`${innerX + innerW / 2},${modernY - 52} ${innerX + innerW / 2 - 6},${modernY - 62} ${innerX + innerW / 2 + 6},${modernY - 62}`}
-          fill={ACCENT.mint}
-          fillOpacity={0.85}
-        />
-        <text
-          x={innerX + innerW / 2 + 14}
-          y={(classicY + 130 + modernY - 60) / 2}
-          fill={ACCENT.mint}
-          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-          fontSize={11}
-          letterSpacing={1.4}
-        >
-          share K/V
-        </text>
-      </motion.g>
+        share K/V
+      </motion.text>
 
       {/* MODERN: 8 Q dots, but only 2 K/V groups */}
-      <CardSubLabel x={innerX} y={modernY - 28} text="MODERN · GQA" color={accentQ} />
+      <motion.g {...stage(active, 2.2)}>
+        <CardSubLabel x={innerX} y={modernY - 28} text="MODERN · GQA" color={accentQ} />
+      </motion.g>
 
-      {/* Q row */}
+      {/* Q dots cascade in (modern) */}
       {Array.from({ length: Q_HEADS }).map((_, i) => (
-        <g key={`mq${i}`}>
+        <motion.g
+          key={`mq${i}`}
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{
+            opacity: active ? 1 : 0.4,
+            scale: active ? 1 : 0.85,
+          }}
+          transition={{
+            duration: 0.32,
+            delay: active ? 2.32 + i * 0.04 : 0,
+            ease: 'easeOut',
+          }}
+          style={{
+            transformOrigin: `${qRowX0 + i * qSpacing}px ${modernY}px`,
+          }}
+        >
           <circle
             cx={qRowX0 + i * qSpacing}
             cy={modernY}
@@ -2537,7 +2899,7 @@ function GQACardBody({ active }: { active: boolean }) {
           >
             Q
           </text>
-        </g>
+        </motion.g>
       ))}
 
       {/* 2 K/V groups, centered under groups of 4 Q heads */}
@@ -2554,36 +2916,63 @@ function GQACardBody({ active }: { active: boolean }) {
           const kvBoxH = 36
           return (
             <g key={`mkvg${gi}`}>
-              {g.idxs.map((qi) => drawConn(qi, cxAvg, modernY, kvY, accentKV, 0.7))}
-              <rect
-                x={cxAvg - kvBoxW / 2}
-                y={kvY}
-                width={kvBoxW}
-                height={kvBoxH}
-                rx={4}
-                ry={4}
-                fill={`${accentKV}33`}
-                stroke={accentKV}
-                strokeOpacity={0.9}
-                strokeWidth={1.4}
-              />
-              <text
-                x={cxAvg}
-                y={kvY + kvBoxH / 2 + 4}
-                textAnchor="middle"
-                fill={accentKV}
-                fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                fontSize={11}
-                fontWeight={600}
+              {g.idxs.map((qi) => (
+                <ConnLine
+                  key={`mc-${qi}`}
+                  qIdx={qi}
+                  kvCenterX={cxAvg}
+                  qY={modernY}
+                  kvY={kvY}
+                  color={accentKV}
+                  opacity={0.7}
+                  delay={2.85 + gi * 0.4 + (qi % 4) * 0.04}
+                />
+              ))}
+              <motion.g
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{
+                  opacity: active ? 1 : 0.4,
+                  scale: active ? 1 : 0.85,
+                }}
+                transition={{
+                  duration: 0.45,
+                  delay: active ? 3.15 + gi * 0.18 : 0,
+                  ease: 'easeOut',
+                }}
+                style={{
+                  transformOrigin: `${cxAvg}px ${kvY + kvBoxH / 2}px`,
+                }}
               >
-                KV
-              </text>
+                <rect
+                  x={cxAvg - kvBoxW / 2}
+                  y={kvY}
+                  width={kvBoxW}
+                  height={kvBoxH}
+                  rx={4}
+                  ry={4}
+                  fill={`${accentKV}33`}
+                  stroke={accentKV}
+                  strokeOpacity={0.9}
+                  strokeWidth={1.4}
+                />
+                <text
+                  x={cxAvg}
+                  y={kvY + kvBoxH / 2 + 4}
+                  textAnchor="middle"
+                  fill={accentKV}
+                  fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                  fontSize={11}
+                  fontWeight={600}
+                >
+                  KV
+                </text>
+              </motion.g>
             </g>
           )
         })
       })()}
 
-      <text
+      <motion.text
         x={innerX + innerW / 2}
         y={modernY + 145}
         textAnchor="middle"
@@ -2591,9 +2980,10 @@ function GQACardBody({ active }: { active: boolean }) {
         fontFamily="ui-sans-serif, system-ui"
         fontSize={11}
         fontStyle="italic"
+        {...stage(active, 3.7)}
       >
         8 Q · 2 K · 2 V (4 KV tensors · 4× smaller cache)
-      </text>
+      </motion.text>
     </g>
   )
 }
