@@ -5705,7 +5705,7 @@ function Phase2HeadContent({
  * with one focused-token vector flowing through five beats:
  *   1. input          — x ∈ R^384 enters
  *   2. W1 expand      — 384 → 1536 (vector swells into a 4× wider feature bank)
- *   3. GELU fire      — many cells dim, active cells glow/pulse amber
+ *   3. ReLU fire      — many cells dim (clipped to zero), active cells glow amber
  *   4. W2 compress    — 1536 → 384 (output vector emerges)
  *   5. residual add   — x_out = x_in + FFN(LN(x_in))
  *
@@ -5715,11 +5715,18 @@ function Phase2HeadContent({
 const COL_FFN_X = ACCENT.cyan      // residual stream (in/out)
 const COL_FFN_W1 = ACCENT.blue     // W1 gate
 const COL_FFN_W2 = ACCENT.mint     // W2 gate
-const COL_FFN_FIRE = ACCENT.amber  // GELU activation
+const COL_FFN_FIRE = ACCENT.amber  // post-activation (ReLU)
 
-// GELU approximation — gpt-2 / bert tanh form
+// GELU approximation — gpt-2 / bert tanh form (used in Scene 15's
+// comparison panel only).
 function gelu(z: number): number {
   return 0.5 * z * (1 + Math.tanh(Math.sqrt(2 / Math.PI) * (z + 0.044715 * z * z * z)))
+}
+
+// ReLU — what this nanoGPT actually uses in the FFN (per model/gpt.py
+// FeedForward.act = nn.ReLU). Used in Scenes 13 and 14.
+function relu(z: number): number {
+  return Math.max(0, z)
 }
 
 export function VizFFN() {
@@ -5749,7 +5756,7 @@ export function VizFFN() {
   const hPre = Array.from({ length: DHID }).map(
     (_, i) => Math.sin(i * 0.41 + 1.1) * 1.35 + Math.cos(i * 0.27 - 0.6) * 0.55,
   )
-  const hPost = hPre.map(gelu)
+  const hPost = hPre.map(relu)
   const xDelta = Array.from({ length: DIN }).map(
     (_, i) => Math.sin(i * 0.83 - 0.3) * 0.55 + Math.cos(i * 0.51) * 0.22,
   )
@@ -5762,7 +5769,7 @@ export function VizFFN() {
     return `rgba(248,113,113,${0.18 + -m * 0.5})`
   }
   const colorAmberFire = (v: number): string => {
-    // active = positive post-GELU value; dim = near-zero/negative
+    // active = positive post-ReLU value; dim = clipped to zero
     const a = 0.08 + Math.min(1, Math.max(0, v / 1.4)) * 0.92
     return `rgba(245,158,11,${a})`
   }
@@ -6015,7 +6022,7 @@ function FFNInputColumn({
   )
 }
 
-/* Hidden block renderer — always-on GELU firing; intensified during fire phase */
+/* Hidden block renderer — always-on ReLU firing; intensified during fire phase */
 function FFNHiddenBlock({
   hPre,
   hPost,
@@ -6086,7 +6093,7 @@ function FFNHiddenBlock({
       <text x={hidX + (hidCols * hidColW) / 2} y={hidY - 14} textAnchor="middle"
         fontSize="13" fontFamily="var(--font-display)" fontStyle="italic"
         fill={fireMask ? COL_FFN_FIRE : 'rgba(255,255,255,0.85)'}>
-        {fireMask ? 'GELU(W₁x)' : 'W₁x'}
+        {fireMask ? 'ReLU(W₁x)' : 'W₁x'}
       </text>
       <text x={hidX + (hidCols * hidColW) / 2}
         y={hidY + hidRows * hidColH + 16} textAnchor="middle"
@@ -6444,7 +6451,7 @@ function FFNCaption({ phase, speed }: { phase: number; speed: number }) {
   const captions = [
     'one focused token enters — attention is done, now each token alone',
     'W₁ projects into a 4× wider feature bank',
-    'GELU keeps strong activations, silences the rest',
+    'ReLU keeps positive activations, clips the rest to zero',
     'W₂ collapses the activated bank into a thin update vector',
     'Δx adds back into the residual stream — the token is updated',
   ]
@@ -6503,7 +6510,7 @@ export function FFNSplitPane() {
   const phaseLabels = [
     'one token enters',
     'W₁ expand 4×',
-    'GELU fire',
+    'ReLU fire',
     'W₂ compress',
     'residual add',
   ]
@@ -6526,7 +6533,7 @@ export function FFNSplitPane() {
       it as a bank of <em>candidate features</em> the model could detect.
     </>,
     <>
-      GELU keeps the strong activations and softly silences the rest. This
+      ReLU keeps positive activations and clips the rest to zero. This
       is where the network <em>chooses</em> which features matter for this token.
     </>,
     <>
@@ -6550,7 +6557,7 @@ export function FFNSplitPane() {
     },
     {
       label: 'activate',
-      body: <>h̃ = GELU(h)</>,
+      body: <>h̃ = ReLU(h) = max(0, h)</>,
     },
     {
       label: 'compress',
@@ -6558,14 +6565,14 @@ export function FFNSplitPane() {
     },
     {
       label: 'residual update',
-      body: <>x ← x + W₂ · GELU(W₁ · LN(x))</>,
+      body: <>x ← x + W₂ · ReLU(W₁ · LN(x))</>,
     },
   ]
 
   const calloutByPhase: ReactNode[] = [
     'Attention mixed information across tokens. The FFN does the opposite — it processes each token in isolation. Same parameters at every position.',
     'Most of the model\'s parameters live in W₁ and W₂. A GPT-2 block has ~25M params in FFN vs ~6M in attention. Wider FFN = more facts the model can store.',
-    'GELU is smoother than ReLU — small negatives leak through, so gradients keep flowing. Modern models use GELU (GPT) or Swish (LLaMA via SwiGLU).',
+    'ReLU is the simplest possible nonlinearity — clip at zero. Cheap and fast, but it throws away gradient below zero ("dying ReLU"). GELU (used in GPT-2) and Swish/SwiGLU (used in LLaMA) leak small negatives through to keep gradients flowing — see Scene 15 / Scene 32.',
     'W₂ is 1536 × 384 — it\'s how the model decides which combination of fired features to project back as an update to the residual stream.',
     'The residual connection means the FFN never replaces the token vector — it only adds a correction. Each block nudges the stream a little closer to the answer.',
   ]
@@ -6590,7 +6597,7 @@ export function FFNSplitPane() {
           { label: 'd_model', value: '384', color: COL_FFN_X },
           { label: 'd_hidden', value: '1536', color: COL_FFN_FIRE },
           { label: 'expansion', value: '4×' },
-          { label: 'activation', value: 'GELU' },
+          { label: 'activation', value: 'ReLU' },
         ],
         equation: equationByPhase[phase],
         infoCallout: calloutByPhase[phase],
@@ -6758,7 +6765,7 @@ const FF_W147 = Array.from({ length: 16 }).map(
 )
 const FF_W147_NORM_SQ = FF_W147.reduce((s, w) => s + w * w, 0)
 
-/* Build a token's hidden representation x such that GELU(x · W₁[147])
+/* Build a token's hidden representation x such that ReLU(x · W₁[147])
  * roughly matches its activation profile. High-activation tokens look
  * similar to W (alignment); low-activation tokens are mostly noise. */
 function ffComputeXForToken(activation: number, tokenSeed: number): number[] {
@@ -7012,7 +7019,7 @@ function FFFeatureHiddenBank({
         y={Y + ROWS * CELL_H + 22}
         textAnchor="middle"
         fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
-        ∈ R¹⁵³⁶ (post-GELU)
+        ∈ R¹⁵³⁶ (post-ReLU)
       </text>
     </g>
   )
@@ -7286,7 +7293,7 @@ function FFFeatureActivationPanel({
 
 /* ─────────── Mechanism strip — dot product with learned template ───────────
  * Shows the actual computation that makes dim #147 fire (or not):
- *   x · W₁[147]  →  Σ  →  GELU  →  activation
+ *   x · W₁[147]  →  Σ  →  ReLU  →  activation
  * Two stacked 16-cell bars (input x and weights W) make the alignment
  * pattern visible — when many cells share sign/magnitude, the product
  * is large and the neuron fires. */
@@ -7302,7 +7309,7 @@ function FFFeatureMechanism({
   const x = ffComputeXForToken(currentActivation, seed)
   const xW = x.map((v, i) => v * FF_W147[i])
   const sum = xW.reduce((s, v) => s + v, 0)
-  const geluOut = gelu(sum)
+  const reluOut = relu(sum)
 
   // Layout
   const PANEL_X = 80, PANEL_Y = 638, PANEL_W = 1240, PANEL_H = 184
@@ -7416,14 +7423,14 @@ function FFFeatureMechanism({
         →
       </text>
 
-      {/* GELU output */}
+      {/* ReLU output */}
       <text x={ROW_X_BAR + 16 * CELL_W + 186} y={715}
         fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim}
         letterSpacing="0.18em">
-        GELU(Σ) = h₁₄₇
+        ReLU(Σ) = h₁₄₇
       </text>
       <motion.text
-        key={`gelu-${currentToken}`}
+        key={`relu-${currentToken}`}
         x={ROW_X_BAR + 16 * CELL_W + 186} y={742}
         fontSize="26" fontFamily="var(--font-display)" fontStyle="italic"
         fill={isFiring ? COL_FF_NEURON : 'rgba(255,255,255,0.55)'}
@@ -7434,7 +7441,7 @@ function FFFeatureMechanism({
         }}
         transition={{ duration: 0.45 / speed }}
       >
-        {geluOut.toFixed(2)}
+        {reluOut.toFixed(2)}
       </motion.text>
 
       {/* Match indicator */}
@@ -7456,7 +7463,7 @@ function FFFeatureMechanism({
         textAnchor="middle"
         fontSize="11" fontFamily="var(--font-mono)" fill={ACCENT.dim}
         fontStyle="italic">
-        x = the token's hidden state · W₁[147] = dim #147's learned template · they align ⇒ Σ large ⇒ GELU keeps it ⇒ neuron fires
+        x = the token's hidden state · W₁[147] = dim #147's learned template · they align ⇒ Σ large ⇒ ReLU keeps it ⇒ neuron fires
       </text>
     </g>
   )
@@ -7543,7 +7550,7 @@ export function FFNFeatureSplitPane() {
   const equationByPhase: { label: string; body: ReactNode }[] = [
     {
       label: 'one hidden dimension',
-      body: <>h<sub>i</sub> = GELU((W₁ x)<sub>i</sub>),&nbsp; i = 147</>,
+      body: <>h<sub>i</sub> = ReLU((W₁ x)<sub>i</sub>),&nbsp; i = 147</>,
     },
     {
       label: 'selective activation',
@@ -7612,9 +7619,8 @@ const COL_RELU = ACCENT.blue
 const COL_GELU = ACCENT.mint
 const COL_SWISH = ACCENT.amber
 
-function relu(z: number): number { return Math.max(0, z) }
 function swish(z: number): number { return z / (1 + Math.exp(-z)) }
-// gelu() is already defined above (in the FFN scene)
+// gelu() and relu() are defined above (in the FFN scene's helpers)
 
 /* Color helper for activated cells: amber for positive (kept), red-tint
  * for cells that GELU softly attenuates from negative input. */
@@ -7712,7 +7718,10 @@ function FFGeluPipelineView({
   phase, probeZ, speed,
 }: { phase: number; probeZ: number; speed: number }) {
   const { X, Y, W, H, CELL_W, CELL_H, RAW_BAR_X, RAW_BAR_Y, ACT_BAR_Y } = FFG_LEFT
-  const activated = FFG_W1X.map(gelu)
+  // Left pipeline shows what THIS nanoGPT actually uses (ReLU). The
+  // right-side comparison panel still shows ReLU / GELU / Swish curves
+  // for educational contrast.
+  const activated = FFG_W1X.map(relu)
   const probeOutputs = {
     relu: relu(probeZ),
     gelu: gelu(probeZ),
@@ -7785,15 +7794,15 @@ function FFGeluPipelineView({
         <text x={28} y={4}
           fontSize="13" fontFamily="var(--font-mono)"
           fill={COL_GELU} fontStyle="italic">
-          GELU
+          ReLU
         </text>
       </g>
 
-      {/* GELU(W1x) label and bar (activated) */}
+      {/* ReLU(W1x) label and bar (activated) */}
       <text x={RAW_BAR_X - 14} y={ACT_BAR_Y + 18} textAnchor="end"
         fontSize="13" fontFamily="var(--font-display)"
         fontStyle="italic" fill={COL_GELU}>
-        GELU(W₁x)
+        ReLU(W₁x)
       </text>
       <text x={RAW_BAR_X - 14} y={ACT_BAR_Y + 36} textAnchor="end"
         fontSize="9" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
