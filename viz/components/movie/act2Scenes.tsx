@@ -1197,6 +1197,60 @@ export function VizLayerNorm() {
         >
           One token's 384-dim vector — recentered, rescaled, then re-tuned.
         </text>
+
+        {/* ────── Traveling arrow — a glowing arrowhead that crosses the
+            four-stage pipeline once per phase cycle. Sells "the vector is
+            actually flowing through these stages", not just stages
+            lighting up in place. */}
+        {(() => {
+          const ARROW_Y = (VEC_TOP + VEC_BOT) / 2
+          const X_START = STAGE_X[0] - 28
+          const X_END = STAGE_X[3] + COL_W + 28
+          // One sweep per full phase cycle (5 phases × 2.4s = 12s).
+          const cycleDur = (PHASES * 2.4) / speed
+          return (
+            <motion.g
+              key={`ln-flow-${phase}`}
+              initial={{ x: 0, opacity: 0 }}
+              animate={{ x: X_END - X_START, opacity: [0, 1, 1, 0] }}
+              transition={{
+                duration: cycleDur,
+                ease: 'easeInOut',
+                times: [0, 0.05, 0.95, 1],
+                repeat: Infinity,
+                repeatDelay: 0.8 / speed,
+              }}
+            >
+              {/* Trail line */}
+              <motion.line
+                x1={X_START - 60}
+                y1={ARROW_Y}
+                x2={X_START}
+                y2={ARROW_Y}
+                stroke={ACCENT.violet}
+                strokeWidth={2.4}
+                strokeOpacity={0.55}
+                strokeLinecap="round"
+                filter="url(#ln-glow)"
+              />
+              {/* Arrowhead */}
+              <polygon
+                points={`${X_START},${ARROW_Y - 7} ${X_START + 14},${ARROW_Y} ${X_START},${ARROW_Y + 7}`}
+                fill={ACCENT.violet}
+                fillOpacity={0.95}
+                filter="url(#ln-glow)"
+              />
+              {/* Inner glowing dot */}
+              <circle
+                cx={X_START + 5}
+                cy={ARROW_Y}
+                r={4}
+                fill="#fff"
+                fillOpacity={0.9}
+              />
+            </motion.g>
+          )
+        })()}
       </svg>
     </div>
   )
@@ -3387,6 +3441,47 @@ function PhaseB({
           </g>
         )
       })}
+
+      {/* Row scanner — a single cell-sized highlight that travels left→right
+          along the focused row, sells "Q · K is computed cell-by-cell".
+          Starts after the cells finish staggering in (~0.7s). */}
+      {(() => {
+        const scanRowY = matrixY + focused * cellH
+        const lastCol = focused
+        const totalCols = lastCol + 1
+        const sweepDur = Math.max(1.5, totalCols * 0.32)
+        return (
+          <motion.g key={`b-scan-${focused}`}>
+            <motion.rect
+              y={scanRowY - 2}
+              width={cellW + 2}
+              height={cellH + 2}
+              rx={3}
+              fill="rgba(255,255,255,0.18)"
+              stroke="#fff"
+              strokeWidth={2}
+              strokeOpacity={0.95}
+              filter="url(#attn-glow)"
+              initial={{ x: matrixX - cellW, opacity: 0 }}
+              animate={{
+                x: [
+                  matrixX - cellW,
+                  matrixX + (lastCol + 1) * cellW,
+                ],
+                opacity: [0, 1, 1, 0],
+              }}
+              transition={{
+                duration: sweepDur / speed,
+                delay: 0.85 / speed,
+                ease: 'easeInOut',
+                times: [0, 0.08, 0.92, 1],
+                repeat: Infinity,
+                repeatDelay: 1.5 / speed,
+              }}
+            />
+          </motion.g>
+        )
+      })()}
 
       {/* Ellipsis row */}
       <g>

@@ -462,6 +462,74 @@ export function VizActIIntro() {
             }}
           />
         ))}
+
+        {/* ────── Pulse arrow that descends from the slab through the
+            6-block stack. Sells "this slab is the input that flows into
+            the transformer", not just two static objects sharing a frame. */}
+        {(() => {
+          // Top of the slab front-edge (where the arrow starts)
+          const startY = sb.frontY - 6
+          // Bottom of the deepest block
+          const endY = blocks[blocks.length - 1].frontY + 16
+          return (
+            <motion.g
+              key="actI-flow-arrow"
+              initial={{ y: 0, opacity: 0 }}
+              animate={{
+                y: endY - startY,
+                opacity: [0, 0.95, 0.95, 0],
+              }}
+              transition={{
+                duration: 3.4 / speed,
+                ease: 'easeInOut',
+                times: [0, 0.08, 0.85, 1],
+                repeat: Infinity,
+                repeatDelay: 1.6 / speed,
+                delay: 1.0 / speed,
+              }}
+            >
+              {/* Trail */}
+              <line
+                x1={CX}
+                y1={startY - 60}
+                x2={CX}
+                y2={startY}
+                stroke={ACCENT.violet}
+                strokeWidth={2.4}
+                strokeOpacity={0.55}
+                strokeLinecap="round"
+                filter="url(#slab-bloom)"
+              />
+              {/* Glowing head dot */}
+              <circle
+                cx={CX}
+                cy={startY}
+                r={6}
+                fill="#fff"
+                fillOpacity={0.92}
+              />
+              {/* Soft halo behind the head */}
+              <circle
+                cx={CX}
+                cy={startY}
+                r={14}
+                fill={ACCENT.violet}
+                fillOpacity={0.35}
+                filter="url(#slab-bloom)"
+              />
+              {/* Arrowhead pointing down — V-shape stroked path */}
+              <path
+                d={`M ${CX - 8} ${startY + 8} L ${CX} ${startY + 16} L ${CX + 8} ${startY + 8}`}
+                stroke={ACCENT.violet}
+                strokeWidth={2.2}
+                strokeOpacity={0.95}
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </motion.g>
+          )
+        })()}
       </svg>
     </div>
   )
@@ -924,6 +992,7 @@ export function VizBPE() {
         {/* ────── Connectors: initial tokens → level 1 merges ────── */}
         {lvl1.map((m) => {
           const completed = isComplete(m.id) || isActive(m.id)
+          const active = isActive(m.id)
           return (
             <g key={`l1-conn-${m.id}`} opacity={completed ? 1 : 0.25}>
               <line
@@ -932,8 +1001,8 @@ export function VizBPE() {
                 y1={Y_INIT_BOX_BOT + 4}
                 y2={Y_LVL1_TOP - 4}
                 stroke={ACCENT.mint}
-                strokeOpacity={isActive(m.id) ? 0.85 : 0.5}
-                strokeWidth={isActive(m.id) ? 1.6 : 1}
+                strokeOpacity={active ? 0.85 : 0.5}
+                strokeWidth={active ? 1.6 : 1}
               />
               <line
                 x1={m.right}
@@ -941,9 +1010,55 @@ export function VizBPE() {
                 y1={Y_INIT_BOX_BOT + 4}
                 y2={Y_LVL1_TOP - 4}
                 stroke={ACCENT.mint}
-                strokeOpacity={isActive(m.id) ? 0.85 : 0.5}
-                strokeWidth={isActive(m.id) ? 1.6 : 1}
+                strokeOpacity={active ? 0.85 : 0.5}
+                strokeWidth={active ? 1.6 : 1}
               />
+              {/* Traveling particles up both input lines when this merge
+                  is the active one. Sells "these two pieces are being
+                  combined right now". */}
+              {active && (
+                <>
+                  <motion.circle
+                    key={`l1-p-l-${m.id}`}
+                    r={4}
+                    fill={ACCENT.mint}
+                    fillOpacity={0.95}
+                    initial={{ cx: m.left, cy: Y_INIT_BOX_BOT + 4, opacity: 0 }}
+                    animate={{
+                      cx: [m.left, m.cx],
+                      cy: [Y_INIT_BOX_BOT + 4, Y_LVL1_TOP - 4],
+                      opacity: [0, 1, 1, 0],
+                    }}
+                    transition={{
+                      duration: 1.2 / speed,
+                      ease: 'easeInOut',
+                      times: [0, 0.15, 0.85, 1],
+                      repeat: Infinity,
+                      repeatDelay: 0.6 / speed,
+                    }}
+                  />
+                  <motion.circle
+                    key={`l1-p-r-${m.id}`}
+                    r={4}
+                    fill={ACCENT.mint}
+                    fillOpacity={0.95}
+                    initial={{ cx: m.right, cy: Y_INIT_BOX_BOT + 4, opacity: 0 }}
+                    animate={{
+                      cx: [m.right, m.cx],
+                      cy: [Y_INIT_BOX_BOT + 4, Y_LVL1_TOP - 4],
+                      opacity: [0, 1, 1, 0],
+                    }}
+                    transition={{
+                      duration: 1.2 / speed,
+                      ease: 'easeInOut',
+                      times: [0, 0.15, 0.85, 1],
+                      delay: 0.15 / speed,
+                      repeat: Infinity,
+                      repeatDelay: 0.6 / speed,
+                    }}
+                  />
+                </>
+              )}
             </g>
           )
         })}
@@ -965,6 +1080,7 @@ export function VizBPE() {
         {/* ────── Connectors: level 1 → level 2 ────── */}
         {lvl2.map((m) => {
           const completed = isComplete(m.id) || isActive(m.id)
+          const active = isActive(m.id)
           return (
             <g key={`l2-conn-${m.id}`} opacity={completed ? 1 : 0.18}>
               <line
@@ -973,8 +1089,8 @@ export function VizBPE() {
                 y1={Y_LVL1_BOT + 4}
                 y2={Y_LVL2_TOP - 4}
                 stroke={ACCENT.mint}
-                strokeOpacity={isActive(m.id) ? 0.85 : 0.5}
-                strokeWidth={isActive(m.id) ? 1.6 : 1}
+                strokeOpacity={active ? 0.85 : 0.5}
+                strokeWidth={active ? 1.6 : 1}
               />
               <line
                 x1={m.right}
@@ -982,9 +1098,52 @@ export function VizBPE() {
                 y1={Y_LVL1_BOT + 4}
                 y2={Y_LVL2_TOP - 4}
                 stroke={ACCENT.mint}
-                strokeOpacity={isActive(m.id) ? 0.85 : 0.5}
-                strokeWidth={isActive(m.id) ? 1.6 : 1}
+                strokeOpacity={active ? 0.85 : 0.5}
+                strokeWidth={active ? 1.6 : 1}
               />
+              {active && (
+                <>
+                  <motion.circle
+                    key={`l2-p-l-${m.id}`}
+                    r={4}
+                    fill={ACCENT.mint}
+                    fillOpacity={0.95}
+                    initial={{ cx: m.left, cy: Y_LVL1_BOT + 4, opacity: 0 }}
+                    animate={{
+                      cx: [m.left, m.cx],
+                      cy: [Y_LVL1_BOT + 4, Y_LVL2_TOP - 4],
+                      opacity: [0, 1, 1, 0],
+                    }}
+                    transition={{
+                      duration: 1.2 / speed,
+                      ease: 'easeInOut',
+                      times: [0, 0.15, 0.85, 1],
+                      repeat: Infinity,
+                      repeatDelay: 0.6 / speed,
+                    }}
+                  />
+                  <motion.circle
+                    key={`l2-p-r-${m.id}`}
+                    r={4}
+                    fill={ACCENT.mint}
+                    fillOpacity={0.95}
+                    initial={{ cx: m.right, cy: Y_LVL1_BOT + 4, opacity: 0 }}
+                    animate={{
+                      cx: [m.right, m.cx],
+                      cy: [Y_LVL1_BOT + 4, Y_LVL2_TOP - 4],
+                      opacity: [0, 1, 1, 0],
+                    }}
+                    transition={{
+                      duration: 1.2 / speed,
+                      ease: 'easeInOut',
+                      times: [0, 0.15, 0.85, 1],
+                      delay: 0.15 / speed,
+                      repeat: Infinity,
+                      repeatDelay: 0.6 / speed,
+                    }}
+                  />
+                </>
+              )}
             </g>
           )
         })}
