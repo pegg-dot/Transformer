@@ -2290,20 +2290,12 @@ export function VizAttention() {
   const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
   const T = tokens.length
 
-  // Focused query position cycles through the sequence so the arcs and
-  // matrix highlight come out of different letters over time.
-  const ATT_FOCUS_MIN = 1
-  const ATT_FOCUS_MAX = Math.max(ATT_FOCUS_MIN, T - 1)
-  const [focused, setFocused] = useState(Math.min(4, ATT_FOCUS_MAX))
-  useEffect(() => {
-    const id = setInterval(() => {
-      setFocused((f) => {
-        const next = f + 1
-        return next > ATT_FOCUS_MAX ? ATT_FOCUS_MIN : next
-      })
-    }, 2400 / speed)
-    return () => clearInterval(id)
-  }, [ATT_FOCUS_MAX, speed])
+  // Scene 11 holds a fixed focused position. Cycling through every token
+  // here churns the full Q·K^T matrix (Phase B), softmax row (Phase C),
+  // and value mixing (Phase D) on every tick — way too much remount work
+  // for the viewer and the renderer. Multi-head (Scene 12) keeps cycling
+  // because its per-head arcs are cheaper.
+  const focused = Math.min(4, T - 1)
 
   // 4 phases, each ~10s
   const PHASES = 4
@@ -2359,11 +2351,11 @@ export function VizAttention() {
         />
 
         {/* ────── Phase-specific teaching viz on the right ──────
-            Wrapped in motion.g keyed on phase + focused so the entire
-            phase content crossfades on every focus tick AND on phase
-            transition — arcs/scores/value-mix all redraw cleanly. */}
+            Wrapped in motion.g keyed on phase so the entire phase content
+            crossfades on transition. Each phase's internal animations
+            re-trigger on remount (initial → animate). */}
         <motion.g
-          key={`phase-${phase}-${focused}`}
+          key={`phase-${phase}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 / speed, ease: 'easeOut' }}
