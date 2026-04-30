@@ -145,7 +145,7 @@ Nothing about the model cares what the original characters looked like after thi
     kicker: 'real tokenization',
     title: 'Real models use BPE.',
     caption:
-      'Start from bytes. Count adjacent pairs. Merge the most frequent. Repeat — thousands of times.',
+      'Start from bytes. Count adjacent pairs. Merge the most frequent. Repeat — thousands of times. (This educational nanoGPT skips BPE and uses char-level from Scene 3; production GPTs all use BPE.)',
     accent: ACCENT.violet,
     durationMs: 36000,
     part: 'tokenize',
@@ -154,7 +154,9 @@ Nothing about the model cares what the original characters looked like after thi
 
 After training, you're left with a merge table. At inference time, apply the same merges greedily to any input string. Common English words become one token ("the"), rare words split into multiple subwords ("arborescent" → "ar" + "bor" + "escent").
 
-The reason to use BPE instead of characters: way shorter sequences (fewer positions for attention to chew through) without needing a fixed English word list. The reason to use it instead of fixed words: handles arbitrary text, including typos, code, and non-English.`,
+The reason to use BPE instead of characters: way shorter sequences (fewer positions for attention to chew through) without needing a fixed English word list. The reason to use it instead of fixed words: handles arbitrary text, including typos, code, and non-English.
+
+Note: the actual nanoGPT this project is built around uses character-level tokenization (Scene 3) — every character is its own token, vocab ≈ 65 unique chars. BPE is what real production GPTs do, but it's skipped in the educational model for simplicity.`,
     render: () => <BPESplitPane />,
   },
   {
@@ -185,16 +187,18 @@ This is where the network first starts to encode meaning. Tokens that behave sim
     kicker: 'positional encoding',
     title: 'Position gets baked in.',
     caption:
-      'A unique sinusoidal pattern for each position is added directly to the token embedding.',
+      'A position vector is added directly to the token embedding. This nanoGPT uses a learned table indexed by position; the original Transformer used fixed sinusoidal patterns; modern models use RoPE (Scene 31).',
     accent: ACCENT.violet,
     durationMs: 26000,
     part: 'positional',
     panelAnchor: 'fullscreen',
     details: `Attention on its own has no notion of order — "cat sat" and "sat cat" would produce identical attention outputs. Positional encoding fixes this by adding a position-dependent pattern to every embedding, so position 0 looks different from position 5 even for the same token.
 
-The original paper used fixed sinusoidal patterns — different frequencies per dimension, so the model can learn to read absolute and relative position from the pattern. Because it's deterministic, you can extrapolate to positions never seen during training.
+This nanoGPT uses a learned position embedding: a second lookup table of shape (block_size × n_embd), indexed by absolute position the same way the token embedding (Scene 5) is indexed by token ID. The values inside that table are gradient-descent-learned, just like the token embedding's values.
 
-Modern models (LLaMA, GPT-NeoX) replaced this with RoPE — rotary position embeddings — which is scene 24. The motivation is the same: let attention know which token came first.`,
+The original "Attention is All You Need" paper used fixed sinusoidal patterns — different frequencies per dimension, deterministic so it extrapolates to positions never seen during training. The wave visualization shown here is closer to that original design.
+
+Modern models (LLaMA, GPT-NeoX, Mistral) replaced both approaches with RoPE — rotary position embeddings — covered in Scene 31. The motivation is always the same: let attention know which token came first.`,
     render: () => <PositionalSplitPane />,
   },
 
@@ -326,11 +330,13 @@ Empirically, the heads DO specialize. Different heads attend to different kinds 
     title: 'Expand. Fire. Compress.',
     subGroup: { label: 'FFN · structure', index: 1, total: 3, color: ACCENT.amber },
     caption:
-      'Expand 4× wider (1536 dims), GELU fires on selected features, compress back to 384, add to residual.',
+      'Expand 4× wider (1536 dims), ReLU fires on selected features, compress back to 384, add to residual.',
     accent: ACCENT.amber,
     durationMs: 19000,  // 5 × 3.2s
     part: 'ffn',
-    details: `The feed-forward block is a simple two-layer MLP applied per-token. First layer expands d_model → 4·d_model. Nonlinearity (GELU) fires on each expanded dimension. Second layer compresses 4·d_model → d_model. Add the result back to the residual stream.
+    details: `The feed-forward block is a simple two-layer MLP applied per-token. First layer expands d_model → 4·d_model. Nonlinearity fires on each expanded dimension. Second layer compresses 4·d_model → d_model. Add the result back to the residual stream.
+
+This nanoGPT uses ReLU as the activation (the simplest possible nonlinearity: max(0, x)). GPT-2 and BERT use the smoother GELU; LLaMA uses SwiGLU. Scene 15 compares all three.
 
 Most of the model's parameters live here. A GPT-2 XL block has ~25M params in FFN versus ~6M in attention. If you want a model to know more facts, make the FFN wider.
 
@@ -347,7 +353,7 @@ Attention moves information BETWEEN tokens. FFN processes information WITHIN a s
     title: 'Each hidden neuron detects something.',
     subGroup: { label: 'FFN · interpretation', index: 2, total: 3, color: ACCENT.amber },
     caption:
-      'Zoom into one hidden dimension and watch tokens stream by — it pulses on matches, stays dim otherwise. Labels are illustrative; real features are messier.',
+      'Zoom into one hidden dimension and watch tokens stream by — it pulses (after ReLU) on matches, stays dim otherwise. Labels are illustrative; real features are messier.',
     accent: ACCENT.amber,
     durationMs: 21000,
     part: 'ffn',
@@ -368,17 +374,19 @@ Interpretability research is largely about teasing out what each dimension repre
     title: 'How each feature decides to fire.',
     subGroup: { label: 'FFN · activation detail', index: 3, total: 3, color: ACCENT.amber },
     caption:
-      'The gate between W₁ and W₂. Without it, two linear layers collapse to one. ReLU clips hard, GELU/Swish gate smoothly, modern LLMs use SwiGLU.',
+      'The gate between W₁ and W₂. Without it, two linear layers collapse to one. This nanoGPT uses ReLU; GPT-2/BERT use GELU; LLaMA uses SwiGLU.',
     accent: ACCENT.amber,
     durationMs: 19000,
     part: 'ffn',
     details: `After W₁ expands the token vector into many hidden coordinates, the activation function decides — per coordinate — how strongly that hidden feature actually fires. It's the gate at the center of "expand → fire → compress" from Scene 13, and it's what determines whether the feature detectors from Scene 14 turn on softly, sharply, or not at all.
 
-ReLU clips hard at zero — simple and fast, but throws away gradient below zero. GELU (Gaussian Error Linear Unit) is a smooth variant used in BERT and GPT-2: it weighs inputs by a probability-like curve so small negatives leak through. Swish (x · σ(x)) is nearly identical and easier to compute.
+This nanoGPT uses ReLU — clip hard at zero, simple and fast. ReLU throws away gradient below zero (the "dying ReLU" issue), but it's cheap and works well at this scale.
 
-The deeper reason this step exists: without a nonlinearity between W₁ and W₂, the two matrices would just multiply into one — W₂(W₁x) = (W₂W₁)x. The activation is the *only* reason the FFN is more expressive than a single linear map.
+GELU (Gaussian Error Linear Unit) is the smooth variant used in BERT and GPT-2: it weighs inputs by a probability-like curve so small negatives leak through. Swish (x · σ(x)) is nearly identical and easier to compute.
 
-Modern LLMs (LLaMA, PaLM, Mistral) push further with gated variants like SwiGLU: two parallel projections multiplied through Swish before W₂. Slightly better loss per parameter, which is why it became the default.`,
+The deeper reason this step exists at all: without a nonlinearity between W₁ and W₂, the two matrices would just multiply into one — W₂(W₁x) = (W₂W₁)x. The activation is the *only* reason the FFN is more expressive than a single linear map.
+
+Modern LLMs (LLaMA, PaLM, Mistral) push further with gated variants like SwiGLU: two parallel projections multiplied through Swish before W₂. Slightly better loss per parameter, which is why it became the default. Covered in Scene 32.`,
     render: () => <FFNGeluSplitPane />,
     panelAnchor: 'fullscreen',
   },
@@ -458,7 +466,9 @@ The sampled token is then APPENDED to the input sequence and fed back into the m
 
 Only the NEW token's Q, K, V get computed each step. The old K and V columns stay in the cache. Attention attends from the new Q to the full (cached + new) K and V.
 
-This is the single biggest optimization behind fast generation. It's also why context length costs so much memory — the cache grows linearly with sequence length.`,
+This is the single biggest optimization behind fast generation. It's also why context length costs so much memory — the cache grows linearly with sequence length.
+
+Note: this educational nanoGPT does NOT implement KV caching. Its generate() loop re-runs the full forward pass on the truncated context every step. Production inference engines (vLLM, TGI, llama.cpp) all do what's shown here.`,
     render: () => <KVCacheSplitPane />,
     panelAnchor: 'fullscreen',
   },
