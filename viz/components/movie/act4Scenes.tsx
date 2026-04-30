@@ -1782,7 +1782,7 @@ export function VizCELossSeq({ phase }: { phase: number }) {
         animate={{ opacity: showMean ? 1 : 0.15, y: 0 }}
         transition={{ duration: 0.5 / speed }}
       >
-        <rect
+        <motion.rect
           x={CELS_MEAN_BOX_X}
           y={CELS_MEAN_BOX_Y}
           width={CELS_MEAN_BOX_W}
@@ -1791,6 +1791,12 @@ export function VizCELossSeq({ phase }: { phase: number }) {
           fill="rgba(245,158,11,0.10)"
           stroke={ACCENT.amber}
           strokeWidth={1.6}
+          animate={{ strokeOpacity: [0.55, 1, 0.55] }}
+          transition={{
+            duration: 3.2 / speed,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
         />
         <text
           x={CELS_MEAN_BOX_X + 20}
@@ -2287,7 +2293,7 @@ export function VizCELossBatch({ phase }: { phase: number }) {
 
       {/* ===================== BATCH MEAN BOX ===================== */}
       <g>
-        <rect
+        <motion.rect
           x={CELB_MEAN_X}
           y={CELB_MEAN_Y}
           width={CELB_MEAN_W}
@@ -2296,6 +2302,12 @@ export function VizCELossBatch({ phase }: { phase: number }) {
           fill="rgba(245,158,11,0.08)"
           stroke={ACCENT.amber}
           strokeWidth={1.6}
+          animate={{ strokeOpacity: [0.55, 1, 0.55] }}
+          transition={{
+            duration: 3.2 / speed,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
         />
         <text
           x={CELB_MEAN_X + 20}
