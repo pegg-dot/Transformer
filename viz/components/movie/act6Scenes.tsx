@@ -199,25 +199,82 @@ function fadeIn(delay: number, dur = 0.55) {
   } as const
 }
 
-function ArrowRight({ x1, x2, y, accent, label }: { x1: number; x2: number; y: number; accent: string; label?: string }) {
+function ArrowRight({
+  x1,
+  x2,
+  y,
+  accent,
+  label,
+  active,
+  delay,
+}: {
+  x1: number
+  x2: number
+  y: number
+  accent: string
+  label?: string
+  active?: boolean
+  delay?: number
+}) {
+  const animated = active !== undefined && delay !== undefined
+  const isOn = active ?? true
+  const d = delay ?? 0
   return (
     <g>
-      <line
-        x1={x1}
-        y1={y}
-        x2={x2 - 8}
-        y2={y}
-        stroke={accent}
-        strokeOpacity={0.85}
-        strokeWidth={1.6}
-      />
-      <polygon
-        points={`${x2},${y} ${x2 - 9},${y - 5} ${x2 - 9},${y + 5}`}
-        fill={accent}
-        fillOpacity={0.95}
-      />
+      {animated ? (
+        <motion.line
+          x1={x1}
+          y1={y}
+          x2={x2 - 8}
+          y2={y}
+          stroke={accent}
+          strokeOpacity={0.85}
+          strokeWidth={1.6}
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{
+            pathLength: isOn ? 1 : 0,
+            opacity: isOn ? 1 : 0,
+          }}
+          transition={{
+            duration: 0.5,
+            delay: isOn ? d : 0,
+            ease: 'easeOut',
+          }}
+        />
+      ) : (
+        <line
+          x1={x1}
+          y1={y}
+          x2={x2 - 8}
+          y2={y}
+          stroke={accent}
+          strokeOpacity={0.85}
+          strokeWidth={1.6}
+        />
+      )}
+      {animated ? (
+        <motion.polygon
+          points={`${x2},${y} ${x2 - 9},${y - 5} ${x2 - 9},${y + 5}`}
+          fill={accent}
+          fillOpacity={0.95}
+          initial={{ opacity: 0, scale: 0.4 }}
+          animate={{ opacity: isOn ? 1 : 0, scale: isOn ? 1 : 0.4 }}
+          transition={{
+            duration: 0.25,
+            delay: isOn ? d + 0.45 : 0,
+            ease: 'easeOut',
+          }}
+          style={{ transformOrigin: `${x2 - 5}px ${y}px` }}
+        />
+      ) : (
+        <polygon
+          points={`${x2},${y} ${x2 - 9},${y - 5} ${x2 - 9},${y + 5}`}
+          fill={accent}
+          fillOpacity={0.95}
+        />
+      )}
       {label && (
-        <text
+        <motion.text
           x={(x1 + x2) / 2}
           y={y - 10}
           textAnchor="middle"
@@ -226,9 +283,16 @@ function ArrowRight({ x1, x2, y, accent, label }: { x1: number; x2: number; y: n
           fontSize={11}
           letterSpacing={1.6}
           fontWeight={500}
+          initial={animated ? { opacity: 0 } : false}
+          animate={animated ? { opacity: isOn ? 1 : 0 } : undefined}
+          transition={
+            animated
+              ? { duration: 0.3, delay: isOn ? d + 0.4 : 0 }
+              : undefined
+          }
         >
           {label}
-        </text>
+        </motion.text>
       )}
     </g>
   )
@@ -368,12 +432,14 @@ function TokenStrip({ phase, pred }: { phase: number; pred: Prediction }) {
 function HiddenStateCard({ active }: { active: boolean }) {
   // Bright, varied cells to read as "a real activation vector".
   const cellVals = [0.45, 0.78, 0.22, 0.91, 0.34, 0.62, 0.15, 0.71]
+  // Stage delays: card border first, then label, then cells cascade,
+  // then footer "d_model" caption. Whole sequence ~0.7s.
   return (
     <motion.g
       animate={{ opacity: active ? 1 : 0.6 }}
       transition={{ duration: 0.5 }}
     >
-      <rect
+      <motion.rect
         x={HSTATE_X}
         y={HSTATE_Y}
         width={HSTATE_W}
@@ -382,10 +448,13 @@ function HiddenStateCard({ active }: { active: boolean }) {
         ry={10}
         fill="rgba(245,158,11,0.06)"
         stroke={ACCENT.amber}
-        strokeOpacity={active ? 0.95 : 0.55}
-        strokeWidth={active ? 2 : 1.4}
+        animate={{
+          strokeOpacity: active ? 0.95 : 0.55,
+          strokeWidth: active ? 2 : 1.4,
+        }}
+        transition={{ duration: 0.4 }}
       />
-      <text
+      <motion.text
         x={HSTATE_X + HSTATE_W / 2}
         y={HSTATE_Y - 36}
         textAnchor="middle"
@@ -394,21 +463,28 @@ function HiddenStateCard({ active }: { active: boolean }) {
         fontSize={11}
         letterSpacing={2}
         fontWeight={600}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: active ? 1 : 0.55 }}
+        transition={{ duration: 0.4, delay: active ? 0.1 : 0 }}
       >
         FINAL HIDDEN STATE
-      </text>
-      <text
+      </motion.text>
+      <motion.text
         x={HSTATE_X + HSTATE_W / 2}
         y={HSTATE_Y - 20}
         textAnchor="middle"
         fill="rgba(255,255,255,0.6)"
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
         fontSize={11}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: active ? 1 : 0.55 }}
+        transition={{ duration: 0.4, delay: active ? 0.2 : 0 }}
       >
         h_T (last position)
-      </text>
+      </motion.text>
 
-      {/* Cells */}
+      {/* Cells cascade in top→bottom when active so the vector reads as
+          something that was just computed, not a static texture. */}
       {(() => {
         const padY = 18
         const cellH = (HSTATE_H - padY * 2) / HSTATE_CELLS
@@ -417,7 +493,7 @@ function HiddenStateCard({ active }: { active: boolean }) {
           const cx = HSTATE_X + 12
           const cy = HSTATE_Y + padY + i * cellH
           return (
-            <rect
+            <motion.rect
               key={i}
               x={cx}
               y={cy + 2}
@@ -428,12 +504,23 @@ function HiddenStateCard({ active }: { active: boolean }) {
               fill={`rgba(245,158,11,${0.18 + v * 0.55})`}
               stroke="rgba(245,158,11,0.55)"
               strokeWidth={0.8}
+              initial={{ opacity: 0, scaleX: 0.5 }}
+              animate={{
+                opacity: active ? 1 : 0.5,
+                scaleX: active ? 1 : 0.85,
+              }}
+              transition={{
+                duration: 0.32,
+                delay: active ? 0.25 + i * 0.05 : 0,
+                ease: 'easeOut',
+              }}
+              style={{ transformOrigin: `${cx + cellW / 2}px ${cy + cellH / 2}px` }}
             />
           )
         })
       })()}
 
-      <text
+      <motion.text
         x={HSTATE_X + HSTATE_W / 2}
         y={HSTATE_Y + HSTATE_H + 20}
         textAnchor="middle"
@@ -441,21 +528,31 @@ function HiddenStateCard({ active }: { active: boolean }) {
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
         fontSize={10}
         letterSpacing={1.4}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: active ? 1 : 0.4 }}
+        transition={{ duration: 0.3, delay: active ? 0.7 : 0 }}
       >
         d_model
-      </text>
+      </motion.text>
     </motion.g>
   )
 }
 
 /* ─────────── Output head (W_U projection) ─────────── */
 function OutputHead({ active }: { active: boolean }) {
+  // Stage delays — kicks in after the hidden→head arrow finishes drawing
+  // (~1.1s after phase-1 entry).
+  const dBox = 1.1
+  const dHeader = 1.25
+  const dEq = 1.4
+  const dSub = 1.65
+  const dItalic = 1.85
   return (
     <motion.g
       animate={{ opacity: active ? 1 : 0.5 }}
       transition={{ duration: 0.5 }}
     >
-      <rect
+      <motion.rect
         x={HEAD_X}
         y={HEAD_Y}
         width={HEAD_W}
@@ -464,10 +561,23 @@ function OutputHead({ active }: { active: boolean }) {
         ry={12}
         fill="rgba(96,165,250,0.06)"
         stroke={ACCENT.blue}
-        strokeOpacity={active ? 0.95 : 0.5}
-        strokeWidth={active ? 2 : 1.4}
+        initial={{ opacity: 0, scale: 0.92 }}
+        animate={{
+          opacity: active ? 1 : 0.5,
+          scale: 1,
+          strokeOpacity: active ? 0.95 : 0.5,
+          strokeWidth: active ? 2 : 1.4,
+        }}
+        transition={{
+          duration: 0.45,
+          delay: active ? dBox : 0,
+          ease: 'easeOut',
+        }}
+        style={{
+          transformOrigin: `${HEAD_X + HEAD_W / 2}px ${HEAD_Y + HEAD_H / 2}px`,
+        }}
       />
-      <text
+      <motion.text
         x={HEAD_X + HEAD_W / 2}
         y={HEAD_Y + 28}
         textAnchor="middle"
@@ -476,10 +586,13 @@ function OutputHead({ active }: { active: boolean }) {
         fontSize={11}
         letterSpacing={2}
         fontWeight={600}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: active ? 1 : 0.5 }}
+        transition={{ duration: 0.35, delay: active ? dHeader : 0 }}
       >
         OUTPUT HEAD
-      </text>
-      <text
+      </motion.text>
+      <motion.text
         x={HEAD_X + HEAD_W / 2}
         y={HEAD_Y + HEAD_H / 2}
         textAnchor="middle"
@@ -487,10 +600,23 @@ function OutputHead({ active }: { active: boolean }) {
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
         fontSize={26}
         fontWeight={500}
+        initial={{ opacity: 0, scale: 0.6 }}
+        animate={{
+          opacity: active ? 1 : 0.6,
+          scale: active ? [0.6, 1.12, 1] : 1,
+        }}
+        transition={{
+          duration: 0.55,
+          delay: active ? dEq : 0,
+          ease: 'easeOut',
+        }}
+        style={{
+          transformOrigin: `${HEAD_X + HEAD_W / 2}px ${HEAD_Y + HEAD_H / 2}px`,
+        }}
       >
         W_U · h_T
-      </text>
-      <text
+      </motion.text>
+      <motion.text
         x={HEAD_X + HEAD_W / 2}
         y={HEAD_Y + HEAD_H / 2 + 30}
         textAnchor="middle"
@@ -498,10 +624,13 @@ function OutputHead({ active }: { active: boolean }) {
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
         fontSize={11}
         letterSpacing={1.2}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: active ? 1 : 0.4 }}
+        transition={{ duration: 0.35, delay: active ? dSub : 0 }}
       >
         d_model → vocab
-      </text>
-      <text
+      </motion.text>
+      <motion.text
         x={HEAD_X + HEAD_W / 2}
         y={HEAD_Y + HEAD_H - 16}
         textAnchor="middle"
@@ -509,9 +638,12 @@ function OutputHead({ active }: { active: boolean }) {
         fontFamily="ui-sans-serif, system-ui"
         fontSize={11}
         fontStyle="italic"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: active ? 1 : 0.3 }}
+        transition={{ duration: 0.35, delay: active ? dItalic : 0 }}
       >
         a single linear layer
-      </text>
+      </motion.text>
     </motion.g>
   )
 }
@@ -520,15 +652,19 @@ function OutputHead({ active }: { active: boolean }) {
 function LogitColumn({ active }: { active: boolean }) {
   // Varied logit values — top one (corresponding to "t") is highest.
   const logits = [3.2, -0.4, 1.1, 0.6, 0.8, -1.2, 2.1, -0.1, 1.7]
+  const topLogit = Math.max(...logits)
   const padY = 16
   const cellH = (LOGIT_H - padY * 2) / LOGIT_CELLS
   const maxAbs = Math.max(...logits.map((l) => Math.abs(l)))
+  // Cells start landing after the head→logits arrow finishes (~2.4s).
+  const dCellsStart = 2.4
+  const dCellsEnd = dCellsStart + LOGIT_CELLS * 0.05
   return (
     <motion.g
       animate={{ opacity: active ? 1 : 0.4 }}
       transition={{ duration: 0.5 }}
     >
-      <text
+      <motion.text
         x={LOGIT_X + LOGIT_W / 2}
         y={LOGIT_Y - 36}
         textAnchor="middle"
@@ -537,20 +673,26 @@ function LogitColumn({ active }: { active: boolean }) {
         fontSize={11}
         letterSpacing={2}
         fontWeight={600}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: active ? 1 : 0.5 }}
+        transition={{ duration: 0.35, delay: active ? 2.2 : 0 }}
       >
         LOGITS
-      </text>
-      <text
+      </motion.text>
+      <motion.text
         x={LOGIT_X + LOGIT_W / 2}
         y={LOGIT_Y - 20}
         textAnchor="middle"
         fill="rgba(255,255,255,0.55)"
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
         fontSize={11}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: active ? 1 : 0.5 }}
+        transition={{ duration: 0.35, delay: active ? 2.3 : 0 }}
       >
         vocab_size scores
-      </text>
-      <rect
+      </motion.text>
+      <motion.rect
         x={LOGIT_X}
         y={LOGIT_Y}
         width={LOGIT_W}
@@ -559,16 +701,22 @@ function LogitColumn({ active }: { active: boolean }) {
         ry={8}
         fill="rgba(34,211,238,0.04)"
         stroke={ACCENT.cyan}
-        strokeOpacity={active ? 0.85 : 0.45}
+        initial={{ opacity: 0 }}
+        animate={{
+          opacity: active ? 1 : 0.5,
+          strokeOpacity: active ? 0.85 : 0.45,
+        }}
+        transition={{ duration: 0.4, delay: active ? 2.3 : 0 }}
         strokeWidth={1.4}
       />
       {logits.map((l, i) => {
         const cy = LOGIT_Y + padY + i * cellH
-        const isTop = l === Math.max(...logits)
+        const isTop = l === topLogit
         const intensity = (l + maxAbs) / (2 * maxAbs)
+        const cellDelay = dCellsStart + i * 0.05
         return (
           <g key={i}>
-            <rect
+            <motion.rect
               x={LOGIT_X + 8}
               y={cy + 2}
               width={LOGIT_W - 16}
@@ -583,8 +731,21 @@ function LogitColumn({ active }: { active: boolean }) {
               stroke={isTop ? ACCENT.mint : ACCENT.cyan}
               strokeOpacity={isTop ? 0.95 : 0.55}
               strokeWidth={isTop ? 1.4 : 0.8}
+              initial={{ opacity: 0, scaleX: 0.4 }}
+              animate={{
+                opacity: active ? 1 : 0.5,
+                scaleX: active ? 1 : 0.85,
+              }}
+              transition={{
+                duration: 0.32,
+                delay: active ? cellDelay : 0,
+                ease: 'easeOut',
+              }}
+              style={{
+                transformOrigin: `${LOGIT_X + LOGIT_W / 2}px ${cy + cellH / 2}px`,
+              }}
             />
-            <text
+            <motion.text
               x={LOGIT_X + LOGIT_W / 2}
               y={cy + cellH / 2 + 4}
               textAnchor="middle"
@@ -592,13 +753,48 @@ function LogitColumn({ active }: { active: boolean }) {
               fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
               fontSize={11}
               fontWeight={500}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: active ? 1 : 0.55 }}
+              transition={{
+                duration: 0.32,
+                delay: active ? cellDelay + 0.05 : 0,
+              }}
             >
               {l.toFixed(1)}
-            </text>
+            </motion.text>
+            {/* Winner glow — pulses around the top logit cell once all
+                cells have landed. Sells "this is the argmax". */}
+            {isTop && active && (
+              <motion.rect
+                x={LOGIT_X + 6}
+                y={cy}
+                width={LOGIT_W - 12}
+                height={cellH}
+                rx={3}
+                ry={3}
+                fill="none"
+                stroke={ACCENT.mint}
+                strokeWidth={1.8}
+                animate={{
+                  opacity: [0, 0.95, 0.5, 0.95, 0],
+                  scale: [1, 1.06, 1.0, 1.06, 1],
+                }}
+                transition={{
+                  duration: 1.6,
+                  delay: dCellsEnd + 0.1,
+                  ease: 'easeInOut',
+                  repeat: Infinity,
+                  repeatDelay: 1.4,
+                }}
+                style={{
+                  transformOrigin: `${LOGIT_X + LOGIT_W / 2}px ${cy + cellH / 2}px`,
+                }}
+              />
+            )}
           </g>
         )
       })}
-      <text
+      <motion.text
         x={LOGIT_X + LOGIT_W / 2}
         y={LOGIT_Y + LOGIT_H + 20}
         textAnchor="middle"
@@ -606,9 +802,12 @@ function LogitColumn({ active }: { active: boolean }) {
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
         fontSize={10}
         letterSpacing={1.4}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: active ? 1 : 0.4 }}
+        transition={{ duration: 0.35, delay: active ? dCellsEnd + 0.1 : 0 }}
       >
         vocab
-      </text>
+      </motion.text>
     </motion.g>
   )
 }
@@ -868,35 +1067,43 @@ export function VizAct6Intro({ phase, pred }: { phase: number; pred: Prediction 
       {/* Hidden state */}
       <HiddenStateCard active={phase >= 1} />
 
-      {/* Hidden → output head arrow */}
+      {/* Hidden → output head arrow — draws after the hidden state cells
+          finish cascading (~0.7s), arrowhead lands ~1.05s. */}
       <ArrowRight
         x1={HSTATE_X + HSTATE_W + 8}
         x2={HEAD_X - 8}
         y={HSTATE_Y + HSTATE_H / 2}
         accent={ACCENT.amber}
+        active={phase >= 1}
+        delay={0.65}
       />
 
-      {/* Output head */}
+      {/* Output head — pops in starting at ~1.1s (just after the arrow lands). */}
       <OutputHead active={phase >= 1} />
 
-      {/* Output head → logits arrow */}
+      {/* Output head → logits arrow — draws after the head finishes
+          assembling (~1.95s), arrowhead lands ~2.4s. */}
       <ArrowRight
         x1={HEAD_X + HEAD_W + 8}
         x2={LOGIT_X - 8}
         y={HEAD_Y + HEAD_H / 2}
         accent={ACCENT.blue}
+        active={phase >= 1}
+        delay={1.95}
       />
 
-      {/* Logits column */}
+      {/* Logits column — cells cascade starting at ~2.4s. */}
       <LogitColumn active={phase >= 1} />
 
-      {/* Logits → softmax arrow */}
+      {/* Logits → softmax arrow — draws after logits finish cascading. */}
       <ArrowRight
         x1={LOGIT_X + LOGIT_W + 8}
         x2={BAR_X - 8}
         y={LOGIT_Y + LOGIT_H / 2}
         accent={ACCENT.mint}
         label="softmax"
+        active={phase >= 1}
+        delay={3.05}
       />
 
       {/* Bar chart */}
