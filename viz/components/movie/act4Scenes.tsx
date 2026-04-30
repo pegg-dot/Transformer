@@ -4388,15 +4388,22 @@ export function VizBpAccum({ phase }: { phase: number }) {
                 transition: `opacity ${0.4 / speed}s ease ${cascadeDelayS / speed}s`,
               }}
             >
-              <rect
+              <motion.rect
                 x={BPA_TILES_X - 4}
                 y={tileY - 4}
                 width={BPA_TILE_W + 8}
                 height={BPA_TILE_H + 8}
                 rx={5}
                 fill="rgba(255,255,255,0.02)"
-                stroke="rgba(255,255,255,0.08)"
+                stroke="rgba(255,255,255,0.20)"
                 strokeWidth={1}
+                animate={{ strokeOpacity: [0.18, 0.55, 0.18] }}
+                transition={{
+                  duration: 2.8 / speed,
+                  delay: (i * 0.18) / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
               />
               {Array.from({ length: BPA_GRID }, (_, r) =>
                 Array.from({ length: BPA_GRID }, (_, c) => {
@@ -4417,44 +4424,138 @@ export function VizBpAccum({ phase }: { phase: number }) {
                   )
                 }),
               )}
+              {/* Per-tile scan bar — narrow vertical highlight that travels
+                  left→right across the heatmap, sells "this gradient was
+                  computed for this example". Each tile starts at a
+                  different phase so the four tiles look like they're
+                  actively producing gradients. */}
+              <motion.rect
+                y={tileY - 1}
+                width={BPA_TILE_CELL * 0.7}
+                height={BPA_TILE_H + 2}
+                rx={2}
+                fill={i % 2 === 0 ? ACCENT.red : ACCENT.blue}
+                fillOpacity={0.55}
+                initial={{ x: BPA_TILES_X - BPA_TILE_CELL, opacity: 0 }}
+                animate={{
+                  x: [
+                    BPA_TILES_X - BPA_TILE_CELL,
+                    BPA_TILES_X + BPA_TILE_W,
+                  ],
+                  opacity: [0, 0.85, 0.85, 0],
+                }}
+                transition={{
+                  duration: 1.6 / speed,
+                  delay: (0.4 + i * 0.35) / speed,
+                  ease: 'easeInOut',
+                  times: [0, 0.12, 0.88, 1],
+                  repeat: Infinity,
+                  repeatDelay: 2.2 / speed,
+                }}
+              />
             </g>
 
-            {/* Outflow arrow toward the averaging operator */}
+            {/* Outflow arrow toward the averaging operator — line + a
+                continuously traveling particle that sells "this example's
+                gradient is flowing into the average". Particles from the
+                four tiles are staggered so they don't all arrive at once. */}
             <line
               x1={BPA_TILES_X + BPA_TILE_W + 8}
               x2={BPA_OP_CX - BPA_OP_R - 6}
               y1={tileY + BPA_TILE_H / 2}
               y2={BPA_OP_CY}
-              stroke={ACCENT.dim}
-              strokeOpacity={0.45}
-              strokeWidth={1}
+              stroke={sameWFrame ? ACCENT.mint : ACCENT.dim}
+              strokeOpacity={sameWFrame ? 0.55 : 0.25}
+              strokeWidth={1.2}
               strokeDasharray="3 4"
               style={{
-                opacity: sameWFrame ? 0.6 : 0,
-                transition: `opacity ${0.5 / speed}s ease`,
+                opacity: sameWFrame ? 0.85 : 0.4,
+                transition: `opacity ${0.5 / speed}s ease, stroke ${0.5 / speed}s ease`,
               }}
             />
+            {sameWFrame && (
+              <motion.circle
+                r={4.5}
+                fill={ACCENT.mint}
+                fillOpacity={0.95}
+                filter="url(#bpa-glow)"
+                initial={{
+                  cx: BPA_TILES_X + BPA_TILE_W + 8,
+                  cy: tileY + BPA_TILE_H / 2,
+                  opacity: 0,
+                }}
+                animate={{
+                  cx: [
+                    BPA_TILES_X + BPA_TILE_W + 8,
+                    BPA_OP_CX - BPA_OP_R - 6,
+                  ],
+                  cy: [tileY + BPA_TILE_H / 2, BPA_OP_CY],
+                  opacity: [0, 1, 1, 0],
+                }}
+                transition={{
+                  duration: 1.4 / speed,
+                  delay: (0.6 + i * 0.25) / speed,
+                  ease: 'easeInOut',
+                  times: [0, 0.12, 0.88, 1],
+                  repeat: Infinity,
+                  repeatDelay: 1.8 / speed,
+                }}
+              />
+            )}
           </g>
         )
       })}
 
       {/* ===================== AVERAGING OPERATOR (Σ / B) ===================== */}
       <g>
-        {/* Soft halo */}
-        <circle
+        {/* Soft halo — pulses scale + opacity continuously so the operator
+            looks like it's actively combining incoming gradients, not just
+            sitting in the center. */}
+        <motion.circle
           cx={BPA_OP_CX}
           cy={BPA_OP_CY}
           r={BPA_OP_R + 12}
           fill={showAvg ? 'rgba(52,211,153,0.10)' : 'rgba(167,139,250,0.06)'}
-          style={{ transition: `fill ${0.5 / speed}s ease` }}
+          animate={
+            sameWFrame
+              ? { scale: [1, 1.18, 1], opacity: [0.5, 0.95, 0.5] }
+              : { scale: 1, opacity: 0.6 }
+          }
+          transition={
+            sameWFrame
+              ? {
+                  duration: 1.8 / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }
+              : { duration: 0.4 }
+          }
+          style={{
+            transition: `fill ${0.5 / speed}s ease`,
+            transformOrigin: `${BPA_OP_CX}px ${BPA_OP_CY}px`,
+          }}
         />
-        <circle
+        <motion.circle
           cx={BPA_OP_CX}
           cy={BPA_OP_CY}
           r={BPA_OP_R}
           fill={showAvg ? 'rgba(52,211,153,0.18)' : 'rgba(255,255,255,0.04)'}
           stroke={showAvg ? ACCENT.mint : 'rgba(255,255,255,0.30)'}
           strokeWidth={1.6}
+          animate={
+            sameWFrame
+              ? { strokeOpacity: [0.55, 1, 0.55] }
+              : { strokeOpacity: 0.6 }
+          }
+          transition={
+            sameWFrame
+              ? {
+                  duration: 2.4 / speed,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }
+              : { duration: 0.4 }
+          }
           style={{ transition: `fill ${0.5 / speed}s ease, stroke ${0.5 / speed}s ease` }}
         />
         <text
@@ -4507,6 +4608,29 @@ export function VizBpAccum({ phase }: { phase: number }) {
           transition: `opacity ${0.5 / speed}s ease`,
         }}
       />
+      {/* Continuous particle on the operator → avg arrow when showing the
+          averaged result. Sells "the mean is being delivered into the
+          ∇W_batch tile". */}
+      {showAvg && (
+        <motion.circle
+          r={5}
+          fill={ACCENT.mint}
+          fillOpacity={0.95}
+          filter="url(#bpa-glow)"
+          initial={{ cx: BPA_OP_CX + BPA_OP_R + 6, cy: BPA_OP_CY, opacity: 0 }}
+          animate={{
+            cx: [BPA_OP_CX + BPA_OP_R + 6, BPA_AVG_X - 6],
+            opacity: [0, 1, 1, 0],
+          }}
+          transition={{
+            duration: 1.2 / speed,
+            ease: 'easeInOut',
+            times: [0, 0.15, 0.85, 1],
+            repeat: Infinity,
+            repeatDelay: 1.5 / speed,
+          }}
+        />
+      )}
 
       {/* ===================== AVERAGED ∇W_batch TILE ===================== */}
       <g
@@ -4604,6 +4728,35 @@ export function VizBpAccum({ phase }: { phase: number }) {
           stroke={ACCENT.amber}
           strokeWidth={1.7}
         />
+        {/* Continuous particle from ∇W_batch tile down into the update
+            box — sells "the average just landed and is being applied". */}
+        {showUpdate && (() => {
+          const fromX = BPA_AVG_X + BPA_AVG_W / 2
+          const fromY = BPA_AVG_Y + BPA_AVG_W + 50
+          const toX = BPA_UPDATE_X + BPA_UPDATE_W / 2
+          const toY = BPA_UPDATE_Y - 10
+          return (
+            <motion.circle
+              r={5}
+              fill={ACCENT.amber}
+              fillOpacity={0.95}
+              filter="url(#bpa-glow)"
+              initial={{ cx: fromX, cy: fromY, opacity: 0 }}
+              animate={{
+                cx: [fromX, toX],
+                cy: [fromY, toY],
+                opacity: [0, 1, 1, 0],
+              }}
+              transition={{
+                duration: 1.0 / speed,
+                ease: 'easeInOut',
+                times: [0, 0.15, 0.85, 1],
+                repeat: Infinity,
+                repeatDelay: 1.6 / speed,
+              }}
+            />
+          )
+        })()}
 
         <rect
           x={BPA_UPDATE_X}
