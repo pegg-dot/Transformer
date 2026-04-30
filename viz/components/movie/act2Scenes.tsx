@@ -2289,7 +2289,21 @@ export function VizAttention() {
   const { prompt } = usePrompt()
   const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
   const T = tokens.length
-  const FOCUSED = Math.min(4, T - 1)
+
+  // Focused query position cycles through the sequence so the arcs and
+  // matrix highlight come out of different letters over time.
+  const ATT_FOCUS_MIN = 1
+  const ATT_FOCUS_MAX = Math.max(ATT_FOCUS_MIN, T - 1)
+  const [focused, setFocused] = useState(Math.min(4, ATT_FOCUS_MAX))
+  useEffect(() => {
+    const id = setInterval(() => {
+      setFocused((f) => {
+        const next = f + 1
+        return next > ATT_FOCUS_MAX ? ATT_FOCUS_MIN : next
+      })
+    }, 2400 / speed)
+    return () => clearInterval(id)
+  }, [ATT_FOCUS_MAX, speed])
 
   // 4 phases, each ~10s
   const PHASES = 4
@@ -2302,10 +2316,10 @@ export function VizAttention() {
     return () => clearInterval(id)
   }, [speed])
 
-  // Deterministic raw scores for the focused row (position FOCUSED)
-  // Earlier positions get real values; future positions are -∞ (masked)
+  // Deterministic raw scores for the focused row (position `focused`).
+  // Earlier positions get real values; future positions are -∞ (masked).
   const rawScoresRow = Array.from({ length: T }).map((_, j) => {
-    if (j > FOCUSED) return -Infinity
+    if (j > focused) return -Infinity
     return Math.sin(j * 1.3 + 0.7) * 1.2 + Math.cos(j * 0.5) * 0.4
   })
   // Softmax of the row
@@ -2334,33 +2348,33 @@ export function VizAttention() {
           fill={ACCENT.dim} letterSpacing="0.32em">
           BLOCK 0 · ATTENTION · 4 SUB-PHASES
         </text>
-        <AttentionTokenStrip tokens={tokens} focused={FOCUSED} speed={speed} />
+        <AttentionTokenStrip tokens={tokens} focused={focused} speed={speed} />
 
         {/* ────── Persistent left anchor: "INSIDE A BLOCK" ────── */}
         <BlockAnchor
           tokens={tokens}
-          focused={FOCUSED}
+          focused={focused}
           phase={phase}
           speed={speed}
         />
 
         {/* ────── Phase-specific teaching viz on the right ──────
-            Wrapped in motion.g keyed on phase so the entire phase content
-            crossfades on transition. Each phase's internal animations
-            re-trigger on remount (initial → animate). */}
+            Wrapped in motion.g keyed on phase + focused so the entire
+            phase content crossfades on every focus tick AND on phase
+            transition — arcs/scores/value-mix all redraw cleanly. */}
         <motion.g
-          key={`phase-${phase}`}
+          key={`phase-${phase}-${focused}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 / speed, ease: 'easeOut' }}
         >
           {phase === 0 && (
-            <PhaseA tokens={tokens} focused={FOCUSED} speed={speed} />
+            <PhaseA tokens={tokens} focused={focused} speed={speed} />
           )}
           {phase === 1 && (
             <PhaseB
               tokens={tokens}
-              focused={FOCUSED}
+              focused={focused}
               speed={speed}
               rawScoresRow={rawScoresRow}
             />
@@ -2368,7 +2382,7 @@ export function VizAttention() {
           {phase === 2 && (
             <PhaseC
               tokens={tokens}
-              focused={FOCUSED}
+              focused={focused}
               speed={speed}
               rawScoresRow={rawScoresRow}
               softmaxRow={softmaxRow}
@@ -2377,7 +2391,7 @@ export function VizAttention() {
           {phase === 3 && (
             <PhaseD
               tokens={tokens}
-              focused={FOCUSED}
+              focused={focused}
               speed={speed}
               softmaxRow={softmaxRow}
             />
@@ -4591,7 +4605,21 @@ export function VizMultiHead() {
   const { prompt } = usePrompt()
   const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
   const T = tokens.length
-  const FOCUSED = Math.min(3, T - 1)
+  // Focused token cycles through positions over time so the per-head arcs
+  // visibly come out of different letters and the patterns change. Starts
+  // at 1 (need at least one earlier key to attend to) and walks up to T-1.
+  const FOCUSED_MIN = 1
+  const FOCUSED_MAX = Math.max(FOCUSED_MIN, T - 1)
+  const [focused, setFocused] = useState(Math.min(3, FOCUSED_MAX))
+  useEffect(() => {
+    const id = setInterval(() => {
+      setFocused((f) => {
+        const next = f + 1
+        return next > FOCUSED_MAX ? FOCUSED_MIN : next
+      })
+    }, 2200 / speed)
+    return () => clearInterval(id)
+  }, [FOCUSED_MAX, speed])
 
   const PHASES = 3
   const [phase, setPhase] = useState(0)
@@ -4662,7 +4690,7 @@ export function VizMultiHead() {
           const cellW = 32
           const startX = 90
           const x = startX + i * (cellW + 4)
-          const isFocused = i === FOCUSED
+          const isFocused = i === focused
           return (
             <g key={`mh-tok-${i}`}>
               {isFocused && (
@@ -4876,7 +4904,7 @@ export function VizMultiHead() {
                   swap from Phase 1 (Q/K/V) → Phase 2 (arcs) crossfades and
                   inner stagger animations re-trigger on remount. */}
               <motion.g
-                key={`head-${i}-content-${phase === 0 ? 'qkv' : 'arcs'}`}
+                key={`head-${i}-content-${phase === 0 ? 'qkv' : `arcs-${focused}`}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.45 / speed, ease: 'easeOut' }}
@@ -4899,7 +4927,7 @@ export function VizMultiHead() {
                     i={i}
                     accent={accent}
                     tokens={tokens}
-                    focused={FOCUSED}
+                    focused={focused}
                     rowX={HEAD_AREA_X + 80}
                     rowW={HEAD_AREA_W - 220}
                     speed={speed}
