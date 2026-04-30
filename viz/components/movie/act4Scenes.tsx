@@ -3946,8 +3946,8 @@ export function VizBpJacobian({ phase }: { phase: number }) {
           strokeDasharray="3 4"
           opacity={0.6}
         />
-        {/* Tile background */}
-        <rect
+        {/* Tile background — pulses continuously while visible */}
+        <motion.rect
           x={BPJ_TILE_CX - BPJ_TILE_W / 2}
           y={BPJ_TILE_CY - BPJ_TILE_H / 2}
           width={BPJ_TILE_W}
@@ -3956,6 +3956,12 @@ export function VizBpJacobian({ phase }: { phase: number }) {
           fill="rgba(248,113,113,0.18)"
           stroke={ACCENT.red}
           strokeWidth={1.4}
+          animate={{ strokeOpacity: [0.55, 1, 0.55] }}
+          transition={{
+            duration: 3.0 / speed,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
         />
         {/* Tile cells (4×4) */}
         {(() => {
@@ -4529,7 +4535,7 @@ export function VizBpAccum({ phase }: { phase: number }) {
           rx={16}
           fill="url(#bpa-avg-glow)"
         />
-        <rect
+        <motion.rect
           x={BPA_AVG_X - 8}
           y={BPA_AVG_Y - 8}
           width={BPA_AVG_W + 16}
@@ -4538,6 +4544,12 @@ export function VizBpAccum({ phase }: { phase: number }) {
           fill="rgba(52,211,153,0.06)"
           stroke={ACCENT.mint}
           strokeWidth={1.4}
+          animate={{ strokeOpacity: [0.55, 1, 0.55] }}
+          transition={{
+            duration: 3.0 / speed,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
         />
         {Array.from({ length: BPA_GRID }, (_, r) =>
           Array.from({ length: BPA_GRID }, (_, c) => {
