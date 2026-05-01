@@ -22,21 +22,25 @@ const PROMPT_PREFIX = 'What if I asked my AI to finish this sentence: '
 
 /**
  * Pick a hand-tuned continuation that completes the user's prompt in
- * Shakespearean style. The model is char-level trained on tinyshakespeare,
- * so this matches what you'd actually expect to come out of it.
+ * Shakespearean style. Returns null when there's no specific match —
+ * caller can decide whether to fall back to the live model or to a
+ * generic "the model would continue…" hint.
  */
-function pickReply(prompt: string): string {
+function pickReply(prompt: string): string | null {
   const p = prompt.trim().toLowerCase()
-  if (p.startsWith('to be, or not')) return ', that is the question.'
-  if (p.startsWith('to be, or')) return ' not to be, that is the question.'
+  if (p.startsWith('to be, or not')) return ' — that is the question.'
+  if (p.startsWith('to be, or')) return ' not to be — that is the question.'
   if (p.startsWith('to be')) return ', or not to be — that is the question.'
   if (p.startsWith('hark') || p.startsWith('hark!')) return ', what light through yonder window breaks!'
   if (p.startsWith('romeo')) return ', wherefore art thou, Romeo?'
   if (p.startsWith('hamlet')) return ', dread sovereign of the night!'
   if (p.startsWith('enter')) return ' a player, with a torch held high.'
   if (p.startsWith('o ') || p.startsWith('oh')) return ' that this too too solid flesh would melt.'
-  return '… and the model would continue, one character at a time, until satisfied.'
+  return null
 }
+
+const GENERIC_REPLY =
+  '… and the model would continue, one character at a time, until satisfied.'
 
 export function IntroColdOpenPanel() {
   const speed = useSpeed()
@@ -63,13 +67,24 @@ export function IntroColdOpenPanel() {
   const T_USER = T_SEND + 0.55
   const T_AI = T_USER + 0.75
   const T_DOTS = T_AI + 0.3
-  // AI reply: dots run for 1.4s, then a continuation types in. Try the
-  // live ONNX model first for the user's actual prompt; fall back to a
-  // hand-tuned continuation if the model isn't ready or errored.
+  // AI reply: dots run for 1.4s, then a continuation types in.
+  // Priority order:
+  //   1. hand-tuned reply (Hamlet-canon answers — the cold open's
+  //      first-impression payoff: "To be, or not to be" → "— that is the
+  //      question.")
+  //   2. live ONNX model continuation (what the actual char-level
+  //      tinyshakespeare model would produce; demonstrates real generation
+  //      for prompts we don't have a canned answer for)
+  //   3. a generic "the model would continue…" hint for ultra-short prompts
   const T_REPLY_START = T_DOTS + 1.4
   const live = useLiveContinuation(prompt, 32)
+  const handTuned = pickReply(prompt)
   const replyText =
-    live.text.length > 0 ? live.text : pickReply(prompt)
+    handTuned !== null
+      ? handTuned
+      : live.text.length > 0
+        ? live.text
+        : GENERIC_REPLY
   const REPLY_CHAR_MS = 50
   const T_REPLY_DONE = T_REPLY_START + (Math.max(replyText.length, 8) * REPLY_CHAR_MS) / 1000
   const T_HINT = T_REPLY_DONE + 0.6
