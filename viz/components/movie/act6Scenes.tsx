@@ -1022,10 +1022,76 @@ export function VizAct6Intro({ phase, pred }: { phase: number; pred: Prediction 
       preserveAspectRatio="xMidYMid meet"
       className="h-full w-full"
     >
+      {/* Tour breadcrumb — Acts I–V converge here. Five small chips that
+          recap the whole journey, with OUTPUT lit as the current act. The
+          movie is closing; this is where everything the viewer has seen
+          (tokens, blocks, training, upgrades) lands. */}
+      <motion.g
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7, ease: 'easeOut' }}
+      >
+        {(() => {
+          const acts = [
+            { label: 'INPUT', sub: 'I' },
+            { label: 'BLOCKS', sub: 'II · III' },
+            { label: 'TRAIN', sub: 'IV' },
+            { label: 'UPGRADE', sub: 'V' },
+            { label: 'OUTPUT', sub: 'VI', active: true },
+          ]
+          const chipW = 110
+          const gap = 16
+          const total = acts.length * chipW + (acts.length - 1) * gap
+          const startX = (VB_W - total) / 2
+          return acts.map((a, i) => {
+            const x = startX + i * (chipW + gap)
+            const isActive = a.active === true
+            return (
+              <g key={`tour-${i}`}>
+                <rect
+                  x={x}
+                  y={14}
+                  width={chipW}
+                  height={26}
+                  rx={4}
+                  fill={isActive ? 'rgba(52,211,153,0.15)' : 'rgba(255,255,255,0.025)'}
+                  stroke={isActive ? ACCENT.mint : 'rgba(255,255,255,0.15)'}
+                  strokeWidth={isActive ? 1.4 : 0.8}
+                />
+                <text
+                  x={x + chipW / 2}
+                  y={31}
+                  textAnchor="middle"
+                  fill={isActive ? ACCENT.mint : 'rgba(255,255,255,0.55)'}
+                  fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                  fontSize={10}
+                  letterSpacing={2.4}
+                >
+                  {a.label}
+                </text>
+                {/* Connector arrow between chips */}
+                {i < acts.length - 1 && (
+                  <text
+                    x={x + chipW + gap / 2}
+                    y={32}
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.3)"
+                    fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                    fontSize={11}
+                  >
+                    →
+                  </text>
+                )}
+              </g>
+            )
+          })
+        })()}
+      </motion.g>
+
       {/* Title strip */}
       <text
         x={VB_W / 2}
-        y={48}
+        y={70}
         textAnchor="middle"
         fill="rgba(255,255,255,0.85)"
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"

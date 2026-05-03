@@ -418,6 +418,49 @@ export function VizAct5Intro() {
     gqa: 3.15,
   }
 
+  // ── Dive into the attention slot (where RoPE wires in) ───────────────
+  // Mirrors scenes 8/13/24. At ~11.5s of the 14s scene, the camera pushes
+  // into the attention slot of the block — that's the spot RoPE upgrades.
+  // Scene 31 (rope) uses zoom-in entry, so the cut feels continuous: we
+  // zoomed into where RoPE applies; rope opens with the rotation demo.
+  const [diveT, setDiveT] = useState({ s: 1, tx: 0, ty: 0, blur: 0 })
+  useEffect(() => {
+    setDiveT({ s: 1, tx: 0, ty: 0, blur: 0 })
+    const startMs = 11500
+    const durMs = 2200
+    const targetScale = 2.4
+    // Attention slot center inside the cutaway block.
+    const targetPx = SLOT_X + SLOT_W / 2
+    const targetPy = ATT_Y + ATT_H / 2
+    const targetTx = VB_W / 2 - targetPx * targetScale
+    const targetTy = VB_H / 2 - targetPy * targetScale
+    const targetBlur = 1.6
+    let startTime = 0
+    let raf = 0
+    const easeInOutCubic = (v: number) =>
+      v < 0.5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2
+    const tick = (now: number) => {
+      if (!startTime) startTime = now
+      const elapsed = now - startTime
+      if (elapsed < startMs) {
+        raf = requestAnimationFrame(tick)
+        return
+      }
+      const tNorm = Math.min(1, (elapsed - startMs) / durMs)
+      const eased = easeInOutCubic(tNorm)
+      setDiveT({
+        s: 1 + (targetScale - 1) * eased,
+        tx: targetTx * eased,
+        ty: targetTy * eased,
+        blur: targetBlur * eased,
+      })
+      if (tNorm < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+  const diving = diveT.s > 1.01
+
   // Callout box geometry.
   const calloutW = 280
   const calloutH = 80
@@ -464,6 +507,15 @@ export function VizAct5Intro() {
         </filter>
       </defs>
 
+      {/* Dive wrapper — at scene end, camera pushes into the attention
+          slot of the cutaway block (where RoPE wires in). Scene 31 (rope)
+          opens at that spot. Plain <g> with SVG transform attribute, raf-
+          eased state. Same pattern as scenes 8, 13, 24. */}
+      <g
+        transform={`translate(${diveT.tx} ${diveT.ty}) scale(${diveT.s})`}
+        style={{ filter: diveT.blur > 0.01 ? `blur(${diveT.blur}px)` : undefined }}
+      >
+
       {/* Soft glow halo behind the block — sells "it is the body, the
           callouts are the upgrades". */}
       <motion.ellipse
@@ -475,7 +527,30 @@ export function VizAct5Intro() {
         {...fadeIn(0.05, 1.2)}
       />
 
-      {/* Title strip */}
+      {/* Pre-title bridge — fades in first to make the act handoff explicit:
+          training (Act IV) is done; the model is real. Now we look at the
+          parts modern transformers upgrade. Crossfades to the cutaway
+          title at ~1s so the eye lands on the block once that's set up. */}
+      <motion.text
+        x={VB_W / 2}
+        y={56}
+        textAnchor="middle"
+        fill="rgba(52,211,153,0.85)"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontSize={16}
+        letterSpacing={3.4}
+        initial={{ opacity: 0, y: 0 }}
+        animate={{ opacity: [0, 1, 1, 0], y: [4, 0, 0, -4] }}
+        transition={{
+          duration: 2.4,
+          times: [0, 0.18, 0.7, 1],
+          ease: 'easeInOut',
+        }}
+      >
+        TRAINING DONE  ·  NOW UPGRADE THE PARTS
+      </motion.text>
+
+      {/* Title strip — appears after the pre-title fades */}
       <motion.text
         x={VB_W / 2}
         y={56}
@@ -484,7 +559,9 @@ export function VizAct5Intro() {
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
         fontSize={16}
         letterSpacing={3.4}
-        {...fadeIn(0)}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 2.0, duration: 0.6, ease: 'easeOut' }}
       >
         TRANSFORMER BLOCK · CUTAWAY
       </motion.text>
@@ -800,6 +877,22 @@ export function VizAct5Intro() {
       >
         ROPE · RMSNORM · SWIGLU · GQA
       </motion.text>
+      </g>
+      {/* Dive caption — fades in once camera is moving into the att slot. */}
+      {diving && (
+        <text
+          x={VB_W / 2}
+          y={120}
+          textAnchor="middle"
+          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+          fontSize={13}
+          letterSpacing={4.2}
+          fill={ACCENT.pink}
+          opacity={0.9}
+        >
+          ZOOM INTO ATTENTION · WHERE ROPE WIRES IN
+        </text>
+      )}
     </svg>
   )
 }
@@ -3275,6 +3368,32 @@ export function VizModern({ phase }: { phase: number }) {
       >
         <GQACardBody active={phase === 2} />
       </ModCard>
+
+      {/* Act V → VI handoff — fades in late in the GQA phase so by the
+          time the scene transitions to act6-intro, the user has already
+          read the next narrative beat. Sits above the footer. */}
+      <motion.text
+        x={MOD_VB_W / 2}
+        y={MOD_VB_H - 56}
+        textAnchor="middle"
+        fill="rgba(255,255,255,0.85)"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontStyle="italic"
+        fontSize={13}
+        letterSpacing={2.4}
+        initial={{ opacity: 0, y: MOD_VB_H - 50 }}
+        animate={{
+          opacity: phase === 2 ? 0.85 : 0,
+          y: phase === 2 ? MOD_VB_H - 56 : MOD_VB_H - 50,
+        }}
+        transition={{
+          duration: 0.7,
+          delay: phase === 2 ? 6.0 : 0,
+          ease: 'easeOut',
+        }}
+      >
+        next  ·  what does it actually output?
+      </motion.text>
 
       {/* Footer */}
       <text

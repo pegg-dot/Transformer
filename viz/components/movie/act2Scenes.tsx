@@ -41,6 +41,55 @@ export function VizAct2Intro() {
   const { prompt } = usePrompt()
   const tokens = (prompt || 'To be, or not to be').split('').slice(0, 14)
 
+  // ── Dive-in cinematic ────────────────────────────────────────────────
+  // Simple, single-phase zoom into the center of Block 0 starting at
+  // 10.5s of the 14s scene. Uses the SVG `transform` attribute on a
+  // plain <g> (not a motion.g) with manual raf-based easing — no CSS
+  // `transform-origin` ambiguity, scale anchors at SVG user-space (0, 0),
+  // math is straightforward.
+  // Transform applied: translate(tx ty) scale(s)
+  //   For a target point P=(px, py) to land at viewport center (700, 500)
+  //   at scale s: tx = 700 − px·s, ty = 500 − py·s.
+  // Block 0 center is (heroBlock.x + heroBlock.w/2, heroCenterY).
+  const [diveT, setDiveT] = useState({ s: 1, tx: 0, ty: 0, blur: 0 })
+  useEffect(() => {
+    setDiveT({ s: 1, tx: 0, ty: 0, blur: 0 })
+    const startMs = 10500 / speed // when the dive begins
+    const durMs = 2400 / speed
+    const targetScale = 2.8
+    const targetPx = heroBlock.x + heroBlock.w / 2 // block center x
+    const targetPy = heroCenterY                    // block center y
+    const targetTx = 700 - targetPx * targetScale
+    const targetTy = 500 - targetPy * targetScale
+    const targetBlur = 1.5
+
+    let startTime = 0
+    let raf = 0
+    const easeInOutCubic = (t: number) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+
+    const tick = (now: number) => {
+      if (!startTime) startTime = now
+      const elapsed = now - startTime
+      if (elapsed < startMs) {
+        raf = requestAnimationFrame(tick)
+        return
+      }
+      const tNorm = Math.min(1, (elapsed - startMs) / durMs)
+      const eased = easeInOutCubic(tNorm)
+      setDiveT({
+        s: 1 + (targetScale - 1) * eased,
+        tx: targetTx * eased,
+        ty: targetTy * eased,
+        blur: targetBlur * eased,
+      })
+      if (tNorm < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [speed])
+  const diving = diveT.s > 1.01
+
   // Block stack — Block 0 is the hero (front-left), others recede diagonally
   // to upper-right. Each successive block is smaller + dimmer.
   const blocks = [
@@ -85,6 +134,15 @@ export function VizAct2Intro() {
           </filter>
         </defs>
 
+        {/* Dive wrapper — plain <g> using the SVG `transform` attribute.
+            SVG transform is in user-space, scale anchors at (0, 0), no
+            CSS transform-origin ambiguity. The transform string is built
+            from raf-eased state (`diveT`) so the composition smoothly
+            scales from identity → centered on Block 0. */}
+        <g
+          transform={`translate(${diveT.tx} ${diveT.ty}) scale(${diveT.s})`}
+          style={{ filter: diveT.blur > 0.01 ? `blur(${diveT.blur}px)` : undefined }}
+        >
         {/* ────── Top kicker ────── */}
         <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
           fill={ACCENT.dim} letterSpacing="0.32em">
@@ -678,6 +736,27 @@ export function VizAct2Intro() {
           transition={{ delay: 2.2 / speed, duration: 0.6 / speed }}
         >
           The transformer is six identical blocks. We zoom into the first.
+        </motion.text>
+        </g>
+        {/* ────── Dive caption — fades in once the dive starts ────── */}
+        <motion.text
+          x={700}
+          y={130}
+          textAnchor="middle"
+          fontSize="13"
+          fontFamily="var(--font-mono)"
+          fill={ACCENT.violet}
+          letterSpacing="0.42em"
+          initial={{ opacity: 0, y: 122 }}
+          animate={
+            diving ? { opacity: 1, y: 130 } : { opacity: 0, y: 122 }
+          }
+          transition={{
+            duration: 0.6 / speed,
+            ease: [0.22, 1, 0.36, 1],
+          }}
+        >
+          ENTERING BLOCK 0
         </motion.text>
       </svg>
     </div>
@@ -1592,7 +1671,7 @@ export function LayerNormSplitPane() {
           ),
         },
         infoCallout:
-          'LayerNorm runs per-token-vector — across the 384 dims of one token, NOT across tokens or batch. Different from BatchNorm.',
+          'LayerNorm normalizes one token vector at a time — across its 384 dims, not across tokens or batch. Different from BatchNorm. Its output feeds the next sublayer; the running residual stream waits unchanged for its + step later.',
       }}
     />
   )
@@ -2255,7 +2334,7 @@ export function QKVSplitPane() {
           ),
         },
         infoCallout:
-          'Q and K must share dimension (they meet via dot product), but V can encode anything. All three are learned — they start random and the network figures out what each should carry.',
+          'Q and K must share dimension (they meet via dot product); V can encode anything. All three are learned. These projections are prep work — the actual mixing and the residual + happen in the next two scenes.',
       }}
     />
   )
@@ -4599,7 +4678,7 @@ export function AttentionSplitPane() {
           ),
         },
         infoCallout:
-          'Causal masking sets future positions to −∞ before softmax, which makes their weights exactly 0. Each row sums to 1 — a clean probability distribution over the visible keys.',
+          'Causal masking sets future positions to −∞ before softmax — their weights become exactly 0. Each row sums to 1. The weighted sum of V vectors here is the per-token update that gets ADDED back to the residual stream once multi-head wraps up.',
       }}
     />
   )
@@ -5747,6 +5826,54 @@ export function VizFFN() {
     return () => clearInterval(id)
   }, [speed])
 
+  // ── Dive-in into one hidden neuron ─────────────────────────────────
+  // Mirrors scene 8's dive into Block 0. Scene 13 is "FFN structure";
+  // scene 14 (`ffn-feature`) zooms into one of the 1536 hidden dims. So at
+  // ~16.0s of the 19s scene, the camera pushes into the hidden block's
+  // center cell so the cut into scene 14 reads as a continuation.
+  const [diveT, setDiveT] = useState({ s: 1, tx: 0, ty: 0, blur: 0 })
+  useEffect(() => {
+    setDiveT({ s: 1, tx: 0, ty: 0, blur: 0 })
+    const startMs = 16000 / speed
+    const durMs = 2200 / speed
+    const targetScale = 3.4
+    // Target: a specific cell inside the hidden block (col 1, row 6 — about
+    // 1/3 down/right of the 4×16 grid, visually distinct enough to read as
+    // "one of the 1536"). FFN_GEOM defined below; we duplicate the math
+    // here since the dive runs before the GEOM constants are referenced.
+    const targetPx = 612 + 1 * 22 + 11 // hidX + col*colW + colW/2
+    const targetPy = 290 + 6 * 22 + 11 // hidY + row*colH + colH/2
+    const targetTx = 700 - targetPx * targetScale
+    const targetTy = 500 - targetPy * targetScale
+    const targetBlur = 1.8
+
+    let startTime = 0
+    let raf = 0
+    const easeInOutCubic = (t: number) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+
+    const tick = (now: number) => {
+      if (!startTime) startTime = now
+      const elapsed = now - startTime
+      if (elapsed < startMs) {
+        raf = requestAnimationFrame(tick)
+        return
+      }
+      const tNorm = Math.min(1, (elapsed - startMs) / durMs)
+      const eased = easeInOutCubic(tNorm)
+      setDiveT({
+        s: 1 + (targetScale - 1) * eased,
+        tx: targetTx * eased,
+        ty: targetTy * eased,
+        blur: targetBlur * eased,
+      })
+      if (tNorm < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [speed])
+  const diving = diveT.s > 1.01
+
   // ── Math: deterministic vectors ─────────────────────────────────────
   const DIN = 16     // 384 dims rendered as 16 cells
   const DHID = 64    // 1536 dims rendered as 64 cells (4× wider)
@@ -5794,6 +5921,12 @@ export function VizFFN() {
           </linearGradient>
         </defs>
 
+        {/* Dive wrapper — plain <g> with SVG transform attribute. Scale
+            anchors at user-space (0,0). raf-eased state drives values. */}
+        <g
+          transform={`translate(${diveT.tx} ${diveT.ty}) scale(${diveT.s})`}
+          style={{ filter: diveT.blur > 0.01 ? `blur(${diveT.blur}px)` : undefined }}
+        >
         {/* ────── Top kicker ────── */}
         <text x={20} y={36} fontSize="11" fontFamily="var(--font-mono)"
           fill={ACCENT.dim} letterSpacing="0.32em">
@@ -5854,6 +5987,22 @@ export function VizFFN() {
 
         {/* ────── Phase summary footer ────── */}
         <FFNPhaseSummary phase={phase} />
+        </g>
+        {/* ────── Dive caption ────── */}
+        <motion.text
+          x={700}
+          y={130}
+          textAnchor="middle"
+          fontSize="13"
+          fontFamily="var(--font-mono)"
+          fill={ACCENT.amber}
+          letterSpacing="0.42em"
+          initial={{ opacity: 0, y: 122 }}
+          animate={diving ? { opacity: 1, y: 130 } : { opacity: 0, y: 122 }}
+          transition={{ duration: 0.6 / speed, ease: [0.22, 1, 0.36, 1] }}
+        >
+          ZOOM INTO ONE NEURON
+        </motion.text>
       </svg>
     </div>
   )
@@ -8013,16 +8162,19 @@ function FFGeluCurvesPanel({
         stroke={phase === 1 ? COL_GELU : 'rgba(245,158,11,0.18)'}
         strokeWidth={phase === 1 ? 1.8 : 1} />
 
-      {/* Header */}
+      {/* Header — ReLU is what THIS nanoGPT actually uses; the other two
+          are shown for context only (what BERT/GPT-2 and LLaMA use). The
+          panel deliberately frames ReLU as the active choice and the
+          others as alternatives so the viewer doesn't conflate them. */}
       <text x={X + 22} y={Y + 26}
         fontSize="11" fontFamily="var(--font-mono)"
         fill={ACCENT.dim} letterSpacing="0.22em">
-        ACTIVATION FUNCTIONS · COMPARISON
+        ACTIVATION CHOICES · WE USE RELU
       </text>
       <text x={X + 22} y={Y + 46}
         fontSize="13" fontFamily="var(--font-display)"
-        fontStyle="italic" fill={COL_GELU}>
-        same z, three different "fire strengths"
+        fontStyle="italic" fill={COL_RELU}>
+        nanoGPT picks <tspan fontWeight={500}>ReLU</tspan>; modern LLMs picked smoother alternatives
       </text>
 
       {/* Axes */}
@@ -8075,10 +8227,14 @@ function FFGeluCurvesPanel({
         WHERE THEY DIFFER
       </text>
 
-      {/* Curves */}
-      <path d={buildPath(relu)} stroke={COL_RELU} strokeWidth={2.4} fill="none" />
-      <path d={buildPath(gelu)} stroke={COL_GELU} strokeWidth={2.6} fill="none" />
-      <path d={buildPath(swish)} stroke={COL_SWISH} strokeWidth={2.2} fill="none" strokeDasharray="4 4" />
+      {/* Curves — ReLU is the model's actual choice (thicker, solid, full
+          opacity). GELU + Swish are shown thinner, dashed, and dimmed so
+          the visual hierarchy matches the architectural reality. */}
+      <path d={buildPath(gelu)} stroke={COL_GELU} strokeWidth={1.6} fill="none"
+        strokeDasharray="4 4" opacity={0.55} />
+      <path d={buildPath(swish)} stroke={COL_SWISH} strokeWidth={1.6} fill="none"
+        strokeDasharray="2 5" opacity={0.5} />
+      <path d={buildPath(relu)} stroke={COL_RELU} strokeWidth={3.2} fill="none" />
 
       {/* Vertical probe line */}
       <line x1={probePx} x2={probePx}
@@ -8086,30 +8242,77 @@ function FFGeluCurvesPanel({
         stroke="rgba(255,255,255,0.30)"
         strokeWidth={0.8} strokeDasharray="2,2" />
 
-      {/* Probe dots on each curve */}
-      <motion.circle cx={probePx} cy={cy - relu(probeZ) * Y_SCALE} r={5}
+      {/* Probe dots — ReLU bright/bigger, others dim/smaller so the eye
+          tracks the active activation. */}
+      <motion.circle cx={probePx} cy={cy - gelu(probeZ) * Y_SCALE} r={3.5}
+        fill={COL_GELU} opacity={0.55}
+        animate={{ cx: probePx, cy: cy - gelu(probeZ) * Y_SCALE }}
+        transition={{ duration: 0.1 }} />
+      <motion.circle cx={probePx} cy={cy - swish(probeZ) * Y_SCALE} r={3.5}
+        fill={COL_SWISH} opacity={0.5}
+        animate={{ cx: probePx, cy: cy - swish(probeZ) * Y_SCALE }}
+        transition={{ duration: 0.1 }} />
+      <motion.circle cx={probePx} cy={cy - relu(probeZ) * Y_SCALE} r={6}
         fill={COL_RELU} filter="url(#ffg-glow)"
         animate={{ cx: probePx, cy: cy - relu(probeZ) * Y_SCALE }}
         transition={{ duration: 0.1 }} />
-      <motion.circle cx={probePx} cy={cy - gelu(probeZ) * Y_SCALE} r={5}
-        fill={COL_GELU} filter="url(#ffg-glow)"
-        animate={{ cx: probePx, cy: cy - gelu(probeZ) * Y_SCALE }}
-        transition={{ duration: 0.1 }} />
-      <motion.circle cx={probePx} cy={cy - swish(probeZ) * Y_SCALE} r={5}
-        fill={COL_SWISH} filter="url(#ffg-glow)"
-        animate={{ cx: probePx, cy: cy - swish(probeZ) * Y_SCALE }}
-        transition={{ duration: 0.1 }} />
+      {/* Active-activation badge near the ReLU probe dot */}
+      <motion.text
+        x={probePx + 12}
+        y={cy - relu(probeZ) * Y_SCALE - 8}
+        fontSize="9"
+        fontFamily="var(--font-mono)"
+        fill={COL_RELU}
+        letterSpacing="0.16em"
+        animate={{ x: probePx + 12, y: cy - relu(probeZ) * Y_SCALE - 8 }}
+        transition={{ duration: 0.1 }}
+      >
+        ACTIVE
+      </motion.text>
 
-      {/* Legend with descriptions */}
-      <g transform={`translate(${X + 22}, ${Y + H - 158})`}>
+      {/* Legend — ReLU first and tagged "this nanoGPT", others tagged
+          with the family that actually uses them. Annotation makes the
+          architectural choice explicit instead of leaving the viewer to
+          guess. */}
+      <g transform={`translate(${X + 22}, ${Y + H - 168})`}>
         {([
-          { name: 'ReLU', formula: 'max(0, z)', desc: 'hard zero below 0', color: COL_RELU, dashed: false },
-          { name: 'GELU', formula: 'z · Φ(z)', desc: 'smooth gate, small negatives survive', color: COL_GELU, dashed: false },
-          { name: 'Swish', formula: 'z · σ(z)', desc: 'smooth self-gating, used in SwiGLU', color: COL_SWISH, dashed: true },
+          {
+            name: 'ReLU',
+            formula: 'max(0, z)',
+            desc: 'hard zero below 0',
+            color: COL_RELU,
+            dashed: false,
+            stroke: 3.0,
+            tag: 'this nanoGPT',
+            tagColor: COL_RELU,
+            opacity: 1,
+          },
+          {
+            name: 'GELU',
+            formula: 'z · Φ(z)',
+            desc: 'smooth gate, small negatives survive',
+            color: COL_GELU,
+            dashed: true,
+            stroke: 1.8,
+            tag: 'GPT-2 / BERT',
+            tagColor: ACCENT.dim,
+            opacity: 0.7,
+          },
+          {
+            name: 'Swish',
+            formula: 'z · σ(z)',
+            desc: 'smooth self-gating, used in SwiGLU',
+            color: COL_SWISH,
+            dashed: true,
+            stroke: 1.8,
+            tag: 'LLaMA · PaLM',
+            tagColor: ACCENT.dim,
+            opacity: 0.65,
+          },
         ] as const).map((curve, i) => (
-          <g key={`leg-${i}`} transform={`translate(0, ${i * 32})`}>
+          <g key={`leg-${i}`} transform={`translate(0, ${i * 36})`} opacity={curve.opacity}>
             <line x1={0} x2={32} y1={10} y2={10}
-              stroke={curve.color} strokeWidth={2.6}
+              stroke={curve.color} strokeWidth={curve.stroke}
               strokeDasharray={curve.dashed ? '4 4' : ''} />
             <text x={42} y={14}
               fontSize="13" fontFamily="var(--font-mono)" fill={curve.color}>
@@ -8118,6 +8321,11 @@ function FFGeluCurvesPanel({
             <text x={42} y={28}
               fontSize="10" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
               {curve.desc}
+            </text>
+            <text x={210} y={14}
+              fontSize="9" fontFamily="var(--font-mono)" fill={curve.tagColor}
+              letterSpacing="0.18em">
+              {curve.tag}
             </text>
           </g>
         ))}

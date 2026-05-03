@@ -76,6 +76,10 @@ export function VizActIIIntro() {
   }, [speed])
 
   // Hero: block index 3 (slightly right-of-center stack slot at x=780)
+  // Phase 0 starts heavily scaled up (2.6×) so this scene reads as the
+  // direct continuation of Act II's deep dive — viewer was inside the
+  // FFN at scene 15; we land on Block 0 still big, then pull back. The
+  // 1.45× we used before felt like a fresh zoom, not a continuation.
   const heroIdx = 3
   const heroFinalX = BLOCK_CENTERS[heroIdx]
   const heroFinalY = BLOCK_CENTER_Y
@@ -83,7 +87,7 @@ export function VizActIIIntro() {
   const heroCenterY = 420
   const heroDx = phase === 0 ? heroCenterX - heroFinalX : 0
   const heroDy = phase === 0 ? heroCenterY - heroFinalY : 0
-  const heroScale = phase === 0 ? 1.45 : 1
+  const heroScale = phase === 0 ? 2.6 : 1
 
   return (
     <div className="relative h-full w-full">
@@ -185,7 +189,10 @@ export function VizActIIIntro() {
             y: heroDy,
             scale: heroScale,
           }}
-          transition={{ duration: 1.2 / speed, ease: 'easeInOut' }}
+          // Bigger initial scale (2.6 vs prior 1.45) means the pull-back
+          // covers more visual distance — extend the duration so the move
+          // reads as a deliberate camera dolly-out, not a snap.
+          transition={{ duration: 1.7 / speed, ease: [0.32, 0, 0.4, 1] }}
           style={{ transformOrigin: `${heroFinalX}px ${heroFinalY}px` }}
         >
           <StackBlockBody idx={heroIdx} speed={speed} />
@@ -568,10 +575,88 @@ export function VizStack() {
         {/* Bottom payoff — clean editorial text, no panel */}
         <StackPayoff phase={phase} />
 
+        {/* Handoff to scene 18 (sample) — once the stream has been climbing
+            for a while, a small "h_last → next scene" callout fades in at
+            the right edge, so the residual stream's exit is visibly the
+            input to the unembedding. Sample's hidden-state column slides
+            in from the left to receive it. */}
+        {phase === 1 && <StackHandoffOut speed={speed} />}
+
         {/* Phase summary footer */}
         <StackPhaseSummary phase={phase} />
       </svg>
     </div>
+  )
+}
+
+/* Handoff out — small vector column + label at the right edge that fades in
+ * during the climbing phase, signaling that the residual stream's final
+ * state is what scene 18 picks up as the input vector. */
+function StackHandoffOut({ speed }: { speed: number }) {
+  // 16 cells stacked vertically — a tiny token vector emerging on the right.
+  const CELLS = 16
+  const CELL_W = 16
+  const CELL_H = 14
+  const x = STREAM_X_END + 6
+  const y = STREAM_Y - (CELLS * CELL_H) / 2
+  const values = Array.from({ length: CELLS }).map(
+    (_, i) => Math.sin(i * 1.27 + 0.7) * 0.95 + Math.cos(i * 0.42) * 0.25,
+  )
+  return (
+    <motion.g
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: 5.5 / speed, duration: 0.7 / speed, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {/* Glow halo */}
+      <motion.rect
+        x={x - 6} y={y - 6}
+        width={CELL_W + 12} height={CELLS * CELL_H + 12} rx={4}
+        fill="none" stroke="rgba(167,139,250,0.85)" strokeWidth={1.4}
+        animate={{ opacity: [0.4, 0.95, 0.4] }}
+        transition={{ duration: 1.6 / speed, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      {/* Cells */}
+      {values.map((v, i) => {
+        const m = Math.max(-1.5, Math.min(1.5, v)) / 1.5
+        const fill = m >= 0
+          ? `rgba(34,211,238,${0.18 + m * 0.65})`
+          : `rgba(248,113,113,${0.18 + -m * 0.5})`
+        return (
+          <rect
+            key={`hand-${i}`}
+            x={x} y={y + i * CELL_H}
+            width={CELL_W} height={CELL_H - 1.5} rx={1.5}
+            fill={fill}
+            stroke="rgba(255,255,255,0.10)" strokeWidth={0.5}
+          />
+        )
+      })}
+      {/* Italic label */}
+      <text
+        x={x + CELL_W / 2}
+        y={y - 14}
+        textAnchor="middle"
+        fontSize="11"
+        fontFamily="var(--font-display)"
+        fontStyle="italic"
+        fill="rgba(167,139,250,0.95)"
+      >
+        h<tspan fontSize="8" dy="3">last</tspan>
+      </text>
+      {/* Subtitle below */}
+      <text
+        x={x + CELL_W / 2}
+        y={y + CELLS * CELL_H + 18}
+        textAnchor="middle"
+        fontSize="9"
+        fontFamily="var(--font-mono)"
+        fill="rgba(255,255,255,0.55)"
+        letterSpacing="0.2em"
+      >
+        → SOFTMAX
+      </text>
+    </motion.g>
   )
 }
 
@@ -1423,7 +1508,14 @@ function SampleHiddenState({ phase, speed }: { phase: number; speed: number }) {
     (_, i) => Math.sin(i * 1.27 + 0.7) * 0.95 + Math.cos(i * 0.42) * 0.25,
   )
   return (
-    <g>
+    // Slide-in from off-screen left on scene mount — picks up the residual
+    // stream's "h_last" handoff from scene 17 (stack), so the cut reads as
+    // "the last hidden state arrived; now compute logits over it."
+    <motion.g
+      initial={{ opacity: 0, x: -120 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.85 / speed, ease: [0.22, 1, 0.36, 1] }}
+    >
       {active && (
         <motion.rect
           x={SAMPLE_HID_X - 6} y={SAMPLE_HID_Y - 6}
@@ -1461,7 +1553,7 @@ function SampleHiddenState({ phase, speed }: { phase: number; speed: number }) {
         fontSize="9" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
         ∈ R³⁸⁴
       </text>
-    </g>
+    </motion.g>
   )
 }
 
@@ -2139,6 +2231,49 @@ export function VizKVCache() {
           fill={ACCENT.dim} letterSpacing="0.32em">
           ACT III · OUTPUT · KV CACHE · ONE NEW ROW PER STEP
         </text>
+
+        {/* "Where this happens" anchor — small breadcrumb pinning the
+            scene back to the residual-stream architecture from scenes
+            16–17. KVCache feels orphaned without this — it's an attention
+            sublayer optimization, not a new top-level concept. */}
+        <g transform="translate(20, 56)">
+          <text x={0} y={0}
+            fontSize="9" fontFamily="var(--font-mono)"
+            fill={ACCENT.dim} letterSpacing="0.18em" opacity={0.7}>
+            INSIDE BLOCK 0 · ATTENTION · EVERY GENERATION STEP
+          </text>
+          <text x={0} y={14}
+            fontSize="9" fontFamily="var(--font-display)"
+            fontStyle="italic" fill={ACCENT.dim} opacity={0.55}>
+            so the residual stream from Scene 17 keeps climbing without
+            recomputing the past every token
+          </text>
+        </g>
+
+        {/* Architecture-honesty badge — pinned top-right. nanoGPT does NOT
+            implement a KV cache (its generate() loop re-runs the full
+            forward pass each step). This scene illustrates what production
+            engines (vLLM, TGI, llama.cpp) do, not what this nanoGPT does.
+            Without this badge, the viewer would naturally assume the
+            mechanism shown is what nanoGPT does — same kind of mis-framing
+            we corrected in the activation-functions scene. */}
+        <g transform="translate(1380, 28)">
+          <rect x={-188} y={-12} width={188} height={28} rx={3}
+            fill="rgba(245,158,11,0.10)"
+            stroke={ACCENT.amber}
+            strokeOpacity={0.55}
+            strokeWidth={1} />
+          <text x={-178} y={6}
+            fontSize="9" fontFamily="var(--font-mono)"
+            fill={ACCENT.amber} letterSpacing="0.18em">
+            PRODUCTION TECHNIQUE
+          </text>
+          <text x={-178} y={18}
+            fontSize="8.5" fontFamily="var(--font-mono)"
+            fill={ACCENT.dim} letterSpacing="0.06em" fontStyle="italic">
+            this nanoGPT recomputes each step
+          </text>
+        </g>
 
         <text x={700} y={92} textAnchor="middle"
           fontSize="22" fontFamily="var(--font-display)"

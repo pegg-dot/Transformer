@@ -930,15 +930,18 @@ export function VizCrossEntropy() {
 
       {/* ========== HIGHLIGHT COLUMN ========== */}
       {/* A faint vertical band picks out the target column across both
-          target row and prediction bars. Helps the eye trace the link. */}
-      <rect
+          target row and prediction bars. Helps the eye trace the link.
+          Now breathes opacity so the focal column stays alive between
+          phase transitions. */}
+      <motion.rect
         x={targetBarX - 6}
         y={172}
         width={CE_BAR_W + 12}
         height={CE_BARS_BASELINE_Y - 172 + 16}
         rx={6}
         fill={ACCENT.mint}
-        opacity={0.06}
+        animate={{ opacity: [0.05, 0.12, 0.05] }}
+        transition={{ duration: 2.6 / speed, repeat: Infinity, ease: 'easeInOut' }}
       />
 
       {/* ========== PREDICTION LABEL ========== */}
@@ -2933,6 +2936,52 @@ export function VizBackprop({ phase }: { phase: number }) {
   const SWEEP_TOTAL_S = 3.4
   const stepS = SWEEP_TOTAL_S / (BP_BLOCKS + 1)
 
+  // Dive into Block 0 at the end of the scene — bp-jacobian (next scene)
+  // shows ONE block's local sensitivity map, so the camera lands on Block 0
+  // as the natural continuation. Same SVG-transform-attribute trick as
+  // scenes 8 and 13. Triggered after the backward sweep has resolved.
+  const [diveT, setDiveT] = useState({ s: 1, tx: 0, ty: 0, blur: 0 })
+  useEffect(() => {
+    setDiveT({ s: 1, tx: 0, ty: 0, blur: 0 })
+    // Scene duration is 21s; phases cycle every 6s. Dive starts at 18s
+    // (entering the second cycle's beat 0). Duration 2.4s, so by 20.4s the
+    // camera has landed on Block 0 with ~0.6s hold before scene transitions.
+    const startMs = 18000 / speed
+    const durMs = 2400 / speed
+    const targetScale = 2.4
+    // Block 0 center: leftmost block in the BP grid.
+    const targetPx = bpBlockCx(0)
+    const targetPy = BP_BLOCK_TOP_Y + BP_BLOCK_H / 2
+    // Viewport is 1400×1000; center at (700, 500).
+    const targetTx = 700 - targetPx * targetScale
+    const targetTy = 500 - targetPy * targetScale
+    const targetBlur = 1.6
+    let startTime = 0
+    let raf = 0
+    const easeInOutCubic = (t: number) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+    const tick = (now: number) => {
+      if (!startTime) startTime = now
+      const elapsed = now - startTime
+      if (elapsed < startMs) {
+        raf = requestAnimationFrame(tick)
+        return
+      }
+      const tNorm = Math.min(1, (elapsed - startMs) / durMs)
+      const eased = easeInOutCubic(tNorm)
+      setDiveT({
+        s: 1 + (targetScale - 1) * eased,
+        tx: targetTx * eased,
+        ty: targetTy * eased,
+        blur: targetBlur * eased,
+      })
+      if (tNorm < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [speed])
+  const diving = diveT.s > 1.01
+
   return (
     <svg viewBox={`0 0 ${BP_VB_W} ${BP_VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
       <defs>
@@ -2961,6 +3010,14 @@ export function VizBackprop({ phase }: { phase: number }) {
           <feGaussianBlur stdDeviation="2" />
         </filter>
       </defs>
+
+      {/* Dive wrapper — plain <g> with SVG transform attribute. raf-eased
+          state in `diveT` zooms the entire composition into Block 0 at the
+          end of the scene so bp-jacobian opens with that one block visible. */}
+      <g
+        transform={`translate(${diveT.tx} ${diveT.ty}) scale(${diveT.s})`}
+        style={{ filter: diveT.blur > 0.01 ? `blur(${diveT.blur}px)` : undefined }}
+      >
 
       {/* ===================== HEADER ===================== */}
       <text
@@ -3305,6 +3362,22 @@ export function VizBackprop({ phase }: { phase: number }) {
           )
         })}
       </g>
+      </g>
+      {/* Dive caption — fades in once the camera is moving toward Block 0. */}
+      {diving && (
+        <text
+          x={BP_VB_W / 2}
+          y={140}
+          textAnchor="middle"
+          fontFamily="var(--font-mono)"
+          fontSize="13"
+          letterSpacing="0.42em"
+          fill={ACCENT.amber}
+          opacity={0.9}
+        >
+          ZOOM INTO BLOCK 0 · LOCAL JACOBIAN
+        </text>
+      )}
     </svg>
   )
 }

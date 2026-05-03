@@ -555,9 +555,20 @@ export function VizTokenization() {
 
   return (
     <div className="relative h-full w-full">
-      <svg viewBox="0 0 1400 900" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <svg
+        viewBox="0 0 1400 900"
+        width="100%"
+        height="100%"
+        preserveAspectRatio="xMidYMid meet"
+        style={{ overflow: 'visible' }}
+      >
         <defs>
-          <filter id="tok-glow"><feGaussianBlur stdDeviation="2" /></filter>
+          {/* Roomy filter region so the Gaussian blur on the big italic chars
+              doesn't get cropped at glyph edges (default 10% buffer is too
+              tight for fontSize 64 ascenders/descenders + blur radius). */}
+          <filter id="tok-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" />
+          </filter>
         </defs>
 
         {/* Top — sentence in big italic serif */}
@@ -2124,12 +2135,13 @@ export function VizPositional() {
         ))}
 
         {/* Active position sampling window — rounded violet rectangle that
-            spans the wave bank vertically. */}
+            spans the wave bank vertically. Slides to the active position
+            every cycle. Snappy spring tuned to settle well before the next
+            pos tick (1.8s) so it doesn't trail the wave-dot/PE highlights. */}
         <motion.rect
-          x={posX(pos) - 30}
-          initial={{ x: posX(pos) - 30 }}
+          initial={false}
           animate={{ x: posX(pos) - 30 }}
-          transition={{ type: 'spring', stiffness: 140, damping: 22 }}
+          transition={{ type: 'spring', stiffness: 320, damping: 34, mass: 0.8 }}
           y={WAVE_BASE_Y - 26}
           width={60}
           height={(NUM_WAVES - 1) * WAVE_GAP + 70}
@@ -2574,15 +2586,20 @@ export function VizReadyForBlock0() {
   ]
   const colorFor = (t: number) => colorPalette[t % colorPalette.length]
 
-  // Slab geometry — back edge wider than front edge for axonometric perspective.
-  // (Inverted from before: the slab "rests" so the FRONT edge is closer/wider.)
+  // ── Composition (revised) ─────────────────────────────────────────────
+  // Composition centers around viewBox y≈420 — was bottom-heavy at y≈490
+  // with caption at 800–830 leaving the upper third dead. Moved everything
+  // up ~80px, shrunk the slab horizontally (was 920px wide, now 600px), and
+  // pushed Block 0 left so its intake face nearly touches the slab's front
+  // right edge. Reads as "matrix slides into block" instead of "matrix
+  // sits near block."
   const slab = {
-    backY: 380,
-    frontY: 600,
-    backLeft: 100,
-    backRight: 880,
-    frontLeft: 60,
-    frontRight: 920,
+    backY: 300,
+    frontY: 500,
+    backLeft: 180,
+    backRight: 700,
+    frontLeft: 140,
+    frontRight: 740,
   }
   const slabPath =
     `M ${slab.backLeft} ${slab.backY}` +
@@ -2590,14 +2607,27 @@ export function VizReadyForBlock0() {
     ` L ${slab.frontRight} ${slab.frontY}` +
     ` L ${slab.frontLeft} ${slab.frontY} Z`
 
-  // Block 0 intake slot — positioned so the slab visually slides into it.
-  // The slot's left edge sits ~30px to the right of the slab's front-right.
-  const intakeX = 970
-  const intakeTop = slab.backY - 12
-  const intakeBot = slab.frontY + 12
+  // Block 0 intake — its left/front face touches the slab's front-right
+  // edge so the handoff is visually direct.
+  const intakeX = slab.frontRight + 18 // very small gap so slab "abuts" block
+  const intakeTop = slab.backY - 8
+  const intakeBot = slab.frontY + 8
+  // Block 0 origin (top-left of its top face). Moved left to align with
+  // slab's right edge.
+  const blockOX = intakeX + 4
+  const blockOY = slab.backY - 36
+
+  // Handoff pulse — fires once after the slab+block reveal, travels from the
+  // slab's right edge into the intake slot and triggers a block-glow flash.
+  // Cycles every ~5s after the initial firing so the hand-off feel persists.
+  const PULSE_PERIOD = 5
+  const PULSE_DELAY = 3.0 // first fire — after slab + block intro animations
 
   // Visible matrix grid — token columns × hidden-dim micro-rows
   const ROWS_VIS = 24 // visible "d_model marks" per column (compressed from 384)
+  // Highlighted "one token vector" — glows briefly during reveal so the
+  // viewer reads the slab as a stack of T vectors before it slides in.
+  const HIGHLIGHT_T = Math.min(T - 1, Math.floor(T / 2))
 
   return (
     <div className="relative h-full w-full">
@@ -2643,68 +2673,91 @@ export function VizReadyForBlock0() {
           })}
         </g>
 
-        {/* Title label (top-left) */}
+        {/* Title label (top-left). One clean group — INPUT SLAB + dimensions
+            on adjacent lines. */}
         <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           transition={{ duration: 0.6 / speed, delay: 0.2 / speed }}>
-          <text x={130} y={210} fontSize="11" fontFamily="var(--font-mono)"
-            fill={ACCENT.violet} letterSpacing="0.26em">INPUT SLAB</text>
-          <text x={130} y={236} fontSize="20" fontFamily="var(--font-display)"
+          <text x={140} y={180} fontSize="11" fontFamily="var(--font-mono)"
+            fill={ACCENT.violet} letterSpacing="0.28em">INPUT SLAB</text>
+          <text x={140} y={210} fontSize="22" fontFamily="var(--font-display)"
             fontStyle="italic" fill={ACCENT.dim}>
             <tspan fill={ACCENT.violet}>{T}</tspan> × 384
           </text>
-          <line x1={140} y1={250} x2={210} y2={350} stroke={ACCENT.violet}
-            strokeOpacity={0.5} strokeWidth={1} />
+          <text x={140} y={232} fontSize="11" fontFamily="var(--font-mono)"
+            fill={ACCENT.dim} opacity={0.7} letterSpacing="0.14em">
+            T tokens × d_model
+          </text>
         </motion.g>
 
         {/* ───── Block stack on the right ─────
             Block 0 is the focused/active one. Blocks 1–2 are dimmer and
-            sit behind it. Final ellipsis indicates more blocks beyond. */}
+            sit behind it. Final ellipsis indicates more blocks beyond.
+            All shifted up + closer to the slab so the handoff reads. */}
         {/* Blocks 1–2 (dim, behind) — drawn first so Block 0 sits on top */}
         {[1, 2].map((i) => (
-          <motion.g key={`bg-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 0.55 }}
-            transition={{ delay: 0.4 / speed + i * 0.12 / speed, duration: 0.5 / speed }}>
-            <text x={1090 + (i - 1) * 60} y={195} fontSize="9.5"
+          <motion.g key={`bg-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 0.42 }}
+            transition={{ delay: 0.5 / speed + i * 0.12 / speed, duration: 0.5 / speed }}>
+            <text x={blockOX + 130 + (i - 1) * 56} y={blockOY - 14} fontSize="9"
               fontFamily="var(--font-mono)" fill={ACCENT.dim}
-              letterSpacing="0.22em" opacity="0.7">
+              letterSpacing="0.22em" opacity="0.6">
               Block {i}
             </text>
-            <g transform={`translate(${1075 + (i - 1) * 60}, 260)`}>
+            <g transform={`translate(${blockOX + 110 + (i - 1) * 56}, ${blockOY + 30})`}>
               <path
-                d="M 0 0 L 160 0 L 195 60 L 160 240 L 0 240 L -35 180 Z"
-                fill="rgba(255,255,255,0.014)"
-                stroke="rgba(167,139,250,0.22)"
+                d="M 0 0 L 130 0 L 158 50 L 130 220 L 0 220 L -28 170 Z"
+                fill="rgba(255,255,255,0.012)"
+                stroke="rgba(167,139,250,0.18)"
                 strokeWidth={1}
               />
             </g>
           </motion.g>
         ))}
-        <text x={1230} y={195} fontSize="11" fontFamily="var(--font-mono)"
-          fill={ACCENT.dim} letterSpacing="0.26em" opacity="0.55">· · ·</text>
+        <text x={blockOX + 240} y={blockOY - 14} fontSize="11" fontFamily="var(--font-mono)"
+          fill={ACCENT.dim} letterSpacing="0.26em" opacity="0.5">· · ·</text>
 
-        {/* Block 0 (active) — large, prominent, with glowing intake slot */}
+        {/* Block 0 (active) — large, prominent, with glowing intake slot.
+            Drawn at (blockOX, blockOY) so its intake face lines up with the
+            slab's front-right edge. */}
         <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           transition={{ delay: 0.4 / speed, duration: 0.5 / speed }}>
-          <text x={985} y={185} fontSize="14" fontFamily="var(--font-mono)"
-            fill={ACCENT.violet} letterSpacing="0.32em" fontWeight={500}>
+          <text x={blockOX + 100} y={blockOY - 14} fontSize="14" fontFamily="var(--font-mono)"
+            fill={ACCENT.violet} letterSpacing="0.32em" fontWeight={500}
+            textAnchor="middle">
             BLOCK 0
           </text>
-          <g transform="translate(950, 240)">
-            <path
-              d="M 0 0 L 200 0 L 250 90 L 200 320 L 0 320 L -50 230 Z"
-              fill="rgba(255,255,255,0.025)"
-              stroke={ACCENT.violet}
-              strokeWidth={2}
-              strokeOpacity={0.95}
-            />
-            {/* Top face */}
-            <path
-              d="M 0 0 L 200 0 L 250 90 L 50 90 Z"
-              fill="rgba(167,139,250,0.05)"
-              stroke={ACCENT.violet}
-              strokeWidth={1}
-              strokeOpacity={0.7}
-            />
-          </g>
+          {/* Block 0 glow halo — pulses on handoff arrival (see pulse below) */}
+          <motion.path
+            d={`M ${blockOX} ${blockOY} L ${blockOX + 200} ${blockOY} L ${blockOX + 250} ${blockOY + 90} L ${blockOX + 200} ${blockOY + 320} L ${blockOX} ${blockOY + 320} L ${blockOX - 50} ${blockOY + 230} Z`}
+            fill="rgba(167,139,250,0.16)"
+            filter="url(#ready-bloom)"
+            initial={{ opacity: 0 }}
+            animate={{
+              opacity: [0, 0.0, 0.95, 0.4, 0.95, 0.4],
+            }}
+            transition={{
+              duration: PULSE_PERIOD / speed,
+              repeat: Infinity,
+              repeatType: 'loop',
+              ease: 'easeInOut',
+              times: [0, 0.55, 0.66, 0.78, 0.9, 1],
+              delay: PULSE_DELAY / speed,
+            }}
+          />
+          <path
+            d={`M ${blockOX} ${blockOY} L ${blockOX + 200} ${blockOY} L ${blockOX + 250} ${blockOY + 90} L ${blockOX + 200} ${blockOY + 320} L ${blockOX} ${blockOY + 320} L ${blockOX - 50} ${blockOY + 230} Z`}
+            fill="rgba(255,255,255,0.025)"
+            stroke={ACCENT.violet}
+            strokeWidth={2}
+            strokeOpacity={0.95}
+          />
+          {/* Top face */}
+          <path
+            d={`M ${blockOX} ${blockOY} L ${blockOX + 200} ${blockOY} L ${blockOX + 250} ${blockOY + 90} L ${blockOX + 50} ${blockOY + 90} Z`}
+            fill="rgba(167,139,250,0.05)"
+            stroke={ACCENT.violet}
+            strokeWidth={1}
+            strokeOpacity={0.7}
+          />
         </motion.g>
 
         {/* Block 0 intake slot — glowing rectangular doorway on the slab-side
@@ -2767,21 +2820,32 @@ export function VizReadyForBlock0() {
           />
 
           {/* Token columns inside slab — one per real T, with visible
-              d_model micro-rows so the slab reads as a real matrix. */}
+              d_model micro-rows so the slab reads as a real matrix. One
+              column is briefly highlighted as "one token vector" before
+              the whole slab glows. */}
           {Array.from({ length: T }).map((_, t) => {
             const tNorm = T <= 1 ? 0 : t / (T - 1)
             const xTop = slab.backLeft + tNorm * (slab.backRight - slab.backLeft)
             const xBot = slab.frontLeft + tNorm * (slab.frontRight - slab.frontLeft)
             const color = colorFor(t)
+            const isHighlight = t === HIGHLIGHT_T
             return (
               <g key={t}>
                 {/* Vertical column edge — strong for first/last, lighter inside */}
-                <line
+                <motion.line
                   x1={xTop} y1={slab.backY}
                   x2={xBot} y2={slab.frontY}
                   stroke={color}
-                  strokeOpacity={0.32}
-                  strokeWidth={1}
+                  strokeWidth={isHighlight ? 1.8 : 1}
+                  initial={{ strokeOpacity: 0 }}
+                  animate={{
+                    strokeOpacity: isHighlight ? [0, 0.85, 0.85, 0.4] : [0, 0.32, 0.32, 0.32],
+                  }}
+                  transition={{
+                    duration: 2.4 / speed,
+                    delay: (1.0 + t * 0.05) / speed,
+                    times: [0, 0.25, 0.7, 1],
+                  }}
                 />
                 {/* d_model micro-rows: short cross-marks on each column */}
                 {Array.from({ length: ROWS_VIS }).map((_, d) => {
@@ -2808,6 +2872,36 @@ export function VizReadyForBlock0() {
             )
           })}
 
+          {/* "one token vector" callout — fades over the highlight column */}
+          {(() => {
+            const tNorm = T <= 1 ? 0 : HIGHLIGHT_T / (T - 1)
+            const xTop = slab.backLeft + tNorm * (slab.backRight - slab.backLeft)
+            return (
+              <motion.text
+                x={xTop}
+                y={slab.backY - 12}
+                textAnchor="middle"
+                fontSize="10"
+                fontFamily="var(--font-mono)"
+                fill={ACCENT.cyan}
+                letterSpacing="0.22em"
+                opacity={0.85}
+                initial={{ opacity: 0, y: slab.backY - 4 }}
+                animate={{
+                  opacity: [0, 1, 1, 0],
+                  y: [slab.backY - 4, slab.backY - 12, slab.backY - 12, slab.backY - 8],
+                }}
+                transition={{
+                  duration: 2.0 / speed,
+                  delay: 1.5 / speed,
+                  times: [0, 0.2, 0.8, 1],
+                }}
+              >
+                one token vector ↓
+              </motion.text>
+            )
+          })()}
+
           {/* Horizontal d_model rule lines — every ~6 rows, full slab width */}
           {Array.from({ length: 4 }).map((_, k) => {
             const ti = (k + 1) / 5
@@ -2831,13 +2925,43 @@ export function VizReadyForBlock0() {
             )
           })}
 
-          {/* Forward arrow — sliding into the intake slot */}
+          {/* Forward arrow — short, clean, slab-edge → intake. Shorter than
+              before (intake is now ~18px from slab) so the handoff is a
+              direct visual line rather than a long pointer. */}
           <motion.path
-            d={`M ${slab.frontRight + 5} 490 L ${intakeX - 5} 490 M ${intakeX - 17} 478 L ${intakeX - 5} 490 L ${intakeX - 17} 502`}
-            stroke={ACCENT.violet} strokeWidth={2.2} fill="none"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            d={`M ${slab.frontRight + 2} ${(slab.backY + slab.frontY) / 2} L ${intakeX - 6} ${(slab.backY + slab.frontY) / 2} M ${intakeX - 14} ${(slab.backY + slab.frontY) / 2 - 6} L ${intakeX - 4} ${(slab.backY + slab.frontY) / 2} L ${intakeX - 14} ${(slab.backY + slab.frontY) / 2 + 6}`}
+            stroke={ACCENT.violet} strokeWidth={2.2} fill="none" strokeLinecap="round"
+            initial={{ opacity: 0 }} animate={{ opacity: 0.85 }}
             transition={{ delay: 2.0 / speed, duration: 0.5 / speed }} />
         </motion.g>
+
+        {/* ───── Handoff pulse — slab right edge → intake gate ─────
+            Fires once after the slab is fully revealed (3.0s) and repeats
+            every PULSE_PERIOD seconds. The bright violet dot races along
+            the arrow path; the block-glow above flares on arrival. */}
+        <motion.circle
+          r={5}
+          fill={ACCENT.violet}
+          filter="url(#intake-bloom)"
+          cy={(slab.backY + slab.frontY) / 2}
+          initial={{ cx: slab.frontRight + 4, opacity: 0 }}
+          animate={{
+            cx: [
+              slab.frontRight + 4,
+              slab.frontRight + 4,
+              intakeX,
+              intakeX,
+            ],
+            opacity: [0, 0, 1, 0],
+          }}
+          transition={{
+            duration: PULSE_PERIOD / speed,
+            repeat: Infinity,
+            ease: 'easeOut',
+            times: [0, 0.55, 0.66, 0.78],
+            delay: PULSE_DELAY / speed,
+          }}
+        />
 
         {/* ───── Axis labels ─────
             "T = N token positions →" along the front edge,
@@ -2908,61 +3032,92 @@ export function VizReadyForBlock0() {
           })()}
         </motion.g>
 
-        {/* Streaks underneath — implies motion (looping) */}
-        {Array.from({ length: 6 }).map((_, i) => (
-          <motion.line
-            key={i}
-            y1={648 + i * 11}
-            y2={648 + i * 11}
-            x1={0}
-            x2={180}
-            stroke={ACCENT.violet}
-            strokeOpacity={0.22 - i * 0.025}
-            strokeWidth={1}
-            animate={{ x: [-180, 1400] }}
-            transition={{
-              duration: 2.6 / speed,
-              ease: 'linear',
-              repeat: Infinity,
-              delay: i * 0.18 / speed,
-            }}
-          />
-        ))}
+        {/* ───── Flowing token particles ─────
+            Continuous stream of small color-coded balls that emerge along
+            the slab's left edge, travel rightward through the slab body,
+            and disappear at the intake gate — reads as actual token data
+            flowing into Block 0. Each particle is keyed to one of the
+            visible token columns (cycles through palette). Looping. */}
+        <motion.g
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 2.0 / speed, duration: 0.6 / speed }}
+        >
+          {Array.from({ length: 22 }).map((_, i) => {
+            const colors = [
+              ACCENT.violet, ACCENT.blue, ACCENT.cyan,
+              ACCENT.mint, ACCENT.amber, ACCENT.pink,
+            ]
+            const color = colors[i % colors.length]
+            // Distribute particles across slab depth — interpolate y between
+            // back-edge and front-edge so balls travel at different "rows".
+            const lane = i / 21 // 0..1
+            const yStart = slab.backY + lane * (slab.frontY - slab.backY)
+            // Start x interpolates back-left to front-left along the same
+            // lane so balls emerge from the slab's actual left face.
+            const xStart =
+              slab.backLeft + lane * (slab.frontLeft - slab.backLeft)
+            // End x at the intake gate centerline.
+            const xEnd = intakeX + 4
+            // Stagger so the lanes don't all fire together.
+            const stagger = (i * 0.27) / speed
+            const duration = 2.6 / speed
+            return (
+              <motion.circle
+                key={`flow-${i}`}
+                r={3}
+                cy={yStart}
+                fill={color}
+                opacity={0.9}
+                initial={{ cx: xStart, opacity: 0 }}
+                animate={{
+                  cx: [xStart, xEnd],
+                  opacity: [0, 0.95, 0.95, 0],
+                }}
+                transition={{
+                  duration,
+                  ease: 'linear',
+                  repeat: Infinity,
+                  delay: 2.6 / speed + stagger,
+                  times: [0, 0.08, 0.88, 1],
+                }}
+              />
+            )
+          })}
 
-        {/* Token particles flowing along the slab into Block 0 — looping */}
-        {Array.from({ length: 18 }).map((_, i) => {
-          const lane = i % 6
-          const colors = [
-            ACCENT.violet, ACCENT.blue, ACCENT.cyan,
-            ACCENT.mint, ACCENT.amber, ACCENT.pink,
-          ]
-          const yLane = 410 + lane * 32
-          return (
-            <motion.circle
-              key={`flow-${i}`}
-              r={2.6}
-              cy={yLane}
-              fill={colors[lane]}
-              opacity={0.85}
-              animate={{
-                cx: [80, 920],
-                opacity: [0, 0.85, 0.85, 0],
-              }}
-              transition={{
-                duration: 2.4 / speed,
-                ease: 'easeOut',
-                repeat: Infinity,
-                delay: 1.2 / speed + (i * 0.13) / speed,
-                times: [0, 0.15, 0.85, 1],
-              }}
-            />
-          )
-        })}
+          {/* Subtle horizontal speed-streaks behind each lane to sell motion */}
+          {Array.from({ length: 8 }).map((_, i) => {
+            const lane = (i + 0.5) / 8
+            const y =
+              slab.backY + lane * (slab.frontY - slab.backY)
+            return (
+              <motion.line
+                key={`streak-${i}`}
+                x1={0}
+                x2={120}
+                y1={y}
+                y2={y}
+                stroke={ACCENT.violet}
+                strokeWidth={0.8}
+                strokeOpacity={0.18 - i * 0.012}
+                animate={{ x: [-120, intakeX + 60] }}
+                transition={{
+                  duration: 3.4 / speed,
+                  ease: 'linear',
+                  repeat: Infinity,
+                  delay: (2.6 + i * 0.21) / speed,
+                }}
+              />
+            )
+          })}
+        </motion.g>
 
-        {/* Caption — payoff line. The prompt is no longer text. */}
+        {/* Caption — payoff line. Moved up from y=800/830 to y=720/750
+            so it's anchored under the (now higher) slab+block group rather
+            than orphaned in the lower third. */}
         <motion.text
-          x={700} y={800} textAnchor="middle"
-          fontSize="20" fontFamily="var(--font-display)" fontStyle="italic"
+          x={700} y={720} textAnchor="middle"
+          fontSize="19" fontFamily="var(--font-display)" fontStyle="italic"
           fill="rgba(255,255,255,0.92)"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           transition={{ delay: 2.8 / speed, duration: 0.6 / speed }}
@@ -2970,8 +3125,8 @@ export function VizReadyForBlock0() {
           The prompt is no longer text. It is a matrix of numbers
         </motion.text>
         <motion.text
-          x={700} y={830} textAnchor="middle"
-          fontSize="20" fontFamily="var(--font-display)" fontStyle="italic"
+          x={700} y={750} textAnchor="middle"
+          fontSize="19" fontFamily="var(--font-display)" fontStyle="italic"
           fill="rgba(255,255,255,0.92)"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           transition={{ delay: 3.0 / speed, duration: 0.6 / speed }}
