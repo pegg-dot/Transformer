@@ -123,7 +123,7 @@ export function SplitPaneScene({
 export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
   const speed = useSpeed()
   return (
-    <div className="relative flex h-full w-full flex-col justify-center overflow-hidden px-8 py-8 lg:px-10">
+    <div className="relative flex h-full w-full min-h-0 flex-col overflow-hidden px-6 py-5 lg:px-8 lg:py-6">
       {/* Ambient scanner — a faint horizontal violet line that sweeps top→
           bottom every ~9s, picking each text element out as it passes. */}
       <motion.div
@@ -146,7 +146,7 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
           kicker line so it's clear something is animating, not a static page. */}
 
       <motion.div
-        className="relative z-10 flex flex-col gap-6"
+        className="relative z-10 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1"
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 / speed, ease: 'easeOut' }}
@@ -175,9 +175,9 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
         </div>
 
         {/* Big italic serif headline with breathing violet underline */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           <h2
-            className="display text-[clamp(30px,3.4vw,48px)] font-light leading-[1.05]"
+            className="display text-[clamp(26px,2.6vw,42px)] font-light leading-[1.05]"
             style={{
               color: 'var(--fg)',
               fontStyle: 'italic',
@@ -220,7 +220,7 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
 
         {/* Italic dim subtitle */}
         <motion.p
-          className="text-[clamp(15px,1.15vw,18px)] leading-[1.55] text-[var(--fg-muted)]"
+          className="text-[clamp(13px,1vw,16px)] leading-[1.5] text-[var(--fg-muted)]"
           style={{
             fontStyle: 'italic',
             fontFamily: 'var(--font-display, "Tiempos", "Source Serif Pro", Georgia, serif)',
@@ -251,7 +251,7 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
         {/* Optional equation card */}
         {data.equation && (
           <motion.div
-            className="rounded-[3px] border-2 px-5 py-4"
+            className="rounded-[3px] border-2 px-4 py-3"
             style={{
               borderColor: `${data.accent}55`,
               background: 'rgba(255,255,255,0.025)',
@@ -267,7 +267,7 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
               {data.equation.label}
             </div>
             <div
-              className="display mt-3 text-[clamp(20px,1.7vw,26px)] leading-tight"
+              className="display mt-2 text-[clamp(17px,1.4vw,22px)] leading-tight"
               style={{ color: 'var(--fg)', fontStyle: 'italic' }}
             >
               {data.equation.body}
@@ -276,18 +276,15 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
         )}
       </motion.div>
 
-      {/* Spacer pushes info callout to bottom */}
-      <div className="relative z-10 flex-1" />
-
       {/* Info callout footer */}
       {data.infoCallout && (
         <motion.div
-          className="relative z-10 border-t border-[var(--rule)] pt-5"
+          className="relative z-10 mt-4 shrink-0 border-t border-[var(--rule)] pt-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 / speed, delay: 0.8 / speed }}
         >
-          <div className="flex items-start gap-3 text-[13px] leading-[1.55] text-[var(--fg-muted)]">
+          <div className="flex items-start gap-2.5 text-[12px] leading-[1.5] text-[var(--fg-muted)]">
             <span
               className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px]"
               style={{
@@ -328,11 +325,11 @@ function Stat({ stat, accent }: { stat: SceneStat; accent: string }) {
   const valueKey = String(stat.value)
   return (
     <div
-      className="flex flex-col rounded-[3px] border px-2.5 py-1.5"
+      className="flex flex-col rounded-[3px] border px-2.5 py-1"
       style={{
         borderColor: 'var(--rule)',
         background: 'rgba(255,255,255,0.02)',
-        minWidth: 78,
+        minWidth: 72,
       }}
     >
       <div

@@ -122,6 +122,7 @@ export const SCENES: MovieScene[] = [
     id: 'tokens',
     section: ACT_I,
     breadcrumb: ['Input', 'Tokenization'],
+    bridgeIn: 'Step one. Take the text and chop it into pieces the model can index.',
     kicker: 'tokenization',
     title: 'Text becomes tokens.',
     caption:
@@ -142,6 +143,7 @@ Nothing about the model cares what the original characters looked like after thi
     id: 'bpe',
     section: ACT_I,
     breadcrumb: ['Input', 'BPE'],
+    bridgeIn: 'Char-level is the toy version. Real models tokenize smarter — like this.',
     kicker: 'real tokenization',
     title: 'Real models use BPE.',
     caption:
@@ -163,6 +165,7 @@ Note: the actual nanoGPT this project is built around uses character-level token
     id: 'embed',
     section: ACT_I,
     breadcrumb: ['Input', 'Embedding lookup'],
+    bridgeIn: 'IDs are just integers. To do math on them, look each one up in a table…',
     focusedToken: 3,
     kicker: 'embeddings',
     title: 'Each token becomes a vector.',
@@ -183,6 +186,7 @@ This is where the network first starts to encode meaning. Tokens that behave sim
     id: 'positional',
     section: ACT_I,
     breadcrumb: ['Input', 'Positional encoding'],
+    bridgeIn: 'But the vector says nothing about WHERE in the sentence the token sat. Add that next.',
     focusedToken: 3,
     kicker: 'positional encoding',
     title: 'Position gets baked in.',
@@ -206,6 +210,7 @@ Modern models (LLaMA, GPT-NeoX, Mistral) replaced both approaches with RoPE — 
     id: 'ready-for-block-0',
     section: ACT_I,
     breadcrumb: ['Input', 'Input slab'],
+    bridgeIn: 'Token vector + position vector → one input vector per token. Stack them all.',
     kicker: 'input slab',
     title: 'Ready for Block 0.',
     caption:

@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useSpeed } from './speedContext'
 import { usePrompt } from './promptContext'
@@ -45,6 +46,11 @@ const GENERIC_REPLY =
 export function IntroColdOpenPanel() {
   const speed = useSpeed()
   const { prompt } = usePrompt()
+  // Defer client-only motion children (matrix cells) until after hydration —
+  // framer-motion 12 emits subtly different float precision in SSR vs client
+  // renders of the animate target, which trips React's hydration check.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
   const CHAR_MS = 80
   // Type out the prompt the viewer chose (defaults to "To be, or no").
   // The wrapper sentence ("What if I asked my AI…") fades in pre-typed,
@@ -618,32 +624,33 @@ export function IntroColdOpenPanel() {
                   }}
                 />
                 {/* Cells: T columns × 7 d_model rows */}
-                {pipelineChars.map((_, t) =>
-                  Array.from({ length: 7 }).map((_, d) => {
-                    const v = (Math.sin(t * 0.7 + d * 1.5) + 1) / 2
-                    return (
-                      <motion.rect
-                        key={`mc-${t}-${d}`}
-                        x={4 + t * 30}
-                        y={4 + d * 7.5}
-                        width={22}
-                        height={6.5}
-                        fill={colorForIdx(t)}
-                        opacity={0}
-                        animate={{ opacity: 0.18 + v * 0.55 }}
-                        transition={{
-                          delay:
-                            (T_MATRIX_BEAT +
-                              0.25 +
-                              t * 0.02 +
-                              d * 0.015) /
-                            speed,
-                          duration: 0.3 / speed,
-                        }}
-                      />
-                    )
-                  }),
-                )}
+                {mounted &&
+                  pipelineChars.map((_, t) =>
+                    Array.from({ length: 7 }).map((_, d) => {
+                      const v = (Math.sin(t * 0.7 + d * 1.5) + 1) / 2
+                      return (
+                        <motion.rect
+                          key={`mc-${t}-${d}`}
+                          x={4 + t * 30}
+                          y={4 + d * 7.5}
+                          width={22}
+                          height={6.5}
+                          fill={colorForIdx(t)}
+                          opacity={0}
+                          animate={{ opacity: 0.18 + v * 0.55 }}
+                          transition={{
+                            delay:
+                              (T_MATRIX_BEAT +
+                                0.25 +
+                                t * 0.02 +
+                                d * 0.015) /
+                              speed,
+                            duration: 0.3 / speed,
+                          }}
+                        />
+                      )
+                    }),
+                  )}
               </motion.svg>
               <motion.div
                 className="font-mono text-[10px] tracking-[0.2em] uppercase whitespace-nowrap"

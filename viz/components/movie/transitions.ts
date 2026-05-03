@@ -31,38 +31,40 @@ export interface KindTiming {
 
 export const KIND_TIMING: Record<TransitionKind, KindTiming> = {
   'within-part': {
-    duration: 0.4,
+    duration: 0.55,
     easing: [0.22, 1, 0.36, 1],
     cameraSpeed: 2.4,
-    sidebarCrossfadeMs: 400,
+    sidebarCrossfadeMs: 550,
   },
   'forward-flow': {
-    duration: 0.6,
-    easing: [0.33, 1, 0.4, 1],
-    cameraSpeed: 1.8,
-    sidebarCrossfadeMs: 600,
+    // Longer + softer easing reads as a deliberate continuation rather than
+    // a snap from one slide to the next.
+    duration: 0.95,
+    easing: [0.32, 0.86, 0.34, 1],
+    cameraSpeed: 1.5,
+    sidebarCrossfadeMs: 950,
   },
   'zoom-in': {
-    // Slower camera so the dolly-forward registers as a deliberate descent.
-    duration: 0.65,
+    // Slow camera so the dolly-forward registers as a deliberate descent.
+    duration: 1.05,
     easing: [0.22, 1, 0.36, 1],
-    cameraSpeed: 1.4,
-    sidebarCrossfadeMs: 700,
+    cameraSpeed: 1.2,
+    sidebarCrossfadeMs: 1050,
   },
   'zoom-out': {
     // Slightly faster than zoom-in — the eye reads "pull back to context"
     // quicker than "what's inside this thing".
-    duration: 0.6,
+    duration: 0.9,
     easing: [0.22, 1, 0.36, 1],
-    cameraSpeed: 1.6,
-    sidebarCrossfadeMs: 650,
+    cameraSpeed: 1.4,
+    sidebarCrossfadeMs: 900,
   },
   'lateral': {
-    // Sideways glide, no scale shift. Snappier than zooms.
-    duration: 0.5,
-    easing: [0.4, 0, 0.2, 1],
-    cameraSpeed: 2.0,
-    sidebarCrossfadeMs: 500,
+    // Sideways glide, no scale shift.
+    duration: 0.8,
+    easing: [0.4, 0.05, 0.2, 1],
+    cameraSpeed: 1.7,
+    sidebarCrossfadeMs: 800,
   },
   'act-change': {
     // Generous: banner + camera pullback + dive-in need breathing room.
@@ -92,29 +94,35 @@ export const KIND_TIMING: Record<TransitionKind, KindTiming> = {
  */
 export const STAGE_VARIANTS: Record<TransitionKind, Variants> = {
   'within-part': {
-    enter: { opacity: 0, scale: 0.97, x: 0, filter: 'blur(3px)' },
+    enter: { opacity: 0, scale: 0.98, x: 0, filter: 'blur(3px)' },
     center: { opacity: 1, scale: 1, x: 0, filter: 'blur(0px)' },
-    exit: { opacity: 0, scale: 1.03, x: 0, filter: 'blur(3px)' },
+    exit: { opacity: 0, scale: 1.02, x: 0, filter: 'blur(3px)' },
   },
   'forward-flow': {
-    enter: { opacity: 0, scale: 0.98, x: 60, filter: 'blur(2px)' },
+    // Deeper slide + more blur on exit reads as "the camera kept moving past
+    // this view" rather than a slide swap. Incoming starts only slightly
+    // off-axis so the eye finds the next subject quickly.
+    enter: { opacity: 0, scale: 0.97, x: 90, filter: 'blur(6px)' },
     center: { opacity: 1, scale: 1, x: 0, filter: 'blur(0px)' },
-    exit: { opacity: 0, scale: 0.98, x: -60, filter: 'blur(2px)' },
+    exit: { opacity: 0, scale: 0.99, x: -120, filter: 'blur(8px)' },
   },
   'zoom-in': {
-    enter: { opacity: 0, scale: 0.85, x: 0, filter: 'blur(4px)' },
+    // Stronger scale gap on incoming so it reads as truly emerging from
+    // depth, not just a fade.
+    enter: { opacity: 0, scale: 0.78, x: 0, filter: 'blur(8px)' },
     center: { opacity: 1, scale: 1, x: 0, filter: 'blur(0px)' },
-    exit: { opacity: 0, scale: 1.15, x: 0, filter: 'blur(4px)' },
+    exit: { opacity: 0, scale: 1.22, x: 0, filter: 'blur(8px)' },
   },
   'zoom-out': {
-    enter: { opacity: 0, scale: 1.15, x: 0, filter: 'blur(4px)' },
+    enter: { opacity: 0, scale: 1.22, x: 0, filter: 'blur(8px)' },
     center: { opacity: 1, scale: 1, x: 0, filter: 'blur(0px)' },
-    exit: { opacity: 0, scale: 0.85, x: 0, filter: 'blur(4px)' },
+    exit: { opacity: 0, scale: 0.78, x: 0, filter: 'blur(8px)' },
   },
   'lateral': {
-    enter: { opacity: 0, scale: 1, x: 80, filter: 'blur(0px)' },
+    // Bigger horizontal travel + light blur — feels like a tracking shot.
+    enter: { opacity: 0, scale: 1, x: 130, filter: 'blur(3px)' },
     center: { opacity: 1, scale: 1, x: 0, filter: 'blur(0px)' },
-    exit: { opacity: 0, scale: 1, x: -80, filter: 'blur(0px)' },
+    exit: { opacity: 0, scale: 1, x: -130, filter: 'blur(3px)' },
   },
   'act-change': {
     enter: { opacity: 0, scale: 0.96, x: 0, filter: 'blur(6px)' },

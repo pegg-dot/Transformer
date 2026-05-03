@@ -896,15 +896,15 @@ export function VizBPE() {
         <line x1={20} y1={140} x2={20} y2={930} stroke={ACCENT.violet}
           strokeOpacity={0.25} strokeWidth={1} />
 
-        <LayerLabel y={Y_BYTES_BOX_TOP - 5} num="1." title="BYTES"
+        <LayerLabel y={Y_BYTES_BOX_TOP - 28} num="1." title="BYTES"
           sub="Every byte is a token." color={ACCENT.dim} />
-        <LayerLabel y={Y_INIT_BOX_TOP - 5} num="2." title="INITIAL TOKENS"
-          sub="Start with single characters." color={ACCENT.blue} />
-        <LayerLabel y={Y_LVL1_TOP - 5} num="3." title="MERGE STEPS"
-          sub="Learn the most frequent adjacent pairs and merge them."
+        <LayerLabel y={Y_INIT_BOX_TOP - 28} num="2." title="INITIAL TOKENS"
+          sub="One char per token." color={ACCENT.blue} />
+        <LayerLabel y={Y_LVL1_TOP - 28} num="3." title="MERGE STEPS"
+          sub="Frequent pairs merge."
           color={ACCENT.mint} />
-        <LayerLabel y={Y_FINAL_TOP - 5} num="4." title="FINAL TOKENS"
-          sub="Fewer, larger subword units." color={ACCENT.violet} />
+        <LayerLabel y={Y_FINAL_TOP - 28} num="4." title="FINAL TOKENS"
+          sub="Fewer, larger units." color={ACCENT.violet} />
 
         {/* ────── Layer 1 — bytes (hex codes + char) ────── */}
         {word.map((ch, i) => {

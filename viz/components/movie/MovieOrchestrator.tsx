@@ -72,6 +72,13 @@ export interface MovieScene {
    * floating glass card anchors. Default: [0, 1.5, 0] (above the model).
    */
   worldPanelPos?: [number, number, number]
+  /**
+   * Connective narrator text shown briefly during the transition INTO this
+   * scene. Bridges the previous scene's idea to this one so Act I reads as
+   * a continuous explanation rather than a list of topics.
+   * Example: "Now: each ID looks up a vector in a giant table…"
+   */
+  bridgeIn?: string
 }
 
 interface Props {
@@ -504,16 +511,6 @@ function Inner({ scenes }: Props) {
 
             {/* Persistent breadcrumb — top-left "you are here". */}
             {started && <BreadcrumbOverlay crumbs={crumbs} accent={current.accent} />}
-
-            {/* Persistent token strip — top-center, forward-pass acts only.
-                Lights up the focused token cell when a scene declares one. */}
-            {started && tokenStripVisible && (
-              <TokenStripOverlay
-                prompt={prompt}
-                accent={current.accent}
-                focusedToken={current.focusedToken}
-              />
-            )}
           </div>
         )}
 
@@ -594,6 +591,35 @@ function Inner({ scenes }: Props) {
               )}
             </AnimatePresence>
           </div>
+        )}
+
+        {/* Persistent token strip — top-center, forward-pass acts only.
+            Lifted to the stage-row level (above both 3D stage and the 2D
+            fullscreen panel) so the strip stays visible across scene swaps
+            in Act I and provides a stable reference the eye can track
+            during transitions. Lights up the focused token cell when a
+            scene declares one. */}
+        {started && tokenStripVisible && (
+          <div className="pointer-events-none absolute inset-0 z-20">
+            <TokenStripOverlay
+              prompt={prompt}
+              accent={current.accent}
+              focusedToken={current.focusedToken}
+            />
+          </div>
+        )}
+
+        {/* Bridge narrator — connective text shown briefly at the start of
+            scenes that declare a `bridgeIn`. Bridges the prior scene's idea
+            to this one so an act reads as a continuous explanation rather
+            than discrete topics. Skipped on act-change scenes (the act
+            banner does that job). */}
+        {started && current.bridgeIn && !isActChange && (
+          <BridgeNarrator
+            text={current.bridgeIn}
+            accent={current.accent}
+            sceneKey={`${current.id}-${cycle}`}
+          />
         )}
 
         {/* Act-change banner — center-stage announcement, ~2.5s. Overlays the
@@ -1111,5 +1137,67 @@ function TokenStripOverlay({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Connective narrator card — shows for ~2.6s at the start of a scene whose
+ * `bridgeIn` is set, bridging the previous idea to the current one. Sits
+ * just above the bottom dock so the eye can drop down for the bridge then
+ * back up to the viz. Auto-fades; never replays once dismissed for a scene.
+ */
+function BridgeNarrator({
+  text,
+  accent,
+  sceneKey,
+}: {
+  text: string
+  accent: string
+  sceneKey: string
+}) {
+  const [visible, setVisible] = useState(true)
+  useEffect(() => {
+    setVisible(true)
+    const t = setTimeout(() => setVisible(false), 2600)
+    return () => clearTimeout(t)
+  }, [sceneKey])
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          key={sceneKey}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{
+            opacity: { duration: 0.55, ease: [0.22, 1, 0.36, 1] },
+            y: { duration: 0.6, ease: [0.22, 1, 0.36, 1] },
+          }}
+          className="pointer-events-none absolute inset-x-0 bottom-6 z-30 flex justify-center px-6"
+        >
+          <div
+            className="display flex max-w-[680px] items-center gap-3 rounded-[3px] border bg-[rgba(7,7,9,0.78)] px-5 py-3 text-[15px] italic leading-snug shadow-2xl backdrop-blur-md"
+            style={{
+              borderColor: `${accent}55`,
+              color: 'var(--fg)',
+              fontFamily:
+                'var(--font-display, "Tiempos", "Source Serif Pro", Georgia, serif)',
+            }}
+          >
+            <motion.span
+              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ background: accent }}
+              animate={{ opacity: [0.4, 1, 0.4], scale: [0.85, 1.15, 0.85] }}
+              transition={{
+                duration: 1.6,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
+            <span>{text}</span>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
