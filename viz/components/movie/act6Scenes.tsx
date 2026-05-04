@@ -1098,7 +1098,7 @@ export function VizAct6Intro({ phase, pred }: { phase: number; pred: Prediction 
         fontSize={16}
         letterSpacing={3.4}
       >
-        ONE FORWARD PASS · ONE NEXT TOKEN
+        ONE DECODE PASS · ONE NEXT TOKEN
       </text>
 
       <TokenStrip phase={phase} pred={pred} />
@@ -1457,14 +1457,26 @@ function GrowingStrip({
     <g>
       <text
         x={OUT_STRIP_LEFT - 18}
-        y={OUT_STRIP_Y + OUT_TILE_H / 2 + 4}
+        y={OUT_STRIP_Y + OUT_TILE_H / 2 - 4}
         textAnchor="end"
         fill="rgba(255,255,255,0.55)"
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
         fontSize={11}
         letterSpacing={2.4}
       >
-        SEQUENCE
+        VISIBLE TEXT
+      </text>
+      <text
+        x={OUT_STRIP_LEFT - 18}
+        y={OUT_STRIP_Y + OUT_TILE_H / 2 + 14}
+        textAnchor="end"
+        fill="rgba(255,255,255,0.4)"
+        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontSize={9}
+        letterSpacing={1.2}
+        fontStyle="italic"
+      >
+        displayed as letters · predicted as tokens
       </text>
 
       {/* "..." indicator if we dropped chars from the left */}
@@ -1608,7 +1620,7 @@ function BlockStack({
         letterSpacing={3}
         fontWeight={600}
       >
-        ONE FULL FORWARD PASS · 6 BLOCKS
+        ONE DECODE PASS · THROUGH ALL 6 BLOCKS
       </text>
 
       {/* Connecting wire under the blocks (stays visible) */}
@@ -1913,7 +1925,7 @@ function StepIndicator({ step, total, done }: { step: number; total: number; don
       >
         {done
           ? 'LOOP CONTINUES…'
-          : `STEP ${step + 1} / ${total} · ONE FORWARD PASS PER TOKEN`}
+          : `STEP ${step + 1} / ${total} · ONE DECODE PASS PER TOKEN`}
       </text>
       <line
         x1={trackX}
@@ -2006,7 +2018,7 @@ export function VizOutputLoop({
         fontSize={16}
         letterSpacing={3.4}
       >
-        GENERATION = REPEAT THE FORWARD PASS
+        GENERATION = REPEAT ONE DECODE PASS PER TOKEN
       </text>
 
       <GrowingStrip
@@ -2030,7 +2042,7 @@ export function VizOutputLoop({
         letterSpacing={2.4}
         opacity={0.85}
       >
-        ↑ next token emerges here, then appends to the sequence ↑
+        ↑ next token is chosen here, then appended to the context ↑
       </text>
 
       {/* Flight tile */}
@@ -2154,28 +2166,29 @@ export function OutputSplitPane() {
       <>
         And there it is — <em>“to be, or not to be — that is the question.”</em>
         Real models keep going for hundreds or thousands of tokens, each one
-        another full pass through the same six blocks. That&apos;s the whole
+        another decode pass through the same six blocks. That&apos;s the whole
         machine.
       </>
     ) : (
       <>
-        {nGenSteps} characters generated. Real models keep going for hundreds
-        or thousands of tokens — each one is <em>another full pass</em>
-         through the same six blocks. That&apos;s the whole machine.
+        {nGenSteps} tokens generated. Real models keep going for hundreds or
+        thousands of tokens — each one is <em>another decode pass</em>{' '}
+        through the same six blocks. That&apos;s the whole machine.
       </>
     )
   } else if (subPhase === 'pulse') {
-    phaseLabel = 'forward pass'
+    phaseLabel = 'decode pass'
     phaseAccent = ACCENT.violet
     subtitle = (
       <>
-        Pulse traverses the six blocks. Embed → norm → attention → norm → FFN
-        → … → output head. <em>Every</em> generated character costs one of
-        these passes.
+        Each step sends the newest token through the stack: embed → norm →
+        attention → norm → MLP → … → output head. After the prompt is
+        processed once, generation reuses cached K/V from earlier tokens to
+        predict the next token.
       </>
     )
   } else if (subPhase === 'land') {
-    phaseLabel = 'token lands'
+    phaseLabel = 'token chosen'
     phaseAccent = ACCENT.mint
     const ch = generated[step] ?? ''
     subtitle = (
@@ -2183,8 +2196,8 @@ export function OutputSplitPane() {
         <strong style={{ color: ACCENT.mint }}>
           &lsquo;{displayChar(ch)}&rsquo;
         </strong>{' '}
-        was sampled from the softmax. It gets appended to the sequence — the
-        new context for the next pass.
+        was sampled from the softmax. It gets appended to the context — the
+        new input for the next decode pass.
       </>
     )
   } else {
@@ -2192,9 +2205,9 @@ export function OutputSplitPane() {
     phaseAccent = ACCENT.amber
     subtitle = (
       <>
-        The sequence is one character longer now. The very next forward pass
-        runs on the <em>updated</em> context — the previous prediction is
-        already part of what the model conditions on.
+        The context is one token longer now. The next decode pass runs on the
+        <em>updated</em> context — the previous prediction is already part of
+        what the model conditions on.
       </>
     )
   }
@@ -2218,7 +2231,7 @@ export function OutputSplitPane() {
       }
       text={{
         kicker,
-        title: 'Generation = repeat the pass.',
+        title: 'Generation = one token at a time.',
         subtitle,
         accent: phaseAccent,
         phase: (
@@ -2230,23 +2243,23 @@ export function OutputSplitPane() {
           />
         ),
         stats: [
-          { label: 'prompt', value: `${promptForStrip.length} chars`, color: ACCENT.amber },
+          { label: 'visible prompt', value: `${promptForStrip.length} chars shown`, color: ACCENT.amber },
           { label: 'so far', value: settledGenerated.length > 0 ? `"${settledGenerated.replace(/ /g, '·')}"` : '—', color: ACCENT.mint },
-          { label: 'this step', value: subPhase === 'land' || subPhase === 'rest' ? `'${displayChar(generated[step] ?? '')}'` : '—', color: ACCENT.mint },
-          { label: 'cost / token', value: '1 full pass', color: ACCENT.violet },
+          { label: 'this step', value: subPhase === 'land' || subPhase === 'rest' ? `'${displayChar(generated[step] ?? '')}'` : 'next token', color: ACCENT.mint },
+          { label: 'cost / token', value: '1 decode pass', color: ACCENT.violet },
         ],
         equation: {
           label: 'one rule, repeated',
           body: (
             <>
-              p = softmax(W_U · h_T) &nbsp;·&nbsp; tok ~ p &nbsp;·&nbsp; ctx ←
-              ctx + tok
+              p_t = softmax(W_U · h_t) &nbsp;·&nbsp; next_token ~ p_t
+              &nbsp;·&nbsp; context ← context + next_token
             </>
           ),
         },
         infoCallout: done
           ? 'KV-caching makes pass 2..N much cheaper than pass 1: only the new token\'s K/V pair is computed; the rest is read from cache. That\'s why most inference cost is bandwidth, not compute.'
-          : 'This is the entire generation algorithm. The loop you\'re watching is the same one ChatGPT, Claude, and every other LLM runs — just at much larger scale.',
+          : 'This is the core generation loop used by decoder LLMs: predict one token, append it, repeat. Real systems add batching, KV cache, sampling rules, and stopping conditions — but the loop stays the same.',
       }}
     />
   )

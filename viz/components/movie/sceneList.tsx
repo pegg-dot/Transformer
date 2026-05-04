@@ -738,7 +738,7 @@ RoPE also extrapolates better to longer sequences than training length, which ma
     title: 'Three more surgical upgrades.',
     subGroup: { label: 'comparisons', index: 3, total: 3, color: ACCENT.mint },
     caption:
-      'RoPE was Scene 31. Three swaps left: LayerNorm → RMSNorm, GELU → SwiGLU, MHA → GQA. Same skeleton, smaller/faster/more stable internals.',
+      'RoPE was Scene 31. Three swaps left: LayerNorm → RMSNorm, GELU MLP → SwiGLU MLP, MHA → GQA. Same skeleton, smaller/faster/more stable internals.',
     accent: ACCENT.mint,
     // 27s → 30s — phase cycle is 3 × 9s = 27s; "next · what does it
     // actually output?" handoff line fades in 6s into phase 2 (i.e. at
@@ -748,11 +748,11 @@ RoPE also extrapolates better to longer sequences than training length, which ma
     part: 'modern',
     details: `Three tweaks appear in almost every frontier open-source model:
 
-RMSNorm: drop the mean-subtraction in LayerNorm. About 30% faster, same quality.
+RMSNorm: drop the mean-subtraction in LayerNorm. Fewer norm operations, with strong training stability in practice.
 
-SwiGLU: replace FFN's single activation with a gated pair (two linear projections, element-wise multiplied through a Swish nonlinearity). Slightly better loss per param.
+SwiGLU: replace the MLP's single activation with a gated pair — SiLU(W_gate·x) ⊙ (W_up·x), then a W_down projection back to hidden_dim. Often uses wider intermediate projections than a plain GELU MLP, but improves quality per compute/parameter.
 
-GQA (grouped-query attention): instead of N Q/K/V heads, use N Q heads and a smaller number G of shared K/V heads. Slashes the KV cache by a factor of N/G. Used by LLaMA-2 and most frontier open models.
+GQA (grouped-query attention): instead of N Q/K/V heads, use N query heads but a smaller number G of K/V heads. The KV cache scales with K/V heads, so going from N to G shrinks it by ~N/G. Used by LLaMA-2 and most frontier open models.
 
 Stacked together, these changes give a faster, smaller, slightly better model with no architecture change.`,
     render: () => <ModernSplitPane />,
@@ -780,11 +780,11 @@ A forward pass does NOT output a sentence. It outputs a probability distribution
     id: 'output',
     section: ACT_VI,
     breadcrumb: ['Output', 'Generation loop'],
-    bridgeIn: 'Each pass produces one token. Each token kicks off another pass. Forever.',
+    bridgeIn: 'Each decode pass produces one token. Each token kicks off another pass. Forever.',
     kicker: 'the generation',
-    title: 'Generation = repeat the pass.',
+    title: 'Generation = one token at a time.',
     caption:
-      "Scene 33 in motion. The pulse runs through the six blocks, a token lands, the sequence grows. With the default prompt, it lands on Hamlet's line.",
+      "Scene 34 in motion. Each decode step runs through the blocks, selects one next token, appends it to the context, and repeats. With the default prompt, it lands on Hamlet's line.",
     accent: ACCENT.mint,
     durationMs: 28000,
     promptAware: true,

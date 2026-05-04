@@ -701,85 +701,149 @@ export function VizAct5Intro() {
       <Module
         y={FFN_Y}
         height={FFN_H}
-        title="FFN"
+        title="MLP"
         accent={ACCENT.amber}
         delay={t.ffn}
         inner={
           (() => {
-            const boxW = 80
-            const sigR = 22
-            const gap = 28
-            const totalW = boxW + gap + 2 * sigR + gap + boxW
+            // SwiGLU-shaped MLP: two parallel up-projections (gate + up)
+            // multiplied through ⊙, then a single down-projection back.
+            //   down( SiLU(gate·x) ⊙ up·x )
+            const upBoxW = 70
+            const upBoxH = 28
+            const dnBoxW = 80
+            const dnBoxH = 62
+            const gateR = 14
+            const innerGap = 18
+            const totalW = upBoxW + innerGap + 2 * gateR + innerGap + dnBoxW
             const offset = (SLOT_W - totalW) / 2
-            const upX = SLOT_X + offset
-            const sigCx = upX + boxW + gap + sigR
-            const dnX = sigCx + sigR + gap
+            const colX = SLOT_X + offset
+            const gateCx = colX + upBoxW + innerGap + gateR
+            const dnX = gateCx + gateR + innerGap
+            const topY = FFN_Y + 60
+            const botY = FFN_Y + 112
             const cy = FFN_Y + 105
+            const stroke = 'rgba(245,158,11,0.85)'
+            const fill = 'rgba(245,158,11,0.14)'
             return (
               <g>
-                {/* Up-projection → activation → down-projection */}
+                {/* gate projection (top) — gate_proj·x then SiLU/Swish */}
                 <rect
-                  x={upX}
-                  y={FFN_Y + 70}
-                  width={boxW}
-                  height={62}
-                  rx={6}
-                  ry={6}
-                  fill="rgba(245,158,11,0.14)"
-                  stroke="rgba(245,158,11,0.85)"
-                  strokeWidth={1.3}
+                  x={colX}
+                  y={topY}
+                  width={upBoxW}
+                  height={upBoxH}
+                  rx={5}
+                  ry={5}
+                  fill={fill}
+                  stroke={stroke}
+                  strokeWidth={1.2}
                 />
                 <text
-                  x={upX + boxW / 2}
-                  y={cy + 4}
+                  x={colX + upBoxW / 2}
+                  y={topY + upBoxH / 2 + 4}
                   textAnchor="middle"
                   fill={ACCENT.amber}
                   fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                  fontSize={15}
+                  fontSize={12}
                   fontWeight={600}
                 >
-                  W↑
+                  gate · σ
                 </text>
+                {/* up projection (bottom) — up_proj·x */}
+                <rect
+                  x={colX}
+                  y={botY}
+                  width={upBoxW}
+                  height={upBoxH}
+                  rx={5}
+                  ry={5}
+                  fill={fill}
+                  stroke={stroke}
+                  strokeWidth={1.2}
+                />
+                <text
+                  x={colX + upBoxW / 2}
+                  y={botY + upBoxH / 2 + 4}
+                  textAnchor="middle"
+                  fill={ACCENT.amber}
+                  fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                  fontSize={12}
+                  fontWeight={600}
+                >
+                  up
+                </text>
+                {/* connector lines from gate/up into ⊙ */}
+                <line
+                  x1={colX + upBoxW}
+                  y1={topY + upBoxH / 2}
+                  x2={gateCx - gateR}
+                  y2={cy - 4}
+                  stroke={stroke}
+                  strokeWidth={1.1}
+                  strokeOpacity={0.85}
+                />
+                <line
+                  x1={colX + upBoxW}
+                  y1={botY + upBoxH / 2}
+                  x2={gateCx - gateR}
+                  y2={cy - 4}
+                  stroke={stroke}
+                  strokeWidth={1.1}
+                  strokeOpacity={0.85}
+                />
+                {/* ⊙ multiply gate */}
                 <circle
-                  cx={sigCx}
+                  cx={gateCx}
                   cy={cy - 4}
-                  r={sigR}
-                  fill="rgba(245,158,11,0.14)"
-                  stroke="rgba(245,158,11,0.85)"
+                  r={gateR}
+                  fill={fill}
+                  stroke={stroke}
                   strokeWidth={1.3}
                 />
                 <text
-                  x={sigCx}
+                  x={gateCx}
                   y={cy + 1}
                   textAnchor="middle"
                   fill={ACCENT.amber}
                   fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                  fontSize={15}
+                  fontSize={14}
                   fontWeight={600}
                 >
-                  σ
+                  ⊙
                 </text>
+                {/* connector from ⊙ into down_proj */}
+                <line
+                  x1={gateCx + gateR}
+                  y1={cy - 4}
+                  x2={dnX}
+                  y2={cy - 4}
+                  stroke={stroke}
+                  strokeWidth={1.1}
+                  strokeOpacity={0.85}
+                />
+                {/* down projection — back to model dim */}
                 <rect
                   x={dnX}
                   y={FFN_Y + 70}
-                  width={boxW}
-                  height={62}
+                  width={dnBoxW}
+                  height={dnBoxH}
                   rx={6}
                   ry={6}
-                  fill="rgba(245,158,11,0.14)"
-                  stroke="rgba(245,158,11,0.85)"
+                  fill={fill}
+                  stroke={stroke}
                   strokeWidth={1.3}
                 />
                 <text
-                  x={dnX + boxW / 2}
+                  x={dnX + dnBoxW / 2}
                   y={cy + 4}
                   textAnchor="middle"
                   fill={ACCENT.amber}
                   fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                  fontSize={15}
+                  fontSize={14}
                   fontWeight={600}
                 >
-                  W↓
+                  down
                 </text>
               </g>
             )
@@ -846,7 +910,7 @@ export function VizAct5Intro() {
         h={calloutH}
         accent={ACCENT.amber}
         label="SwiGLU"
-        sub="gated feedforward"
+        sub="gate × up → down"
         delay={t.swi}
         icon={<IconSwiGLU accent={ACCENT.amber} />}
       />
@@ -858,7 +922,7 @@ export function VizAct5Intro() {
         h={calloutH}
         accent={ACCENT.mint}
         label="GQA"
-        sub="many Q heads, fewer K/V groups"
+        sub="inside attention · Q heads share K/V"
         delay={t.gqa}
         icon={<IconGQA accent={ACCENT.mint} />}
       />
@@ -912,21 +976,23 @@ export function Act5IntroSplitPane() {
         title: 'Same skeleton. Smarter parts.',
         subtitle: (
           <>
-            Modern LLMs still use the transformer block: residual stream,
-            attention, feedforward, and normalization. The upgrades mostly
-            improve <em>position handling</em>, <em>stability</em>,{' '}
-            <em>efficiency</em>, and <em>expressivity</em>.
+            Modern decoder LLMs keep the same pre-norm block: a residual
+            stream, RMSNorm before attention and again before the MLP, with
+            adds folding each sub-layer back in. The upgrades just swap
+            internals: <em>RoPE</em> rotates Q/K inside attention,{' '}
+            <em>RMSNorm</em> simplifies normalization, <em>GQA</em> shares
+            K/V across query heads, and <em>SwiGLU</em> makes the MLP gated.
           </>
         ),
         accent: ACCENT.mint,
         stats: [
           { label: 'RoPE', value: 'rotate Q/K', color: ACCENT.pink },
           { label: 'RMSNorm', value: 'scale only', color: ACCENT.blue },
-          { label: 'SwiGLU', value: 'gated FFN', color: ACCENT.amber },
+          { label: 'SwiGLU', value: 'gated MLP', color: ACCENT.amber },
           { label: 'GQA', value: 'shared K/V', color: ACCENT.mint },
         ],
         infoCallout:
-          'Act V is a roadmap, not a rewrite. The block, the residual stream, the attention/FFN sandwich — all the same. Four internals get swapped.',
+          'Act V is a roadmap, not a rewrite. The pre-norm block — residual stream, norm, attention, add, norm, MLP, add — is unchanged. Four internals get swapped.',
       }}
     />
   )
@@ -2668,7 +2734,7 @@ function RMSNormCardBody({ active }: { active: boolean }) {
         fontSize={12}
         {...stage(active, 3.7)}
       >
-        ~30% fewer ops, same stability
+        fewer ops, similar stability
       </motion.text>
     </g>
   )
@@ -2705,7 +2771,7 @@ function SwiGLUCardBody({ active }: { active: boolean }) {
   return (
     <g>
       <motion.g {...stage(active, 0.0)}>
-        <CardSubLabel x={innerX} y={MOD_CARD_Y + 86} text="CLASSIC · GELU / RELU" color="rgba(255,255,255,0.65)" />
+        <CardSubLabel x={innerX} y={MOD_CARD_Y + 86} text="CLASSIC · GELU MLP" color="rgba(255,255,255,0.65)" />
       </motion.g>
 
       {/* Classic single-stream pipeline — each box pops in left→right */}
@@ -2777,7 +2843,7 @@ function SwiGLUCardBody({ active }: { active: boolean }) {
       </motion.text>
 
       <motion.g {...stage(active, 2.0)}>
-        <CardSubLabel x={innerX} y={modernY - 24} text="MODERN · SWIGLU" color={accent} />
+        <CardSubLabel x={innerX} y={modernY - 24} text="MODERN · SWIGLU MLP" color={accent} />
       </motion.g>
 
       {/* Modern two-stream gated FFN */}
@@ -2829,13 +2895,13 @@ function SwiGLUCardBody({ active }: { active: boolean }) {
       >
         VALUE
       </motion.text>
-      {/* Top stream: W₁ + Swish */}
+      {/* Top stream: gate projection through SiLU/Swish */}
       <motion.g {...stage(active, 2.62)}>
-        <MiniBox x={topStreamX} y={topStreamY} w={streamW} h={opH} label="W₁·x  Swish" accent={accent} />
+        <MiniBox x={topStreamX} y={topStreamY} w={streamW} h={opH} label="SiLU(W_g·x)" accent={accent} />
       </motion.g>
-      {/* Bottom stream: V */}
+      {/* Bottom stream: up projection */}
       <motion.g {...stage(active, 2.76)}>
-        <MiniBox x={topStreamX} y={botStreamY} w={streamW} h={opH} label="V·x" accent={accent} />
+        <MiniBox x={topStreamX} y={botStreamY} w={streamW} h={opH} label="W_up·x" accent={accent} />
       </motion.g>
       {/* Gate connector lines (both streams converge into ⊙) */}
       <motion.line
@@ -2922,7 +2988,7 @@ function SwiGLUCardBody({ active }: { active: boolean }) {
         {...stagePath(active, 3.7, 0.3)}
       />
       <motion.g {...stage(active, 3.82)}>
-        <MiniBox x={gx + 50} y={gy - opH / 2} w={opW} h={opH} label="out" accent={accent} />
+        <MiniBox x={gx + 50} y={gy - opH / 2} w={opW} h={opH} label="W_down" accent={accent} />
       </motion.g>
 
       <motion.text
@@ -2935,7 +3001,7 @@ function SwiGLUCardBody({ active }: { active: boolean }) {
         fontStyle="italic"
         {...stage(active, 4.0)}
       >
-        gate selects which features to keep
+        gate selects which features pass through
       </motion.text>
 
       <motion.text
@@ -2947,7 +3013,7 @@ function SwiGLUCardBody({ active }: { active: boolean }) {
         fontSize={12}
         {...stage(active, 4.2)}
       >
-        ~2% better loss, ~50% more params
+        better quality per param in common configs
       </motion.text>
     </g>
   )
@@ -3129,7 +3195,7 @@ function GQACardBody({ active }: { active: boolean }) {
         fontStyle="italic"
         {...stage(active, 1.25)}
       >
-        8 Q · 8 K · 8 V (16 KV tensors)
+        8 query heads · 8 K heads · 8 V heads
       </motion.text>
 
       {/* Drop arrow — line draws via pathLength then arrowhead pops */}
@@ -3290,7 +3356,7 @@ function GQACardBody({ active }: { active: boolean }) {
         fontStyle="italic"
         {...stage(active, 3.7)}
       >
-        8 Q · 2 K · 2 V (4 KV tensors · 4× smaller cache)
+        8 query heads · 2 K heads · 2 V heads — KV cache shrinks ~N/G (here 4×)
       </motion.text>
     </g>
   )
@@ -3373,8 +3439,8 @@ export function VizModern({ phase }: { phase: number }) {
         i={1}
         active={phase === 1}
         accent={ACCENT.amber}
-        title="GELU → SWIGLU"
-        badge="gated FFN"
+        title="GELU MLP → SWIGLU MLP"
+        badge="gated MLP"
       >
         <SwiGLUCardBody active={phase === 1} />
       </ModCard>
@@ -3452,44 +3518,43 @@ export function ModernSplitPane() {
   const subtitleByPhase: ReactNode[] = [
     <>
       <strong style={{ color: 'rgba(255,255,255,0.9)' }}>Classic:</strong>{' '}
-      LayerNorm centers <em>and</em> scales — subtract mean, divide by std,
-      rescale, shift.
+      LayerNorm recenters <em>and</em> rescales — subtract mean, divide by
+      std, then apply learned scale/shift.
       <br />
       <strong style={{ color: 'rgba(255,255,255,0.9)' }}>Modern:</strong>{' '}
-      RMSNorm <em>scales only</em> — divide by the vector&apos;s RMS, then
-      rescale.
+      RMSNorm skips mean-centering and rescales by the vector&apos;s RMS.
       <br />
-      <strong style={{ color: ACCENT.mint }}>Why it matters:</strong> ~30%
-      fewer ops per norm, similar stability.
+      <strong style={{ color: ACCENT.mint }}>Why it matters:</strong> fewer
+      norm operations, with strong stability in practice.
     </>,
     <>
       <strong style={{ color: 'rgba(255,255,255,0.9)' }}>Classic:</strong> the
-      FFN passes its hidden vector through one smooth activation (GELU/ReLU).
+      MLP pushes the hidden vector through one smooth activation (GELU/ReLU).
       <br />
       <strong style={{ color: 'rgba(255,255,255,0.9)' }}>Modern:</strong>{' '}
-      SwiGLU splits the hidden vector into a <em>value</em> stream and a{' '}
-      <em>gate</em> stream, then multiplies them element-wise.
+      SwiGLU creates a <em>gate</em> stream and a <em>value</em> stream, then
+      multiplies them element-wise before projecting back down.
       <br />
       <strong style={{ color: ACCENT.mint }}>Why it matters:</strong> the gate
-      lets the network choose which features to keep — better feature
-      selection per param.
+      helps the network choose which features pass through.
     </>,
     <>
       <strong style={{ color: 'rgba(255,255,255,0.9)' }}>Classic:</strong>{' '}
-      every Q head has its own K and V — N heads × 2 = 2N tensors per layer.
+      every query head has its own key and value heads.
       <br />
       <strong style={{ color: 'rgba(255,255,255,0.9)' }}>Modern:</strong>{' '}
-      groups of Q heads <em>share</em> a single K/V pair — N Q heads, only G
-      groups of K/V.
+      groups of query heads share fewer key/value heads — N query heads, but
+      only G K/V heads.
       <br />
       <strong style={{ color: ACCENT.mint }}>Why it matters:</strong> the KV
-      cache shrinks by N/G× — most of long-context inference cost lives there.
+      cache scales with the number of K/V heads, so going from N to G shrinks
+      it by ~N/G — and decoding is bottlenecked on reading that cache.
     </>,
   ]
 
   const calloutByPhase: ReactNode[] = [
-    'RMSNorm assumes the mean is already roughly zero (residual streams stay centered in practice). Dropping the mean-subtract step removes a bandwidth-bound reduction, which is why it speeds up training without hurting quality.',
-    'A common shape: hidden_dim → 4·hidden_dim through the gate path AND the value path, then ⊙, then back down. That is why SwiGLU FFNs use ~50% more params than a plain GELU FFN at the same hidden_dim — but the loss-per-param wins.',
+    'RMSNorm works because mean-centering carries a cost; in practice, models train stably without it. Dropping that step removes a bandwidth-bound reduction, which is why it tends to speed up training without hurting quality.',
+    'Common shape: hidden_dim → 4·hidden_dim through both the gate path AND the up path, then ⊙, then a down projection back to hidden_dim. SwiGLU MLPs often use wider intermediate projections than a plain GELU MLP, but improve quality per compute/parameter in common configs.',
     'Used by LLaMA-2 (8 Q : 1 KV), LLaMA-3, Mistral, Gemini, Qwen. Inference latency is dominated by reading the KV cache from HBM; shrinking it 4–8× makes long-context decoding much faster.',
   ]
 
