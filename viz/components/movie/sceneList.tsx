@@ -233,7 +233,9 @@ Nothing in the model has done attention yet. Tokens have not "talked" to each ot
     title: 'Now zoom into one block.',
     caption: 'Attention first, then a small feedforward net. Every block runs the same two sub-layers.',
     accent: ACCENT.blue,
-    durationMs: 14000,
+    // 14s → 17s — dive starts at 10.5s and settles at ~13s; the extra 3s
+    // gives Block 0 visible hold time before the cut to scene 9 (layernorm).
+    durationMs: 17000,
     panelAnchor: 'fullscreen',
     details: `A transformer block is a fixed recipe: normalize, run multi-head attention, add the result back to the residual stream, normalize again, run a feedforward net, add that back too. Every one of the six blocks does exactly this.`,
     render: () => <Act2IntroSplitPane />,
@@ -342,7 +344,10 @@ Empirically, the heads DO specialize. Different heads attend to different kinds 
     caption:
       'Expand 4× wider (1536 dims), ReLU fires on selected features, compress back to 384, add to residual.',
     accent: ACCENT.amber,
-    durationMs: 19000,  // 5 × 3.2s
+    // 19s → 22s — dive starts at 16s and settles at ~18.2s; extra 3s
+    // gives "ZOOM INTO ONE NEURON" caption time to land before cut to
+    // scene 14 (ffn-feature).
+    durationMs: 22000,
     part: 'ffn',
     details: `The feed-forward block is a simple two-layer MLP applied per-token. First layer expands d_model → 4·d_model. Nonlinearity fires on each expanded dimension. Second layer compresses 4·d_model → d_model. Add the result back to the residual stream.
 
@@ -574,7 +579,10 @@ Batch size matters: bigger batches give less noisy gradients but each step costs
     caption:
       'Given the loss, walk the chain rule backward to compute ∂L/∂W for every weight in every layer.',
     accent: ACCENT.red,
-    durationMs: 21000,
+    // 21s → 24s — dive starts at 18s and settles at ~20.4s; extra 3s
+    // gives the "ZOOM INTO BLOCK 0 · LOCAL JACOBIAN" caption time to
+    // land before cut to scene 25 (bp-jacobian).
+    durationMs: 24000,
     part: 'backprop',
     details: `Backpropagation is the chain rule applied mechanically through a computation graph. For each operation, you know the local Jacobian ∂output/∂input. Starting from the loss (where ∂loss/∂loss = 1), multiply Jacobians backward, accumulating ∂loss/∂each_intermediate as you go.
 
@@ -695,7 +703,10 @@ Modern variants: AdamW (decouples weight decay), Lion (uses sign only, cheaper m
     title: 'Same skeleton. Smarter parts.',
     caption: 'A glassy cutaway of the transformer block, with four upgrade badges (RoPE, RMSNorm, SwiGLU, GQA) wired into the parts they replace.',
     accent: ACCENT.mint,
-    durationMs: 14000,
+    // 14s → 17s — pre-title bridge plays 0–2.4s, four upgrade callouts
+    // stagger in until ~3.5s, then dive at 11.5s settles at ~13.7s. Adds
+    // ~3s of hold on the attention slot before cut to scene 31 (rope).
+    durationMs: 17000,
     details: `Act V is a roadmap, not a rewrite. The transformer block you just walked through still describes today's LLMs: residual stream → norm → attention → add → norm → FFN → add. Modern models swap a handful of internals: RoPE for position handling on Q/K, RMSNorm for cheaper normalization, SwiGLU for a gated FFN activation, and GQA for shared K/V across head groups.`,
     render: () => <Act5IntroSplitPane />,
     panelAnchor: 'fullscreen',
@@ -729,7 +740,11 @@ RoPE also extrapolates better to longer sequences than training length, which ma
     caption:
       'RoPE was Scene 31. Three swaps left: LayerNorm → RMSNorm, GELU → SwiGLU, MHA → GQA. Same skeleton, smaller/faster/more stable internals.',
     accent: ACCENT.mint,
-    durationMs: 27000, // 3 × 9s
+    // 27s → 30s — phase cycle is 3 × 9s = 27s; "next · what does it
+    // actually output?" handoff line fades in 6s into phase 2 (i.e. at
+    // 24s scene-time). Extra 3s gives the handoff message 6s of visible
+    // hold before the cut to act6-intro.
+    durationMs: 30000,
     part: 'modern',
     details: `Three tweaks appear in almost every frontier open-source model:
 
