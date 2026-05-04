@@ -1192,6 +1192,36 @@ export function VizAct6Intro({ phase, pred }: { phase: number; pred: Prediction 
       >
         DISTRIBUTION → SELECTION → ONE TOKEN → APPEND
       </motion.text>
+
+      {/* Continuous pipeline shimmer — particles flow left→right along
+          the unembedding pipeline always, regardless of phase. The model
+          is constantly producing predictions; the phase indicator is
+          just frozen narration. */}
+      {Array.from({ length: 5 }).map((_, i) => {
+        const yLane = HSTATE_Y + 80 + i * 60
+        const startX = HSTATE_X - 30
+        const endX = LOGIT_X + 240
+        return (
+          <motion.circle
+            key={`a6-amb-${i}`}
+            r={2.0}
+            cy={yLane}
+            fill={ACCENT.amber}
+            initial={{ cx: startX, opacity: 0 }}
+            animate={{
+              cx: [startX, endX],
+              opacity: [0, 0.55, 0.55, 0],
+            }}
+            transition={{
+              duration: 5.0,
+              ease: 'linear',
+              repeat: Infinity,
+              delay: i * 1.0,
+              times: [0, 0.08, 0.92, 1],
+            }}
+          />
+        )
+      })}
     </svg>
   )
 }

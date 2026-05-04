@@ -1291,6 +1291,34 @@ export function VizCrossEntropy() {
           })
         })()}
       </g>
+
+      {/* Continuous probe — a small dot scans left→right across the bar
+          baseline always, regardless of phase. */}
+      {(() => {
+        const totalW = CE_TOKENS.length * CE_BAR_W + (CE_TOKENS.length - 1) * CE_BAR_GAP
+        const startX = CE_BARS_X - 20
+        const endX = CE_BARS_X + totalW + 20
+        return Array.from({ length: 4 }).map((_, i) => (
+          <motion.circle
+            key={`ce-probe-${i}`}
+            r={2.4}
+            cy={CE_BARS_BASELINE_Y + 18}
+            fill={ACCENT.mint}
+            initial={{ cx: startX, opacity: 0 }}
+            animate={{
+              cx: [startX, endX],
+              opacity: [0, 0.7, 0.7, 0],
+            }}
+            transition={{
+              duration: 5.2,
+              ease: 'linear',
+              repeat: Infinity,
+              delay: i * 1.3,
+              times: [0, 0.08, 0.92, 1],
+            }}
+          />
+        ))
+      })()}
     </svg>
   )
 }
@@ -1876,6 +1904,27 @@ export function VizCELossSeq({ phase }: { phase: number }) {
           )
         })}
       </g>
+
+      {/* Continuous scanner — sweeps left→right across all T positions,
+          always, regardless of phase. */}
+      <motion.line
+        y1={CELS_INPUT_Y - 30}
+        y2={CELS_BAR_BASE_Y + 20}
+        stroke={ACCENT.amber}
+        strokeWidth={1.4}
+        strokeOpacity={0.55}
+        initial={{ x1: CELS_GRID_X - 20, x2: CELS_GRID_X - 20 }}
+        animate={{
+          x1: [CELS_GRID_X - 20, CELS_GRID_X + CELS_GRID_W + 20],
+          x2: [CELS_GRID_X - 20, CELS_GRID_X + CELS_GRID_W + 20],
+        }}
+        transition={{
+          duration: 4.4,
+          ease: 'linear',
+          repeat: Infinity,
+          repeatDelay: 0.6,
+        }}
+      />
     </svg>
   )
 }
@@ -2097,12 +2146,15 @@ export function VizCELossBatch({ phase }: { phase: number }) {
         Every sequence in the batch contributes one L_seq. Average them.
       </text>
 
-      {/* ===================== AXIS LABELS ===================== */}
-      <g
-        style={{
-          opacity: showGridFrame ? 1 : 0,
-          transition: `opacity ${0.5 / speed}s ease`,
-        }}
+      {/* Axis labels — fade in smoothly at phase 2 (1.5s ramp), then
+          continuously breathe so they don't sit static. */}
+      <motion.g
+        animate={{ opacity: showGridFrame ? [0.65, 1, 0.65] : 0 }}
+        transition={
+          showGridFrame
+            ? { duration: 3.4 / speed, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 1.5 / speed, ease: 'easeOut' }
+        }
       >
         {/* "positions →" along the top of the cell grid */}
         <text
@@ -2129,7 +2181,7 @@ export function VizCELossBatch({ phase }: { phase: number }) {
         >
           B SEQUENCES ↓
         </text>
-      </g>
+      </motion.g>
 
       {/* ===================== ROWS ===================== */}
       {CELB_LSEQ.map((lseq, r) => {
@@ -2140,12 +2192,19 @@ export function VizCELossBatch({ phase }: { phase: number }) {
         const rowMidY = rowY + CELB_ROW_H / 2
 
         return (
-          <g
+          <motion.g
             key={`row-${r}`}
-            style={{
-              opacity: visibleRow ? 1 : 0,
-              transition: `opacity ${0.4 / speed}s ease ${rowDelay / speed}s`,
-            }}
+            animate={{ opacity: visibleRow ? [0.7, 1, 0.7] : 0 }}
+            transition={
+              visibleRow
+                ? {
+                    duration: 3.5 / speed,
+                    repeat: Infinity,
+                    ease: 'easeInOut',
+                    delay: rowDelay / speed,
+                  }
+                : { duration: 1.5 / speed, ease: 'easeOut' }
+            }
           >
             {/* Hero ring marker — only on row 0 to remind viewer this is
                 the Scene-22 sequence we just learned. */}
@@ -2274,7 +2333,7 @@ export function VizCELossBatch({ phase }: { phase: number }) {
                 transition: `opacity ${0.6 / speed}s ease ${(0.1 * r) / speed}s`,
               }}
             />
-          </g>
+          </motion.g>
         )
       })}
 
@@ -2288,7 +2347,7 @@ export function VizCELossBatch({ phase }: { phase: number }) {
         fill={ACCENT.dim}
         style={{
           opacity: showGridFrame ? 1 : 0,
-          transition: `opacity ${0.5 / speed}s ease`,
+          transition: `opacity ${1.5 / speed}s ease`,
         }}
       >
         B SEQUENCES × T POSITIONS = {CELB_B}·{CELB_T} = {CELB_B * CELB_T} CROSS-ENTROPY LOSSES IN ONE FORWARD PASS
@@ -2363,11 +2422,13 @@ export function VizCELossBatch({ phase }: { phase: number }) {
         </text>
 
         {/* "↓ backprop runs on this scalar" — surfaces in beat 3 */}
-        <g
-          style={{
-            opacity: showCollapse ? 1 : 0,
-            transition: `opacity ${0.5 / speed}s ease ${0.6 / speed}s`,
-          }}
+        <motion.g
+          animate={{ opacity: showCollapse ? [0.7, 1, 0.7] : 0 }}
+          transition={
+            showCollapse
+              ? { duration: 3.0 / speed, repeat: Infinity, ease: 'easeInOut', delay: 0.6 / speed }
+              : { duration: 1.5 / speed, ease: 'easeOut' }
+          }
         >
           <line
             x1={CELB_MEAN_X + CELB_MEAN_W / 2}
@@ -2394,7 +2455,7 @@ export function VizCELossBatch({ phase }: { phase: number }) {
           >
             BACKPROP RUNS ON THIS SCALAR
           </text>
-        </g>
+        </motion.g>
       </g>
 
       {/* ===================== BEAT INDICATOR ===================== */}
@@ -2435,6 +2496,37 @@ export function VizCELossBatch({ phase }: { phase: number }) {
           )
         })}
       </g>
+
+      {/* Continuous flow — particles ripple from each batch row toward
+          the mean cell on the right, always, regardless of phase. The
+          batch is constantly being averaged; this represents that. */}
+      {Array.from({ length: CELB_B }).map((_, r) => {
+        const ox = CELB_LSEQ_X + CELB_LSEQ_W
+        const oy = CELB_GRID_Y + r * (CELB_ROW_H + CELB_ROW_GAP) + CELB_ROW_H / 2
+        const tx = CELB_MEAN_X
+        const ty = CELB_MEAN_Y + CELB_MEAN_H / 2
+        return (
+          <motion.circle
+            key={`celb-flow-${r}`}
+            r={2.4}
+            fill={ACCENT.mint}
+            initial={{ cx: ox, cy: oy, opacity: 0 }}
+            animate={{
+              cx: [ox, tx],
+              cy: [oy, ty],
+              opacity: [0, 0.7, 0.7, 0],
+            }}
+            transition={{
+              duration: 2.4,
+              ease: 'easeIn',
+              repeat: Infinity,
+              repeatDelay: 1.6,
+              delay: r * 0.4,
+              times: [0, 0.12, 0.88, 1],
+            }}
+          />
+        )
+      })}
     </svg>
   )
 }
@@ -3378,6 +3470,33 @@ export function VizBackprop({ phase }: { phase: number }) {
           ZOOM INTO BLOCK 0 · LOCAL JACOBIAN
         </text>
       )}
+
+      {/* Continuous floor shimmer — small particles drift right→left along
+          the floor regardless of phase, suggesting "the gradient field is
+          always there, the sweep just makes it visible". */}
+      {Array.from({ length: 6 }).map((_, i) => {
+        const yLane = BP_VB_H - 120 - (i % 3) * 18
+        return (
+          <motion.circle
+            key={`bp-amb-${i}`}
+            r={1.8}
+            cy={yLane}
+            fill={ACCENT.red}
+            initial={{ cx: BP_VB_W + 20, opacity: 0 }}
+            animate={{
+              cx: [BP_VB_W + 20, -20],
+              opacity: [0, 0.55, 0.55, 0],
+            }}
+            transition={{
+              duration: 6.2,
+              ease: 'linear',
+              repeat: Infinity,
+              delay: i * 1.05,
+              times: [0, 0.08, 0.92, 1],
+            }}
+          />
+        )
+      })}
     </svg>
   )
 }
@@ -3887,13 +4006,15 @@ export function VizBpJacobian({ phase }: { phase: number }) {
       </g>
 
       {/* ===================== BACKWARD GRADIENT VECTORS (red) ===================== */}
-      {/* Incoming ∂L/∂y on the right (above output column), outgoing ∂L/∂x
-          on the left (above input column). Both visible in beat 2+. */}
-      <g
-        style={{
-          opacity: showBackward ? 1 : 0,
-          transition: `opacity ${0.5 / speed}s ease`,
-        }}
+      {/* Backward lane labels — fade in with smooth 1.5s ramp at phase 2+,
+          then continuously breathe so the lane feels active not parked. */}
+      <motion.g
+        animate={{ opacity: showBackward ? [0.7, 1, 0.7] : 0 }}
+        transition={
+          showBackward
+            ? { duration: 3.2 / speed, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 1.5 / speed, ease: 'easeOut' }
+        }
       >
         {/* Top backward lane label */}
         <text
@@ -3999,15 +4120,17 @@ export function VizBpJacobian({ phase }: { phase: number }) {
         >
           ∂L/∂x
         </text>
-      </g>
+      </motion.g>
 
-      {/* ===================== ∂L/∂W TILE BELOW BLOCK ===================== */}
-      {/* Drops in beat 3. Shows the layer also produces a weight gradient. */}
-      <g
-        style={{
-          opacity: showWeightGrad ? 1 : 0,
-          transition: `opacity ${0.5 / speed}s ease`,
-        }}
+      {/* Weight gradient tile — appears at phase 3 with smooth 1.5s fade,
+          then continuously breathes. */}
+      <motion.g
+        animate={{ opacity: showWeightGrad ? [0.7, 1, 0.7] : 0 }}
+        transition={
+          showWeightGrad
+            ? { duration: 3.0 / speed, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 1.5 / speed, ease: 'easeOut' }
+        }
       >
         <line
           x1={BPJ_BLOCK_X + BPJ_BLOCK_W / 2}
@@ -4070,13 +4193,15 @@ export function VizBpJacobian({ phase }: { phase: number }) {
         >
           ∂L/∂W  —  same local information also gives the weight gradient
         </text>
-      </g>
+      </motion.g>
 
-      {/* ===================== CHAIN-RULE CALC LINE (bottom) ===================== */}
-      <g
-        style={{
-          opacity: showBackward ? 1 : 0,
-          transition: `opacity ${0.5 / speed}s ease ${0.4 / speed}s`,
+      {/* Chain-rule line — fades in with smooth 1.5s ramp at phase 2+. */}
+      <motion.g
+        animate={{ opacity: showBackward ? 1 : 0 }}
+        transition={{
+          duration: 1.5 / speed,
+          delay: showBackward ? 0.4 / speed : 0,
+          ease: 'easeOut',
         }}
       >
         <text
@@ -4105,7 +4230,7 @@ export function VizBpJacobian({ phase }: { phase: number }) {
         >
           OUTGOING GRADIENT  =  INCOMING GRADIENT  ×  LOCAL JACOBIAN
         </text>
-      </g>
+      </motion.g>
 
       {/* ===================== BEAT INDICATOR ===================== */}
       <g transform={`translate(${BPJ_VB_W / 2}, ${BPJ_VB_H - 22})`}>
@@ -4145,6 +4270,22 @@ export function VizBpJacobian({ phase }: { phase: number }) {
           )
         })}
       </g>
+
+      {/* Continuous breathing on the layer block — always pulses to
+          indicate "this layer is constantly computing its local Jacobian
+          when gradients flow through it." */}
+      <motion.rect
+        x={BPJ_BLOCK_X - 6}
+        y={BPJ_BLOCK_Y - 6}
+        width={BPJ_BLOCK_W + 12}
+        height={BPJ_BLOCK_H + 12}
+        rx={14}
+        fill="none"
+        stroke={ACCENT.amber}
+        strokeWidth={1.4}
+        animate={{ strokeOpacity: [0.15, 0.45, 0.15] }}
+        transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+      />
     </svg>
   )
 }
@@ -4376,13 +4517,20 @@ export function VizBpAccum({ phase }: { phase: number }) {
       </text>
 
       {/* ===================== "SAME W" FRAME (beat 1+) ===================== */}
-      {/* A subtle bracket around the per-example tiles indicating they
-          are gradients for the SAME weight matrix. */}
-      <g
-        style={{
-          opacity: sameWFrame ? 1 : 0,
-          transition: `opacity ${0.5 / speed}s ease`,
+      {/* "Same W" frame — fades in smoothly when phase reaches 1, then
+          continuously breathes opacity (0.55↔1) for the duration it's
+          visible. Phase boundaries are 1.5s smooth cross-fades, not 0.5s
+          snaps. The bracket "lives" while it's there instead of just
+          sitting static. */}
+      <motion.g
+        animate={{
+          opacity: sameWFrame ? [0.55, 1, 0.55] : 0,
         }}
+        transition={
+          sameWFrame
+            ? { duration: 3.6 / speed, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 1.5 / speed, ease: 'easeOut' }
+        }
       >
         <rect
           x={BPA_TILES_X - 110}
@@ -4406,7 +4554,7 @@ export function VizBpAccum({ phase }: { phase: number }) {
         >
           SAME  W  ·  DIFFERENT EXAMPLES
         </text>
-      </g>
+      </motion.g>
 
       {/* ===================== PER-EXAMPLE GRADIENTS ===================== */}
       {Array.from({ length: BPA_B }, (_, i) => {
@@ -4778,12 +4926,18 @@ export function VizBpAccum({ phase }: { phase: number }) {
         </text>
       </g>
 
-      {/* ===================== UPDATE BOX (gold) ===================== */}
-      <g
-        style={{
-          opacity: showUpdate ? 1 : 0,
-          transition: `opacity ${0.5 / speed}s ease`,
+      {/* Update box — fades in smoothly when phase reaches 3, then
+          continuously breathes opacity. The "step is being applied" idea
+          stays alive while it's on screen instead of just sitting. */}
+      <motion.g
+        animate={{
+          opacity: showUpdate ? [0.7, 1, 0.7] : 0,
         }}
+        transition={
+          showUpdate
+            ? { duration: 3.0 / speed, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 1.5 / speed, ease: 'easeOut' }
+        }
       >
         {/* Arrow from averaged tile down to update box */}
         <line
@@ -4865,7 +5019,7 @@ export function VizBpAccum({ phase }: { phase: number }) {
           {' · '}
           <tspan fill={ACCENT.mint}>∇W_batch</tspan>
         </text>
-      </g>
+      </motion.g>
 
       {/* ===================== ENDING CAPTION ===================== */}
       <g
@@ -4925,6 +5079,66 @@ export function VizBpAccum({ phase }: { phase: number }) {
           )
         })}
       </g>
+
+      {/* Continuous gradient-particle flow — runs ALWAYS, regardless of
+          phase. Each example's gradient sends a small dot toward the
+          averaging operator; after the op, particles continue right
+          toward the averaged batch gradient. The scene now feels like
+          computation is ongoing instead of pausing between phase ticks —
+          the phase indicator becomes a lagging summary, not the clock. */}
+      {Array.from({ length: BPA_B }).map((_, i) => {
+        const ox = BPA_TILES_X + BPA_TILE_W
+        const oy = bpaTileY(i) + BPA_TILE_H / 2
+        const opEdgeX = BPA_OP_CX - BPA_OP_R
+        const opEdgeY = BPA_OP_CY
+        const colors = [ACCENT.violet, ACCENT.blue, ACCENT.cyan, ACCENT.mint]
+        const c = colors[i % colors.length]
+        const phaseDelay = (i * 0.55) / speed
+        return (
+          <g key={`bpa-flow-${i}`}>
+            <motion.circle
+              r={3}
+              cx={ox}
+              cy={oy}
+              fill={c}
+              initial={{ cx: ox, cy: oy, opacity: 0 }}
+              animate={{
+                cx: [ox, opEdgeX],
+                cy: [oy, opEdgeY],
+                opacity: [0, 0.85, 0.85, 0],
+              }}
+              transition={{
+                duration: 1.6 / speed,
+                ease: 'easeIn',
+                repeat: Infinity,
+                repeatDelay: 0.8 / speed,
+                delay: phaseDelay,
+                times: [0, 0.1, 0.85, 1],
+              }}
+            />
+            <motion.circle
+              r={2.6}
+              cx={BPA_OP_CX + BPA_OP_R}
+              cy={BPA_OP_CY}
+              fill={ACCENT.amber}
+              initial={{ cx: BPA_OP_CX + BPA_OP_R, opacity: 0 }}
+              animate={{
+                cx: [BPA_OP_CX + BPA_OP_R, BPA_AVG_X],
+                cy: [BPA_OP_CY, BPA_OP_CY],
+                opacity: [0, 0.75, 0.75, 0],
+              }}
+              transition={{
+                duration: 1.2 / speed,
+                ease: 'easeOut',
+                repeat: Infinity,
+                repeatDelay: 1.2 / speed,
+                delay: phaseDelay + 1.4 / speed,
+                times: [0, 0.15, 0.9, 1],
+              }}
+            />
+          </g>
+        )
+      })}
     </svg>
   )
 }
@@ -5301,12 +5515,15 @@ export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx:
         </text>
       </g>
 
-      {/* ===================== TRAIL of past steps ===================== */}
-      <g
-        style={{
-          opacity: showTrail ? 1 : 0,
-          transition: `opacity ${0.5 / speed}s ease`,
-        }}
+      {/* Trail of past steps — fades in smoothly at phase 2, breathes
+          continuously while visible. */}
+      <motion.g
+        animate={{ opacity: showTrail ? [0.7, 1, 0.7] : 0 }}
+        transition={
+          showTrail
+            ? { duration: 3.4 / speed, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 1.5 / speed, ease: 'easeOut' }
+        }
       >
         {GD_TRAIL.slice(0, stepIdx + 1).map((t, i) => (
           <circle
@@ -5318,7 +5535,7 @@ export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx:
             opacity={0.55 + 0.4 * (i / Math.max(1, stepIdx))}
           />
         ))}
-      </g>
+      </motion.g>
 
       {/* ===================== CURRENT W (yellow point) ===================== */}
       <g
@@ -5367,12 +5584,15 @@ export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx:
         </g>
       </g>
 
-      {/* ===================== ARROWS ∇L(W) and -η∇L(W) ===================== */}
-      <g
-        style={{
-          opacity: showArrows ? 1 : 0,
-          transition: `opacity ${0.5 / speed}s ease`,
-        }}
+      {/* Gradient arrows — fade in smoothly at phase 1, breathe while
+          visible. */}
+      <motion.g
+        animate={{ opacity: showArrows ? [0.7, 1, 0.7] : 0 }}
+        transition={
+          showArrows
+            ? { duration: 3.0 / speed, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 1.5 / speed, ease: 'easeOut' }
+        }
       >
         {/* ∇L uphill arrow (coral) */}
         <line
@@ -5463,7 +5683,7 @@ export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx:
         >
           (descent direction)
         </text>
-      </g>
+      </motion.g>
 
       {/* ===================== CONTOUR MAP (top right) ===================== */}
       <g>
@@ -5728,6 +5948,35 @@ export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx:
           )
         })}
       </g>
+
+      {/* Continuous floor shimmer — small particles drift along the
+          loss-surface base regardless of phase. The "field" is always
+          there, the descent path is just one trajectory through it. */}
+      {Array.from({ length: 8 }).map((_, i) => {
+        const lane = i % 4
+        const yLane = GD_SURF_OY + 80 + lane * 12
+        const startX = GD_SURF_OX - 240 + (i % 2) * 30
+        return (
+          <motion.circle
+            key={`gd-amb-${i}`}
+            r={1.6}
+            cy={yLane}
+            fill={ACCENT.cyan}
+            initial={{ cx: startX, opacity: 0 }}
+            animate={{
+              cx: [startX, startX + 480],
+              opacity: [0, 0.45, 0.45, 0],
+            }}
+            transition={{
+              duration: 5.0,
+              ease: 'linear',
+              repeat: Infinity,
+              delay: i * 0.6,
+              times: [0, 0.1, 0.9, 1],
+            }}
+          />
+        )
+      })}
     </svg>
   )
 }
@@ -6110,12 +6359,15 @@ export function VizGdRavine({ phase, stepIdx }: { phase: number; stepIdx: number
         w₁
       </text>
 
-      {/* ===================== TRAIL ===================== */}
-      <g
-        style={{
-          opacity: showTrail ? 1 : 0,
-          transition: `opacity ${0.5 / speed}s ease`,
-        }}
+      {/* Trail of GD steps — fades in smoothly at phase 2, breathes
+          continuously while visible. */}
+      <motion.g
+        animate={{ opacity: showTrail ? [0.7, 1, 0.7] : 0 }}
+        transition={
+          showTrail
+            ? { duration: 3.4 / speed, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 1.5 / speed, ease: 'easeOut' }
+        }
       >
         {GR_TRAIL.slice(0, safeIdx + 1).map((t, i) => (
           <circle
@@ -6127,7 +6379,7 @@ export function VizGdRavine({ phase, stepIdx }: { phase: number; stepIdx: number
             opacity={0.45 + 0.5 * (i / Math.max(1, safeIdx))}
           />
         ))}
-      </g>
+      </motion.g>
 
       {/* ===================== MINIMUM (green dot at basin) =====================
           Halo pulses continuously so the target never sits dead during phase
@@ -6507,6 +6759,34 @@ export function VizGdRavine({ phase, stepIdx }: { phase: number; stepIdx: number
           )
         })}
       </g>
+
+      {/* Continuous ravine flow — small particles drift along the ravine
+          axis regardless of phase. The terrain is always there; the
+          optimizer's path is just one trajectory through it. */}
+      {Array.from({ length: 5 }).map((_, i) => {
+        const yLane = GR_SURF_OY + 110 + i * 8
+        const startX = GR_SURF_OX - 200
+        return (
+          <motion.circle
+            key={`gr-amb-${i}`}
+            r={1.6}
+            cy={yLane}
+            fill={ACCENT.red}
+            initial={{ cx: startX, opacity: 0 }}
+            animate={{
+              cx: [startX, startX + 460],
+              opacity: [0, 0.4, 0.4, 0],
+            }}
+            transition={{
+              duration: 5.6,
+              ease: 'linear',
+              repeat: Infinity,
+              delay: i * 0.95,
+              times: [0, 0.1, 0.9, 1],
+            }}
+          />
+        )
+      })}
     </svg>
   )
 }
@@ -7068,8 +7348,15 @@ export function VizGdAdam({ phase, stepIdx }: { phase: number; stepIdx: number }
           )
         })}
 
-        {/* Vanilla GD path (faded red) */}
-        <g style={{ opacity: showVanilla ? 0.55 : 0, transition: `opacity ${0.5 / speed}s ease` }}>
+        {/* Vanilla GD path (faded red) — breathes opacity to stay alive */}
+        <motion.g
+          animate={{ opacity: showVanilla ? [0.4, 0.65, 0.4] : 0 }}
+          transition={
+            showVanilla
+              ? { duration: 3.6 / speed, repeat: Infinity, ease: 'easeInOut' }
+              : { duration: 1.5 / speed, ease: 'easeOut' }
+          }
+        >
           {ADAM_VANILLA_TRAIL.slice(1).map((t, i) => {
             const prev = ADAM_VANILLA_TRAIL[i]
             const [x0, y0] = adamCmapPoint(prev.w1, prev.w2)
@@ -7092,10 +7379,17 @@ export function VizGdAdam({ phase, stepIdx }: { phase: number; stepIdx: number }
             const [cx, cy] = adamCmapPoint(t.w1, t.w2)
             return <circle key={`cvd-${i}`} cx={cx} cy={cy} r={2.5} fill={ACCENT.red} opacity={0.55} />
           })}
-        </g>
+        </motion.g>
 
-        {/* Adam path (bright cyan) */}
-        <g style={{ opacity: showAdam ? 1 : 0, transition: `opacity ${0.5 / speed}s ease` }}>
+        {/* Adam path (bright cyan) — breathes when visible */}
+        <motion.g
+          animate={{ opacity: showAdam ? [0.75, 1, 0.75] : 0 }}
+          transition={
+            showAdam
+              ? { duration: 3.0 / speed, repeat: Infinity, ease: 'easeInOut' }
+              : { duration: 1.5 / speed, ease: 'easeOut' }
+          }
+        >
           {ADAM_TRAIL.slice(1, safeIdx + 1).map((t, i) => {
             const prev = ADAM_TRAIL[i]
             const [x0, y0] = adamCmapPoint(prev.w1, prev.w2)
@@ -7126,7 +7420,7 @@ export function VizGdAdam({ phase, stepIdx }: { phase: number; stepIdx: number }
               />
             )
           })}
-        </g>
+        </motion.g>
 
         {/* Minimum (green) */}
         <circle cx={ADAM_CMAP_CX} cy={ADAM_CMAP_CY} r={6} fill={ACCENT.mint} />
@@ -7247,6 +7541,35 @@ export function VizGdAdam({ phase, stepIdx }: { phase: number; stepIdx: number }
           )
         })}
       </g>
+
+      {/* Continuous Adam-state shimmer — small particles flow along the
+          ravine axis on the cyan side, regardless of phase. Suggests the
+          adaptive optimizer is "always running" — the dual trail is just
+          a paused frame from inside its motion. */}
+      {Array.from({ length: 6 }).map((_, i) => {
+        const yLane = GR_SURF_OY + 110 + i * 7
+        const startX = GR_SURF_OX - 220
+        return (
+          <motion.circle
+            key={`adam-amb-${i}`}
+            r={1.6}
+            cy={yLane}
+            fill={ACCENT.cyan}
+            initial={{ cx: startX, opacity: 0 }}
+            animate={{
+              cx: [startX, startX + 480],
+              opacity: [0, 0.5, 0.5, 0],
+            }}
+            transition={{
+              duration: 4.8,
+              ease: 'linear',
+              repeat: Infinity,
+              delay: i * 0.78,
+              times: [0, 0.1, 0.9, 1],
+            }}
+          />
+        )
+      })}
     </svg>
   )
 }

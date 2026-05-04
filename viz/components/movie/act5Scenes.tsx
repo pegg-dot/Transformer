@@ -2032,6 +2032,34 @@ export function VizRoPE({ phase, posIdx }: { phase: number; posIdx: number }) {
       <AttentionInset active={phase >= 1} />
 
       <RelativeDemo active={phase >= 2} />
+
+      {/* Continuous orbit dots — 4 small particles always orbit on the
+          rotation panel's unit circle, regardless of phase. Rotation is
+          what RoPE always does; the phase chip is lagging summary.
+          transformBox: view-box pins the rotation origin at SVG (cx, cy). */}
+      <motion.g
+        style={{
+          transformBox: 'view-box',
+          transformOrigin: `${ROT_CX}px ${ROT_CY}px`,
+        }}
+        animate={{ rotate: 360 }}
+        transition={{ duration: 9, ease: 'linear', repeat: Infinity }}
+      >
+        {Array.from({ length: 4 }).map((_, i) => {
+          const angle = (i / 4) * Math.PI * 2
+          const r = ROT_R + 14
+          return (
+            <circle
+              key={`rope-orbit-${i}`}
+              r={2.4}
+              cx={ROT_CX + Math.cos(angle) * r}
+              cy={ROT_CY + Math.sin(angle) * r}
+              fill={ACCENT.pink}
+              opacity={0.55}
+            />
+          )
+        })}
+      </motion.g>
     </svg>
   )
 }
@@ -2215,8 +2243,26 @@ function ModCard({
   const x = modCardX(i)
   return (
     <motion.g
-      animate={{ opacity: active ? 1 : 0.32 }}
-      transition={{ duration: 0.6 }}
+      // Active cards sit at full opacity; inactive cards subtly breathe
+      // (0.28↔0.42) instead of holding flat at 0.32. Keeps every card
+      // visibly "alive" — the active phase is still clearly the focus
+      // (full opacity), but the eye reads the inactive cards as queued
+      // rather than dimmed-and-dead.
+      animate={
+        active
+          ? { opacity: 1 }
+          : { opacity: [0.28, 0.42, 0.28] }
+      }
+      transition={
+        active
+          ? { duration: 0.6 }
+          : {
+              duration: 4.5,
+              repeat: Infinity,
+              ease: 'easeInOut',
+              delay: i * 1.2,
+            }
+      }
     >
       {/* Card background */}
       <motion.rect
@@ -3339,6 +3385,41 @@ export function VizModern({ phase }: { phase: number }) {
       </text>
 
       <RopeDonePill />
+
+      {/* Continuous data-flow ribbon — runs always, beneath all 3 cards.
+          Subtle horizontal stream of small dots so the scene feels alive
+          even when the active card has finished its stage animation and
+          is just sitting. The eye picks up on the steady flow rather
+          than registering the per-phase card-switch as the only motion. */}
+      {Array.from({ length: 8 }).map((_, i) => {
+        const startX = MOD_CARD_X0 - 40
+        const endX = MOD_CARD_X0 + MOD_TOTAL_W + 40
+        const y = MOD_CARD_Y + MOD_CARD_H + 18
+        const colors = [
+          ACCENT.blue, ACCENT.amber, ACCENT.mint,
+          ACCENT.violet, ACCENT.cyan, ACCENT.pink,
+        ]
+        return (
+          <motion.circle
+            key={`mod-flow-${i}`}
+            r={2.2}
+            cy={y}
+            fill={colors[i % colors.length]}
+            initial={{ cx: startX, opacity: 0 }}
+            animate={{
+              cx: [startX, endX],
+              opacity: [0, 0.7, 0.7, 0],
+            }}
+            transition={{
+              duration: 6.0,
+              ease: 'linear',
+              repeat: Infinity,
+              delay: i * 0.65,
+              times: [0, 0.06, 0.94, 1],
+            }}
+          />
+        )
+      })}
 
       {/* Three cards */}
       <ModCard
