@@ -7,8 +7,6 @@ A dual-track project: build a modern transformer from scratch in raw PyTorch, an
 ## Why this exists
 
 - **Learning artifact.** Building a transformer teaches you the architecture. Visualizing it teaches you everything you missed.
-- **Portfolio weapon.** "I built a transformer" is forgettable. "I built a live transformer visualizer running on my own trained model" is a DM to any VC that works.
-- **Fundable seed.** The viz is a legitimate educational / interpretability product candidate — lead magnet, course, or standalone tool.
 
 ## Repo layout
 
