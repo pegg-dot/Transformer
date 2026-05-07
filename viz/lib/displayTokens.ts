@@ -40,6 +40,22 @@ function stableId(t: string): number {
 
 const TOKEN_RE = /\s*[A-Za-z]+|\s*[0-9]+|[^\s]/g
 
+/**
+ * Render a token's text for a single chip — leading space becomes a
+ * mid-dot so the space-prefix convention is visible.
+ */
+export function chipLabel(text: string): string {
+  return text.startsWith(' ') ? '·' + text.slice(1) : text
+}
+
+/** Convenience: just the token-text strings, sliced. */
+export function tokenStrings(
+  prompt: string | null | undefined,
+  max: number,
+): string[] {
+  return displayTokens(prompt).slice(0, max).map((t) => t.text)
+}
+
 export function displayTokens(prompt: string | null | undefined): DisplayToken[] {
   if (!prompt) return []
   const key = prompt.trim().toLowerCase()

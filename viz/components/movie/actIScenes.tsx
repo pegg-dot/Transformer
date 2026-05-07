@@ -542,16 +542,20 @@ export function VizTokenization() {
   const { prompt } = usePrompt()
   const speed = useSpeed()
 
-  const chars = (prompt || 'The cat sat on the mat.').split('').slice(0, 14)
+  const tokens = useMemo(
+    () => displayTokens(prompt).slice(0, 10),
+    [prompt],
+  )
   const STAGGER = 0.12 / speed
   const PHASE_DROP = 1.6 / speed
   const PHASE_ID = 3.4 / speed
 
-  // Char-level honest IDs: just charCode % 65 to stay in [0, 65)
-  const idFor = (ch: string) => ch.charCodeAt(0) % 65
+  const display = (t: string) => (t.startsWith(' ') ? '·' + t.slice(1) : t)
 
-  const cellW = 78
-  const totalW = chars.length * cellW
+  // Width budget: bigger cells to fit multi-character BPE tokens like ' not'.
+  // Falls back narrower when there are many tokens so the row still fits.
+  const cellW = tokens.length <= 7 ? 140 : tokens.length <= 9 ? 115 : 95
+  const totalW = tokens.length * cellW
   const startX = 700 - totalW / 2 + cellW / 2
 
   return (
@@ -572,15 +576,15 @@ export function VizTokenization() {
           </filter>
         </defs>
 
-        {/* Top — sentence in big italic serif */}
+        {/* Top — token text in big italic serif (one per BPE token) */}
         <motion.g initial={{ opacity: 1 }} animate={{ opacity: 1 }}>
-          {chars.map((ch, i) => (
+          {tokens.map((tok, i) => (
             <motion.text
               key={`top-${i}`}
-              x={startX + i * cellW - cellW / 2 + cellW / 2}
+              x={startX + i * cellW}
               y={210}
               textAnchor="middle"
-              fontSize="64"
+              fontSize="44"
               fontFamily="var(--font-display)"
               fontStyle="italic"
               fill="rgba(255,255,255,0.92)"
@@ -589,13 +593,13 @@ export function VizTokenization() {
               animate={{ opacity: 1, y: 210 }}
               transition={{ delay: i * STAGGER, duration: 0.4 / speed }}
             >
-              {ch === ' ' ? '·' : ch}
+              {display(tok.text)}
             </motion.text>
           ))}
         </motion.g>
 
-        {/* Vertical drop lines — character → token pill */}
-        {chars.map((_, i) => {
+        {/* Vertical drop lines — token text → token pill */}
+        {tokens.map((_, i) => {
           const x = startX + i * cellW
           return (
             <motion.line
@@ -614,9 +618,10 @@ export function VizTokenization() {
           )
         })}
 
-        {/* Token pills row */}
-        {chars.map((ch, i) => {
+        {/* Token pills row — frame each BPE token */}
+        {tokens.map((tok, i) => {
           const x = startX + i * cellW
+          const pillW = Math.max(60, cellW - 20)
           return (
             <motion.g
               key={`pill-${i}`}
@@ -625,9 +630,9 @@ export function VizTokenization() {
               transition={{ delay: PHASE_DROP + 0.2 / speed + i * STAGGER, duration: 0.4 / speed }}
             >
               <rect
-                x={x - 30}
+                x={x - pillW / 2}
                 y={420}
-                width={60}
+                width={pillW}
                 height={70}
                 rx={4}
                 fill="rgba(167,139,250,0.06)"
@@ -639,11 +644,11 @@ export function VizTokenization() {
                 x={x}
                 y={465}
                 textAnchor="middle"
-                fontSize="32"
+                fontSize="26"
                 fontFamily="var(--font-display)"
                 fill="rgba(255,255,255,0.95)"
               >
-                {ch === ' ' ? '·' : ch}
+                {display(tok.text)}
               </text>
             </motion.g>
           )
@@ -665,9 +670,10 @@ export function VizTokenization() {
           TOKENS ▸
         </motion.text>
 
-        {/* ID pills (smaller, below tokens) */}
-        {chars.map((ch, i) => {
+        {/* ID pills (below tokens) — BPE-style numeric IDs */}
+        {tokens.map((tok, i) => {
           const x = startX + i * cellW
+          const idPillW = Math.max(56, cellW - 30)
           return (
             <motion.g
               key={`id-${i}`}
@@ -686,9 +692,9 @@ export function VizTokenization() {
                 strokeWidth={1}
               />
               <rect
-                x={x - 28}
+                x={x - idPillW / 2}
                 y={550}
-                width={56}
+                width={idPillW}
                 height={42}
                 rx={4}
                 fill="rgba(167,139,250,0.04)"
@@ -704,7 +710,7 @@ export function VizTokenization() {
                 fontFamily="var(--font-mono)"
                 fill={ACCENT.violet}
               >
-                {idFor(ch)}
+                {tok.id}
               </text>
             </motion.g>
           )
@@ -736,9 +742,9 @@ export function VizTokenization() {
           fill={ACCENT.dim}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: PHASE_ID + chars.length * STAGGER + 0.4 / speed }}
+          transition={{ delay: PHASE_ID + tokens.length * STAGGER + 0.4 / speed }}
         >
-          char-level vocab · 65 entries · IDs in [0, 65)
+          BPE-style subword tokens · vocab ≈ 50K · IDs in [0, ≈50K)
         </motion.text>
 
         {/* Looping scanner — after the initial reveal, a violet bar sweeps
@@ -747,7 +753,7 @@ export function VizTokenization() {
         <motion.g
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: PHASE_ID + chars.length * STAGGER + 1.2 / speed }}
+          transition={{ delay: PHASE_ID + tokens.length * STAGGER + 1.2 / speed }}
         >
           <motion.rect
             x={startX - cellW / 2}
@@ -763,15 +769,15 @@ export function VizTokenization() {
             animate={{
               x: [
                 startX - cellW / 2,
-                startX + (chars.length - 1) * cellW - cellW / 2,
+                startX + (tokens.length - 1) * cellW - cellW / 2,
                 startX - cellW / 2,
               ],
             }}
             transition={{
-              duration: (chars.length * 0.55) / speed,
+              duration: (tokens.length * 0.55) / speed,
               ease: 'linear',
               repeat: Infinity,
-              delay: PHASE_ID + chars.length * STAGGER + 1.6 / speed,
+              delay: PHASE_ID + tokens.length * STAGGER + 1.6 / speed,
             }}
           />
         </motion.g>
@@ -3228,8 +3234,11 @@ export function Act1IntroSplitPane() {
 /* ─────────── Scene 3 · Tokenization ─────────── */
 export function TokensSplitPane() {
   const { prompt } = usePrompt()
-  const text = prompt || 'The cat sat on the mat.'
-  const chars = text.split('').slice(0, 14)
+  const tokens = useMemo(
+    () => displayTokens(prompt).slice(0, 10),
+    [prompt],
+  )
+  const total = Math.max(tokens.length, 1)
   const speed = useSpeed()
   const playing = usePlaying()
 
@@ -3238,14 +3247,16 @@ export function TokensSplitPane() {
   useEffect(() => {
     if (!playing) return
     const id = setInterval(
-      () => setCursor((c) => (c + 1) % chars.length),
+      () => setCursor((c) => (c + 1) % total),
       550 / speed,
     )
     return () => clearInterval(id)
-  }, [chars.length, speed, playing])
+  }, [total, speed, playing])
 
-  const ch = chars[cursor] ?? '?'
-  const id = ch.charCodeAt(0) % 65
+  const current = tokens[cursor]
+  const text = current?.text ?? '?'
+  const id = current?.id ?? 0
+  const display = text.startsWith(' ') ? '·' + text.slice(1) : text
 
   return (
     <SplitPaneScene
@@ -3255,35 +3266,35 @@ export function TokensSplitPane() {
         title: 'Text becomes tokens.',
         subtitle: (
           <>
-            The raw text is split into discrete input units before the model
-            can process it.
+            The raw text is split into discrete subword units before the
+            model can process it. Each token gets a vocabulary ID.
           </>
         ),
         accent: ACCENT.violet,
         phase: (
           <PhaseChip
             current={cursor + 1}
-            total={chars.length}
+            total={total}
             label="scanning"
             accent={ACCENT.violet}
           />
         ),
         stats: [
-          { label: 'T', value: chars.length, color: ACCENT.violet },
-          { label: 'vocab', value: '65' },
-          { label: 'IDs', value: '[0, 65)' },
+          { label: 'T', value: total, color: ACCENT.violet },
+          { label: 'vocab', value: '50,257' },
+          { label: 'IDs', value: '[0, ≈50K)' },
         ],
         equation: {
           label: 'live tokenization',
           body: (
             <>
-              ‘{ch === ' ' ? '·' : ch}’ → ID{' '}
+              ‘{display}’ → ID{' '}
               <span style={{ color: ACCENT.violet }}>{id}</span>
             </>
           ),
         },
         infoCallout:
-          'This model uses character tokens — one visible character maps to one vocabulary ID in [0, 65).',
+          'Tokens shown BPE-style (the standard for real LLMs). The nanoGPT this site runs is char-level (vocab=65) — same lookup, smaller table.',
       }}
     />
   )

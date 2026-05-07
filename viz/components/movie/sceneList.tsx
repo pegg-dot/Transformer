@@ -131,20 +131,19 @@ export const SCENES: MovieScene[] = [
     kicker: 'tokenization',
     title: 'Text becomes tokens.',
     caption:
-      'Each character of your prompt gets mapped to an integer ID from a 65-entry vocabulary.',
+      'The prompt gets split into subword tokens, each mapped to an integer ID from the model vocabulary.',
     accent: ACCENT.violet,
     durationMs: 26000,
     promptAware: true,
     part: 'tokenize',
     panelAnchor: 'fullscreen',
-    // Body teaches char-level explicitly. Hide the global BPE-style strip
-    // so it doesn't contradict the lesson — Scene 4 hands off to BPE.
-    showTokenStrip: false,
-    details: `The tokenizer is a pure lookup — it turns every raw character into a fixed integer using a vocabulary table built once, before training. In our tiny model the vocab has exactly 65 entries (52 letters — 26 upper + 26 lower — plus newline, space, punctuation, and the lone digit "3" that appears in the Shakespeare corpus), so every ID lives in [0, 65).
+    details: `Tokenization is a pure lookup — it turns the input string into a list of fixed integers using a vocabulary built once, before training. Real LLMs use BPE-style subword tokens with vocabularies of 32k–256k. Common words become one token (' the'), rare ones split into pieces ('arborescent' → 'ar' + 'bor' + 'escent').
 
-Real models never do character-level. They use subword tokens (BPE, Unigram, SentencePiece) with vocabularies of 32k–256k. But the lookup is identical: take the string, look up each token, emit the integer ID. That's the whole "tokenization" step.
+The lookup is identical regardless of granularity: take the string, find each token in the vocab, emit its ID. That's the whole "tokenization" step.
 
-Nothing about the model cares what the original characters looked like after this point. It only sees integers.`,
+Note: the actual nanoGPT this project trains is character-level (vocab=65, every character is its own token) — same lookup mechanism, just a much smaller table. We show BPE-style tokens here because that's what real LLMs do.
+
+Nothing about the model cares what the original text looked like after this point. It only sees integers.`,
     render: () => <TokensSplitPane />,
   },
   {
@@ -781,6 +780,9 @@ Stacked together, these changes give a faster, smaller, slightly better model wi
     accent: ACCENT.mint,
     durationMs: 20000,
     promptAware: true,
+    // Body shows the actual char-level model running — strip's BPE tokens
+    // would contradict what's visible below.
+    showTokenStrip: false,
     details: `The top of the stack produces one vector per token position. We only care about the last one — it represents the model's best guess at what should come next. A final linear layer projects that vector to a vector of size vocab_size; softmax turns it into probabilities; we sample one.
 
 A forward pass does NOT output a sentence. It outputs a probability distribution over the next token, and one token gets selected. Scene 34 shows what happens when you run that loop over and over.`,
@@ -800,6 +802,9 @@ A forward pass does NOT output a sentence. It outputs a probability distribution
     durationMs: 28000,
     promptAware: true,
     part: 'generation',
+    // Body shows the actual char-level model generating — strip's BPE
+    // tokens would contradict what's visible below.
+    showTokenStrip: false,
     details: `Everything you just saw runs ONCE per generated token. Tokenize the prompt, embed, add positional, six residual blocks, unembed, softmax, sample. That's one forward pass.
 
 Append the sampled token to the prompt, run again. Repeat until a stop condition (end-of-text token, max length, user interrupt).

@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { useSpeed } from './speedContext'
 import { usePrompt } from './promptContext'
 import { useLiveContinuation } from '@/lib/useLiveContinuation'
+import { displayTokens } from '@/lib/displayTokens'
 
 const ACCENT = {
   blue: '#60a5fa',
@@ -114,9 +115,9 @@ export function IntroColdOpenPanel() {
   // the matrix has been visible long enough to read.
   const T_MORPH = T_MATRIX_HOLD + 0.5
 
-  // Pipeline data — first 14 chars of the prompt + integer IDs (charCode % 65)
-  const pipelineChars = (prompt || 'To be, or no').split('').slice(0, 14)
-  const idForCh = (ch: string) => ch.charCodeAt(0) % 65
+  // Pipeline data — BPE-style tokens for the prompt (shared with Scene 5
+  // and the persistent token strip via lib/displayTokens).
+  const pipelineTokens = displayTokens(prompt || 'To be, or no').slice(0, 10)
   const PIPELINE_COLORS = [
     ACCENT.violet, ACCENT.blue, ACCENT.mint,
     ACCENT.amber, ACCENT.red, '#22d3ee', // cyan
@@ -527,26 +528,31 @@ export function IntroColdOpenPanel() {
             speed={speed}
           >
             <div className="flex gap-1.5">
-              {pipelineChars.map((ch, i) => (
-                <motion.div
-                  key={`tok-${i}`}
-                  className="font-serif italic flex h-[34px] w-[28px] items-center justify-center rounded-[4px] border text-[18px]"
-                  style={{
-                    color: FG,
-                    borderColor: `${colorForIdx(i)}77`,
-                    background: `${colorForIdx(i)}14`,
-                  }}
-                  initial={{ opacity: 0, y: -6, scale: 0.9 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{
-                    delay: (T_TOKENS_BEAT + 0.1 + i * 0.04) / speed,
-                    duration: 0.32 / speed,
-                    ease: [0.22, 1.2, 0.36, 1],
-                  }}
-                >
-                  {ch === ' ' ? '·' : ch}
-                </motion.div>
-              ))}
+              {pipelineTokens.map((tok, i) => {
+                const display = tok.text.startsWith(' ')
+                  ? '·' + tok.text.slice(1)
+                  : tok.text
+                return (
+                  <motion.div
+                    key={`tok-${i}`}
+                    className="font-serif italic flex h-[34px] min-w-[28px] items-center justify-center rounded-[4px] border px-1.5 text-[18px]"
+                    style={{
+                      color: FG,
+                      borderColor: `${colorForIdx(i)}77`,
+                      background: `${colorForIdx(i)}14`,
+                    }}
+                    initial={{ opacity: 0, y: -6, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{
+                      delay: (T_TOKENS_BEAT + 0.1 + i * 0.04) / speed,
+                      duration: 0.32 / speed,
+                      ease: [0.22, 1.2, 0.36, 1],
+                    }}
+                  >
+                    {display}
+                  </motion.div>
+                )
+              })}
             </div>
           </PipelineRow>
 
@@ -561,10 +567,10 @@ export function IntroColdOpenPanel() {
           >
             <div className="flex flex-col gap-1">
               <div className="flex gap-1.5">
-                {pipelineChars.map((ch, i) => (
+                {pipelineTokens.map((tok, i) => (
                   <motion.div
                     key={`id-${i}`}
-                    className="font-mono flex h-[34px] w-[28px] items-center justify-center rounded-[4px] border text-[12px] tabular-nums"
+                    className="font-mono flex h-[34px] min-w-[28px] items-center justify-center rounded-[4px] border px-1.5 text-[12px] tabular-nums"
                     style={{
                       color: colorForIdx(i),
                       borderColor: `${colorForIdx(i)}55`,
@@ -578,7 +584,7 @@ export function IntroColdOpenPanel() {
                       ease: [0.22, 1, 0.36, 1],
                     }}
                   >
-                    {idForCh(ch)}
+                    {tok.id}
                   </motion.div>
                 ))}
               </div>
@@ -592,8 +598,8 @@ export function IntroColdOpenPanel() {
                   duration: 0.4 / speed,
                 }}
               >
-                ids shown are illustrative — the real lookup uses a fixed
-                65-entry vocab table
+                ids shown are illustrative — real BPE tokenizers
+                (≈50K vocab) produce numbers like these
               </motion.div>
             </div>
           </PipelineRow>
@@ -627,7 +633,7 @@ export function IntroColdOpenPanel() {
               }}
             >
               <motion.svg
-                width={pipelineChars.length * 30}
+                width={pipelineTokens.length * 30}
                 height={56}
                 initial={{ opacity: 0, scale: 0.92 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -641,7 +647,7 @@ export function IntroColdOpenPanel() {
                 <motion.rect
                   x={0.5}
                   y={0.5}
-                  width={pipelineChars.length * 30 - 1}
+                  width={pipelineTokens.length * 30 - 1}
                   height={55}
                   rx={4}
                   fill="rgba(167,139,250,0.06)"
@@ -661,7 +667,7 @@ export function IntroColdOpenPanel() {
                 />
                 {/* Cells: T columns × 7 d_model rows */}
                 {mounted &&
-                  pipelineChars.map((_, t) =>
+                  pipelineTokens.map((_, t) =>
                     Array.from({ length: 7 }).map((_, d) => {
                       const v = (Math.sin(t * 0.7 + d * 1.5) + 1) / 2
                       return (
@@ -698,7 +704,7 @@ export function IntroColdOpenPanel() {
                   duration: 0.4 / speed,
                 }}
               >
-                [<span style={{ color: ACCENT.violet }}>{pipelineChars.length}</span>
+                [<span style={{ color: ACCENT.violet }}>{pipelineTokens.length}</span>
                 {', 384]'}
                 <br />
                 <span style={{ opacity: 0.6 }}>

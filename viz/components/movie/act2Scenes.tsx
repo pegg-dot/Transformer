@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { useSpeed, usePlaying } from './speedContext'
 import { usePrompt } from './promptContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
+import { tokenStrings, chipLabel } from '@/lib/displayTokens'
 
 const ACCENT = {
   violet: '#a78bfa',
@@ -40,7 +41,7 @@ export function VizAct2Intro() {
   const speed = useSpeed()
   const playing = usePlaying()
   const { prompt } = usePrompt()
-  const tokens = (prompt || 'To be, or not to be').split('').slice(0, 14)
+  const tokens = tokenStrings(prompt, 14)
 
   // ── Dive-in cinematic ────────────────────────────────────────────────
   // Simple, single-phase zoom into the center of Block 0 starting at
@@ -161,7 +162,7 @@ export function VizAct2Intro() {
             tokens already in slab ▸
           </text>
           {tokens.map((ch, i) => {
-            const cellW = 32
+            const cellW = 44
             const startX = 220
             const x = startX + i * (cellW + 4)
             return (
@@ -183,7 +184,7 @@ export function VizAct2Intro() {
                   fontSize="16" fontFamily="var(--font-display)"
                   fontStyle="italic"
                   fill="rgba(255,255,255,0.92)">
-                  {ch === ' ' ? '·' : ch}
+                  {chipLabel(ch)}
                 </text>
               </motion.g>
             )
@@ -192,7 +193,7 @@ export function VizAct2Intro() {
           {/* Funnel — converging dashed lines from the token strip down into
               the slab's left face, showing the tokens are now the slab. */}
           {(() => {
-            const cellW = 32
+            const cellW = 44
             const startX = 220
             const tokenStripBottom = 102
             const slabLeft = 20
@@ -851,7 +852,7 @@ export function VizLayerNorm() {
   const speed = useSpeed()
   const playing = usePlaying()
   const { prompt } = usePrompt()
-  const tokens = (prompt || 'To be, or not to be').split('').slice(0, 14)
+  const tokens = tokenStrings(prompt, 14)
   const FOCUSED = 3
 
   // ── Math: actual computed values ──────────────────────────────────────
@@ -943,7 +944,7 @@ export function VizLayerNorm() {
             this token's 384-dim vector ▸
           </text>
           {tokens.map((ch, i) => {
-            const cellW = 30
+            const cellW = 44
             const startX = 280
             const x = startX + i * (cellW + 4)
             const isFocused = i === FOCUSED
@@ -972,7 +973,7 @@ export function VizLayerNorm() {
                   fontSize="15" fontFamily="var(--font-display)"
                   fontStyle="italic"
                   fill={isFocused ? '#fff' : 'rgba(255,255,255,0.55)'}>
-                  {ch === ' ' ? '·' : ch}
+                  {chipLabel(ch)}
                 </text>
               </g>
             )
@@ -1713,7 +1714,7 @@ export function VizQKV() {
   const speed = useSpeed()
   const playing = usePlaying()
   const { prompt } = usePrompt()
-  const tokens = (prompt || 'To be, or not to be').split('').slice(0, 14)
+  const tokens = tokenStrings(prompt, 14)
   const FOCUSED = 3
 
   // Phase cycle: which lane is "active" right now (0=Q, 1=K, 2=V, 3=all settled)
@@ -1813,7 +1814,7 @@ export function VizQKV() {
             same focused token ▸
           </text>
           {tokens.map((ch, i) => {
-            const cellW = 30
+            const cellW = 44
             const startX = 280
             const x = startX + i * (cellW + 4)
             const isFocused = i === FOCUSED
@@ -1842,7 +1843,7 @@ export function VizQKV() {
                   fontSize="15" fontFamily="var(--font-display)"
                   fontStyle="italic"
                   fill={isFocused ? '#fff' : 'rgba(255,255,255,0.55)'}>
-                  {ch === ' ' ? '·' : ch}
+                  {chipLabel(ch)}
                 </text>
               </g>
             )
@@ -2379,7 +2380,7 @@ export function VizAttention() {
   const speed = useSpeed()
   const playing = usePlaying()
   const { prompt } = usePrompt()
-  const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
+  const tokens = tokenStrings(prompt, 19)
   const T = tokens.length
 
   // Scene 11 holds a fixed focused position. Cycling through every token
@@ -2500,7 +2501,7 @@ function AttentionTokenStrip({
   focused: number
   speed: number
 }) {
-  const cellW = 32
+  const cellW = 44
   const startX = 80
   return (
     <g>
@@ -2536,7 +2537,7 @@ function AttentionTokenStrip({
               fontSize="14" fontFamily="var(--font-display)"
               fontStyle="italic"
               fill={isFocused ? '#fff' : 'rgba(255,255,255,0.55)'}>
-              {ch === ' ' ? '·' : ch}
+              {chipLabel(ch)}
             </text>
             {/* Position number under each cell */}
             <text x={x + cellW / 2} y={114} textAnchor="middle"
@@ -3222,7 +3223,7 @@ function PhaseA({
               }}
               transition={{ duration: 0.4 }}
             >
-              {ch === ' ' ? '·' : ch}
+              {chipLabel(ch)}
             </motion.text>
             <motion.text
               x={x}
@@ -3453,7 +3454,7 @@ function PhaseB({
                 : 'rgba(255,255,255,0.35)'
             }
           >
-            {ch === ' ' ? '·' : ch}
+            {chipLabel(ch)}
           </text>
           <text
             x={matrixX + j * cellW + cellW / 2}
@@ -3507,7 +3508,7 @@ function PhaseB({
               fontStyle="italic"
               fill={isFocusedRow ? '#fff' : 'rgba(255,255,255,0.7)'}
             >
-              {ch === ' ' ? '·' : ch}
+              {chipLabel(ch)}
             </text>
             <text
               x={matrixX - 4}
@@ -4772,7 +4773,7 @@ export function VizMultiHead() {
   const speed = useSpeed()
   const playing = usePlaying()
   const { prompt } = usePrompt()
-  const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
+  const tokens = tokenStrings(prompt, 19)
   const T = tokens.length
   // Focused token cycles through positions over time so the per-head arcs
   // visibly come out of different letters and the patterns change. Starts
@@ -4858,7 +4859,7 @@ export function VizMultiHead() {
           TOKENS
         </text>
         {tokens.map((ch, i) => {
-          const cellW = 32
+          const cellW = 44
           const startX = 90
           const x = startX + i * (cellW + 4)
           const isFocused = i === focused
@@ -4887,7 +4888,7 @@ export function VizMultiHead() {
                 fontSize="14" fontFamily="var(--font-display)"
                 fontStyle="italic"
                 fill={isFocused ? '#fff' : 'rgba(255,255,255,0.55)'}>
-                {ch === ' ' ? '·' : ch}
+                {chipLabel(ch)}
               </text>
             </g>
           )
@@ -5709,7 +5710,7 @@ function Phase2HeadContent({
               fontFamily="var(--font-mono)"
               fill={isFocused ? '#fff' : isAttended ? '#fff' : 'rgba(255,255,255,0.45)'}
             >
-              {ch === ' ' ? '·' : ch}
+              {chipLabel(ch)}
             </text>
           </g>
         )
@@ -5833,7 +5834,7 @@ export function VizFFN() {
   const speed = useSpeed()
   const playing = usePlaying()
   const { prompt } = usePrompt()
-  const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
+  const tokens = tokenStrings(prompt, 19)
   const T = tokens.length
   const FOCUSED = Math.min(3, T - 1)
 
@@ -6042,7 +6043,7 @@ function FFNTokenStrip({
   focused: number
   speed: number
 }) {
-  const cellW = 32
+  const cellW = 44
   const startX = 80
   return (
     <g>
@@ -6078,7 +6079,7 @@ function FFNTokenStrip({
               fontSize="14" fontFamily="var(--font-display)"
               fontStyle="italic"
               fill={isFocused ? '#fff' : 'rgba(255,255,255,0.55)'}>
-              {ch === ' ' ? '·' : ch}
+              {chipLabel(ch)}
             </text>
             <text x={x + cellW / 2} y={114} textAnchor="middle"
               fontSize="9" fontFamily="var(--font-mono)"
