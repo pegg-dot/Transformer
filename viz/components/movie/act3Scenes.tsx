@@ -1266,11 +1266,11 @@ export function StackSplitPane() {
  * Phase 4 — SAMPLE + APPEND: char flies up to next slot in token strip
  * ====================================================================== */
 
-// BPE-style: prompt is shown as 6 hand-tokenized chunks (the visible
-// trailing window of "To be, or not to be"); the 12 candidates are
-// plausible next-tokens from the model's distribution. argmax (" —")
-// matches the cold-open canonical reply, "— that is the question."
-const SAMPLE_PROMPT_TOKENS = ['To', ' be', ',', ' or', ' not', ' to']
+// BPE-style: prompt is the full "To be, or not to be" — 7 hand-tokenized
+// chunks ending on the second ' be'. That puts the predicted token at the
+// natural sentence break, where ' —' is the canonical Hamlet next token,
+// matching the cold-open's "— that is the question." reply.
+const SAMPLE_PROMPT_TOKENS = ['To', ' be', ',', ' or', ' not', ' to', ' be']
 const SAMPLE_LAST_IDX = SAMPLE_PROMPT_TOKENS.length - 1
 const SAMPLE_CANDIDATES = [
   ' —', ',', ' that', ' is', ' the', '.', ' a', ' to', '?', '!', ';', ' or',
