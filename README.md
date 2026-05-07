@@ -45,3 +45,26 @@ A dual-track project: build a modern transformer from scratch in raw PyTorch, an
 ## Current phase
 
 Always see `PROJECT_STATE.md`. That file is the source of truth — every session ends with an update to it.
+
+## Run the visualizer locally
+
+The interactive transformer movie lives in `viz/` (a Next.js 16 app). To watch it:
+
+```bash
+# from the repo root
+cd viz
+npm install        # first time only
+npm run dev        # starts the dev server
+```
+
+Then open **http://localhost:3000** and press the blue **Play** button. Use the chapter rail at the bottom to jump between acts; reload returns to the splash screen.
+
+Other commands you might want:
+
+```bash
+npm run build      # production build
+npm run start      # serve the production build (after `npm run build`)
+npm run lint       # eslint
+```
+
+Requires Node 20+ (Next.js 16). If `npm run dev` complains about a port in use, set one explicitly: `npm run dev -- -p 3001`.
