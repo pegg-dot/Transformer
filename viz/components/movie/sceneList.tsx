@@ -461,12 +461,12 @@ Each block asks "given what I just read, what's a better representation?" and nu
     section: ACT_III,
     breadcrumb: ['Output', 'Next-token pick'],
     bridgeIn: 'After all six blocks, the final vector becomes a probability over the vocabulary.',
-    focusedToken: 11,
+    focusedToken: 1,
     wide: true,
     kicker: 'softmax + sampling',
     title: 'Pick the next token.',
     caption:
-      'Unembed → 65 logits → softmax → temperature → sampled next token (here: a character). Drag the slider.',
+      'Unembed → ≈50K logits → softmax → temperature → sampled next BPE token. Drag the slider.',
     accent: ACCENT.red,
     durationMs: 27000,
     part: 'sample',
@@ -780,9 +780,6 @@ Stacked together, these changes give a faster, smaller, slightly better model wi
     accent: ACCENT.mint,
     durationMs: 20000,
     promptAware: true,
-    // Body shows the actual char-level model running — strip's BPE tokens
-    // would contradict what's visible below.
-    showTokenStrip: false,
     details: `The top of the stack produces one vector per token position. We only care about the last one — it represents the model's best guess at what should come next. A final linear layer projects that vector to a vector of size vocab_size; softmax turns it into probabilities; we sample one.
 
 A forward pass does NOT output a sentence. It outputs a probability distribution over the next token, and one token gets selected. Scene 34 shows what happens when you run that loop over and over.`,
@@ -802,9 +799,6 @@ A forward pass does NOT output a sentence. It outputs a probability distribution
     durationMs: 28000,
     promptAware: true,
     part: 'generation',
-    // Body shows the actual char-level model generating — strip's BPE
-    // tokens would contradict what's visible below.
-    showTokenStrip: false,
     details: `Everything you just saw runs ONCE per generated token. Tokenize the prompt, embed, add positional, six residual blocks, unembed, softmax, sample. That's one forward pass.
 
 Append the sampled token to the prompt, run again. Repeat until a stop condition (end-of-text token, max length, user interrupt).

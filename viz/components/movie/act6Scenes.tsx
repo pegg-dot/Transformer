@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { useSpeed, usePlaying } from './speedContext'
 import { usePrompt } from './promptContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
+import { displayTokens, chipLabel } from '@/lib/displayTokens'
 
 const ACCENT = {
   violet: '#a78bfa',
@@ -47,110 +48,126 @@ const ACT6_KICKER = 'ACT VI · THE OUTPUT'
 const VB_W = 1400
 const VB_H = 1000
 
-// Number of trailing prompt characters to show in the strip. The strip also
+// Number of trailing prompt tokens to show in the strip. The strip also
 // holds one extra slot for the predicted next token, so the on-screen tile
 // count is STRIP_WINDOW + 1.
 const STRIP_WINDOW = 6
 
-// Probability shape stays fixed — only the characters change with the prompt.
+// Probability shape stays fixed — only the tokens change with the prompt.
 // The shape is what carries the "one peak, several alternates" story; the
 // labels carry the prompt-aware part.
 const TOPK_PROBS = [0.62, 0.12, 0.08, 0.05, 0.04] as const
 
 type TopKEntry = { tok: string; label: string; p: number }
 type Prediction = {
-  promptChars: string[] // visible window of the prompt
-  basePosition: number // prompt index of promptChars[0]
-  lastIdx: number // index inside promptChars of the last char
-  nextChar: string // predicted next char (raw, may be ' ')
-  nextLabel: string // displayable form of nextChar (' ' becomes '·')
+  promptTokens: string[] // visible window of prompt tokens (BPE-style)
+  basePosition: number // token-index of promptTokens[0] within the full prompt
+  lastIdx: number // index inside promptTokens of the last token
+  nextToken: string // predicted next token text (e.g. ' that')
+  nextLabel: string // displayable form (leading space → mid-dot)
   topK: TopKEntry[]
 }
 
-const TOPK_POOL = [' ', 'e', 't', 'a', 'o', 'i', 'n', 's', 'h', 'r', 'l', 'd', 'u', 'm', 'c']
+// Canonical Hamlet line as BPE tokens. Both Scene 33 (single next-token
+// prediction) and Scene 34 (the autoregressive loop) ride this when the
+// prompt is a token-prefix of it.
+const HAMLET_BPE = [
+  'To', ' be', ',', ' or', ' not', ' to', ' be',
+  ' —', ' that', ' is', ' the', ' question', '.',
+]
 
-function displayChar(c: string): string {
-  return c === ' ' ? '·' : c
+const TOPK_BPE_POOL = [
+  ',', '.', ' the', ' a', ' is', ' was', ' that', ' to',
+  ' of', ' it', ' in', ' and', '?', '!', ';', ' I',
+]
+
+function tokensOf(prompt: string): string[] {
+  return displayTokens(prompt).map((t) => t.text)
 }
 
-// Canonical line the demo is set up to land on. Hoisted here so both
-// Scene 33 (single next-token prediction) and Scene 34 (the loop) ride the
-// same target whenever the prompt is a prefix of it.
-const HAMLET_TARGET = 'To be, or not to be -- that is the question.'
+/** Pick a fontSize that lets a BPE-token tile fit comfortably. */
+function tokenFontSize(text: string): number {
+  const n = chipLabel(text).length
+  if (n <= 2) return 32
+  if (n <= 4) return 28
+  if (n <= 6) return 22
+  if (n <= 8) return 18
+  return 15
+}
 
-function isHamletPrefix(s: string): boolean {
-  return (
-    s.length > 0 &&
-    s.length < HAMLET_TARGET.length &&
-    HAMLET_TARGET.toLowerCase().startsWith(s.toLowerCase())
-  )
+/** Returns the index in HAMLET_BPE where the prompt's tokens end (so the
+ *  next predicted token is HAMLET_BPE[returnedIndex]), or -1 if the prompt
+ *  isn't a Hamlet token-prefix. */
+function hamletPrefixIndex(promptTokens: string[]): number {
+  if (promptTokens.length === 0) return -1
+  if (promptTokens.length >= HAMLET_BPE.length) return -1
+  for (let i = 0; i < promptTokens.length; i++) {
+    if (promptTokens[i].toLowerCase() !== HAMLET_BPE[i].toLowerCase()) return -1
+  }
+  return promptTokens.length
 }
 
 /**
- * Given the active prompt, pick a plausible next character and a top-5
+ * Given the active prompt, pick a plausible next BPE token and a top-5
  * candidate set. Deterministic (same prompt → same prediction) so the scene
  * doesn't flicker between renders.
  *
- * If the prompt is a prefix of the canonical Hamlet line, the winner is the
- * actual next character of the line (so Scenes 33 and 34 stay in sync). For
- * any other prompt, we fall back to a small letter-class heuristic.
+ * If the prompt is a token-prefix of the canonical Hamlet line, the winner
+ * is the actual next BPE token of the line. For any other prompt we fall
+ * back to a small heuristic on the trailing token.
  */
 function predictFromPrompt(prompt: string, seed: number): Prediction {
   const cleaned = prompt.length > 0 ? prompt : 'hello'
-  const window = cleaned.slice(-STRIP_WINDOW)
-  const promptChars = window.split('')
-  const lastIdx = promptChars.length - 1
-  const basePosition = Math.max(0, cleaned.length - promptChars.length)
-  const last = cleaned[cleaned.length - 1] ?? ' '
-  const lastLow = last.toLowerCase()
+  const allTokens = tokensOf(cleaned)
+  const promptTokens = allTokens.slice(-STRIP_WINDOW)
+  const lastIdx = promptTokens.length - 1
+  const basePosition = Math.max(0, allTokens.length - promptTokens.length)
+  const last = promptTokens[lastIdx] ?? ''
+  const lastTrim = last.trim().toLowerCase()
 
-  // Step 1 — pick the winner. Hamlet path overrides the heuristic.
   let winner: string
-  if (isHamletPrefix(cleaned)) {
-    winner = HAMLET_TARGET[cleaned.length]!
-  } else if (last === '.' || last === ',' || last === '!' || last === '?') {
-    winner = ' '
-  } else if (last === ' ') {
-    winner = ['t', 'a', 'i', 's', 'w'][seed % 5]
-  } else if ('aeiou'.includes(lastLow)) {
-    winner = ['n', 'r', 's', 't', 'l'][seed % 5]
-  } else if (/[a-z]/.test(lastLow)) {
-    winner = ['e', 'a', 'o', ' ', 'i'][seed % 5]
+  const hidx = hamletPrefixIndex(allTokens)
+  if (hidx > 0) {
+    winner = HAMLET_BPE[hidx]!
+  } else if (last === ',' || last === '.' || last === '!' || last === '?') {
+    winner = [' the', ' a', ' it', ' but', ' he'][seed % 5]
+  } else if (lastTrim === 'the' || lastTrim === 'a') {
+    winner = [' man', ' world', ' day', ' way', ' time'][seed % 5]
   } else {
-    winner = 'e'
+    winner = [' is', ' was', ' will', ' the', ' a'][seed % 5]
   }
 
-  // Step 2 — build top-5 with the winner first, four plausible alternates
-  // after. We compare alternates case-insensitively so the Hamlet 'T' and
-  // the heuristic 't' don't both end up in the list.
+  // Build top-5 with the winner first, four plausible alternates after.
+  const winnerLow = winner.trim().toLowerCase()
   const alternates: string[] = []
-  for (const c of TOPK_POOL) {
-    if (c.toLowerCase() === winner.toLowerCase()) continue
+  for (const c of TOPK_BPE_POOL) {
+    if (c.trim().toLowerCase() === winnerLow) continue
     if (alternates.includes(c)) continue
     alternates.push(c)
     if (alternates.length === 4) break
   }
-  const winnerLabel = displayChar(winner)
+  const winnerLabel = chipLabel(winner)
   const topK: TopKEntry[] = [
     { tok: winner, label: winnerLabel, p: TOPK_PROBS[0] },
-    ...alternates.map((c, i) => ({ tok: c, label: displayChar(c), p: TOPK_PROBS[i + 1] })),
+    ...alternates.map((c, i) => ({ tok: c, label: chipLabel(c), p: TOPK_PROBS[i + 1] })),
   ]
 
   return {
-    promptChars,
+    promptTokens,
     basePosition,
     lastIdx,
-    nextChar: winner,
+    nextToken: winner,
     nextLabel: winnerLabel,
     topK,
   }
 }
 
-// Geometry — token strip
+// Geometry — token strip. Wider tiles than the old char-level layout so
+// multi-character BPE tokens like ' question' fit comfortably.
 const STRIP_Y = 100
-const TILE_W = 78
+const TILE_W = 110
 const TILE_H = 64
-const STRIP_GAP = 10
+const STRIP_GAP = 8
 const STRIP_LABEL_X = 40
 const STRIP_TILES_X = 180
 
@@ -302,7 +319,7 @@ function ArrowRight({
 function TokenStrip({ phase, pred }: { phase: number; pred: Prediction }) {
   // Phase 3: the chosen token has been appended.
   const showAppended = phase >= 3
-  const { promptChars, basePosition, lastIdx, nextLabel } = pred
+  const { promptTokens, basePosition, lastIdx, nextLabel } = pred
 
   return (
     <g>
@@ -318,7 +335,7 @@ function TokenStrip({ phase, pred }: { phase: number; pred: Prediction }) {
       </text>
 
       {/* Existing prompt tokens (the trailing window) */}
-      {promptChars.map((ch, i) => {
+      {promptTokens.map((ch, i) => {
         const isLast = i === lastIdx
         const x = STRIP_TILES_X + i * (TILE_W + STRIP_GAP)
         return (
@@ -340,10 +357,10 @@ function TokenStrip({ phase, pred }: { phase: number; pred: Prediction }) {
               textAnchor="middle"
               fill={isLast ? ACCENT.amber : 'rgba(255,255,255,0.9)'}
               fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-              fontSize={32}
+              fontSize={tokenFontSize(ch)}
               fontWeight={600}
             >
-              {displayChar(ch)}
+              {chipLabel(ch)}
             </text>
             {/* Absolute position number within the prompt */}
             <text
@@ -402,7 +419,7 @@ function TokenStrip({ phase, pred }: { phase: number; pred: Prediction }) {
                 textAnchor="middle"
                 fill={ACCENT.mint}
                 fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                fontSize={32}
+                fontSize={tokenFontSize(pred.nextToken)}
                 fontWeight={700}
                 animate={{ opacity: showAppended ? 1 : 0.0 }}
                 transition={{ duration: 0.5 }}
@@ -1005,7 +1022,7 @@ function ChosenTokenFlight({ phase, pred }: { phase: number; pred: Prediction })
         textAnchor="middle"
         fill={ACCENT.mint}
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-        fontSize={32}
+        fontSize={tokenFontSize(pred.nextToken)}
         fontWeight={700}
       >
         {pred.nextLabel}
@@ -1268,8 +1285,8 @@ export function Act6IntroSplitPane() {
   ]
 
   // Show the trailing window in the stats chip so the right pane reflects
-  // the same chars the strip is showing.
-  const promptTail = prompt.slice(-STRIP_WINDOW).replace(/ /g, '·')
+  // the same tokens the strip is showing.
+  const promptTail = pred.promptTokens.map(chipLabel).join('')
 
   return (
     <SplitPaneScene
@@ -1347,11 +1364,10 @@ const FALLBACK_GEN_STEPS = 12
 
 function genStepsFor(prompt: string): number {
   const p = prompt.length > 0 ? prompt : 'hello'
-  if (
-    HAMLET_TARGET.toLowerCase().startsWith(p.toLowerCase()) &&
-    p.length < HAMLET_TARGET.length
-  ) {
-    return HAMLET_TARGET.length - p.length
+  const promptTokens = tokensOf(p)
+  const hidx = hamletPrefixIndex(promptTokens)
+  if (hidx > 0) {
+    return HAMLET_BPE.length - hidx
   }
   return FALLBACK_GEN_STEPS
 }
@@ -1359,11 +1375,14 @@ function genStepsFor(prompt: string): number {
 // Strip — sized so the full Hamlet line (45 chars) is mostly readable in one
 // frame; the trailing window slides in the last few tokens if it overflows.
 const OUT_STRIP_Y = 100
-const OUT_TILE_W = 32
+const OUT_TILE_W = 80
 const OUT_TILE_H = 50
-const OUT_STRIP_GAP = 3
+const OUT_STRIP_GAP = 4
 const OUT_STRIP_LEFT = 100
-const OUT_STRIP_VISIBLE = 36
+// BPE tokens are way fewer than chars — the full Hamlet line is ~13 tokens
+// vs ~45 chars. 16 visible tiles comfortably holds prompt + generated for
+// the canonical case while leaving room for longer prompts to slide in.
+const OUT_STRIP_VISIBLE = 16
 
 // Block stack (horizontal, centered)
 const BLK_W2 = 180
@@ -1381,7 +1400,7 @@ function blockCenterX(i: number) {
 
 // Where the new token "emerges" out of the stack and where it lands.
 const EMERGE_Y = BLK_Y2 + BLK_H2 + 60
-const EMERGE_TILE_W = 56
+const EMERGE_TILE_W = 80
 const EMERGE_TILE_H = 56
 
 // Step duration plan: the first three steps are deliberately slow so the
@@ -1419,9 +1438,9 @@ function generateSequence(
   for (let s = 0; s < count; s++) {
     const stepSeed = (baseSeed + (s + 1) * 1009) >>> 0
     const pred = predictFromPrompt(context, stepSeed)
-    generated.push(pred.nextChar)
+    generated.push(pred.nextToken)
     perStep.push(pred.topK)
-    context = context + pred.nextChar
+    context = context + pred.nextToken
   }
   return { generated, perStep }
 }
@@ -1554,10 +1573,10 @@ function GrowingStrip({
                     : 'rgba(255,255,255,0.92)'
               }
               fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-              fontSize={18}
+              fontSize={tokenFontSize(entry.c)}
               fontWeight={isGen || isLast ? 700 : 600}
             >
-              {displayChar(entry.c)}
+              {chipLabel(entry.c)}
             </text>
           </motion.g>
         )
@@ -1897,10 +1916,10 @@ function FlightTile({
         textAnchor="middle"
         fill={ACCENT.mint}
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-        fontSize={26}
+        fontSize={tokenFontSize(ch)}
         fontWeight={700}
       >
-        {displayChar(ch)}
+        {chipLabel(ch)}
       </text>
     </motion.g>
   )
@@ -2093,10 +2112,7 @@ export function OutputSplitPane() {
 
   const nGenSteps = useMemo(() => genStepsFor(prompt), [prompt])
   const onHamletPath = useMemo(
-    () =>
-      HAMLET_TARGET.toLowerCase().startsWith(
-        (prompt.length > 0 ? prompt : 'hello').toLowerCase(),
-      ) && prompt.length < HAMLET_TARGET.length,
+    () => hamletPrefixIndex(tokensOf(prompt.length > 0 ? prompt : 'hello')) > 0,
     [prompt],
   )
 
@@ -2108,13 +2124,15 @@ export function OutputSplitPane() {
     [prompt, seed, nGenSteps],
   )
 
-  // Snap the prompt's trailing window so the strip starts off pre-filled.
-  // Reserve room for as many generated tiles + 1 pending slot as we plan
-  // to add, but never leave fewer than 4 prompt tiles visible.
+  // Snap the prompt's trailing window (BPE-tokenized) so the strip starts
+  // off pre-filled. Reserve room for as many generated tiles + 1 pending
+  // slot as we plan to add, but never leave fewer than 4 prompt tiles
+  // visible.
   const promptForStrip = prompt.length > 0 ? prompt : 'hello'
+  const promptAllTokens = tokensOf(promptForStrip)
   const promptTailMax = Math.max(4, OUT_STRIP_VISIBLE - (nGenSteps + 1))
-  const promptTail = promptForStrip.slice(-promptTailMax).split('')
-  const promptStartIdx = promptForStrip.length - promptTail.length
+  const promptTail = promptAllTokens.slice(-promptTailMax)
+  const promptStartIdx = promptAllTokens.length - promptTail.length
 
   // Step machine: at each step we run pulse → land → rest, then advance.
   const [step, setStep] = useState(0)
@@ -2198,7 +2216,7 @@ export function OutputSplitPane() {
     subtitle = (
       <>
         <strong style={{ color: ACCENT.mint }}>
-          &lsquo;{displayChar(ch)}&rsquo;
+          &lsquo;{chipLabel(ch)}&rsquo;
         </strong>{' '}
         was sampled from the softmax. It gets appended to the context — the
         new input for the next decode pass.
@@ -2249,7 +2267,7 @@ export function OutputSplitPane() {
         stats: [
           { label: 'visible prompt', value: `${promptForStrip.length} chars shown`, color: ACCENT.amber },
           { label: 'so far', value: settledGenerated.length > 0 ? `"${settledGenerated.replace(/ /g, '·')}"` : '—', color: ACCENT.mint },
-          { label: 'this step', value: subPhase === 'land' || subPhase === 'rest' ? `'${displayChar(generated[step] ?? '')}'` : 'next token', color: ACCENT.mint },
+          { label: 'this step', value: subPhase === 'land' || subPhase === 'rest' ? `'${chipLabel(generated[step] ?? '')}'` : 'next token', color: ACCENT.mint },
           { label: 'cost / token', value: '1 decode pass', color: ACCENT.violet },
         ],
         equation: {

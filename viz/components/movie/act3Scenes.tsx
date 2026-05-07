@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSpeed, usePlaying } from './speedContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
+import { chipLabel } from '@/lib/displayTokens'
 
 const ACCENT = {
   violet: '#a78bfa',
@@ -1265,9 +1266,15 @@ export function StackSplitPane() {
  * Phase 4 — SAMPLE + APPEND: char flies up to next slot in token strip
  * ====================================================================== */
 
-const SAMPLE_PROMPT = 'to be or no'                               // 11 chars
-const SAMPLE_LAST_IDX = SAMPLE_PROMPT.length - 1                  // 10
-const SAMPLE_CHARS = ['t', ' ', 'w', 'n', 'b', 'p', 's', 'c', 'd', 'r', 'm', 'l']
+// BPE-style: prompt is shown as 6 hand-tokenized chunks (the visible
+// trailing window of "To be, or not to be"); the 12 candidates are
+// plausible next-tokens from the model's distribution. argmax (" —")
+// matches the cold-open canonical reply, "— that is the question."
+const SAMPLE_PROMPT_TOKENS = ['To', ' be', ',', ' or', ' not', ' to']
+const SAMPLE_LAST_IDX = SAMPLE_PROMPT_TOKENS.length - 1
+const SAMPLE_CANDIDATES = [
+  ' —', ',', ' that', ' is', ' the', '.', ' a', ' to', '?', '!', ';', ' or',
+]
 const SAMPLE_LOGITS = [4.5, 3.6, 2.8, 2.2, 1.9, 1.4, 1.1, 0.7, 0.5, 0.2, -0.1, -0.3]
 
 const COL_HIDDEN = ACCENT.cyan
@@ -1275,10 +1282,12 @@ const COL_WOUT = ACCENT.amber
 const COL_LOGIT = ACCENT.blue
 const COL_SAMPLED = ACCENT.red
 
-const SAMPLE_TOKEN_CELL_W = 56
+const SAMPLE_TOKEN_CELL_W = 76
 const SAMPLE_TOKEN_CELL_H = 46
 const SAMPLE_TOKEN_GAP = 4
-const SAMPLE_TOKEN_COUNT = 12
+// 6 prompt tokens + 1 append slot (was 12 char cells). Wider cells too,
+// so multi-char tokens like ' that' fit comfortably.
+const SAMPLE_TOKEN_COUNT = 8
 const SAMPLE_TOKEN_TOTAL_W =
   SAMPLE_TOKEN_COUNT * SAMPLE_TOKEN_CELL_W + (SAMPLE_TOKEN_COUNT - 1) * SAMPLE_TOKEN_GAP
 const SAMPLE_TOKEN_X = (1400 - SAMPLE_TOKEN_TOTAL_W) / 2
@@ -1414,12 +1423,12 @@ export function VizSample() {
           only the last position's hidden state is used to pick the next token
         </text>
 
-        <SampleTokenStrip sampledChar={SAMPLE_CHARS[sampled]} phase={phase} speed={speed} />
+        <SampleTokenStrip sampledToken={SAMPLE_CANDIDATES[sampled]} phase={phase} speed={speed} />
         <SampleHiddenState phase={phase} speed={speed} />
         <SampleWOutMatrix phase={phase} speed={speed} />
         <SampleLogitsColumn phase={phase} speed={speed} />
         <SampleProbBars probs={probs} sampledIdx={sampled} temp={temp} phase={phase} speed={speed} />
-        <SampleBox char={SAMPLE_CHARS[sampled]} phase={phase} speed={speed} />
+        <SampleBox char={SAMPLE_CANDIDATES[sampled]} phase={phase} speed={speed} />
         <SamplePipelineArrows phase={phase} speed={speed} />
         <SampleAppendArc phase={phase} speed={speed} />
         <SampleStats temp={temp} entropy={entropy} maxProb={maxProb} />
@@ -1432,8 +1441,8 @@ export function VizSample() {
 }
 
 function SampleTokenStrip({
-  sampledChar, phase, speed,
-}: { sampledChar: string; phase: number; speed: number }) {
+  sampledToken, phase, speed,
+}: { sampledToken: string; phase: number; speed: number }) {
   const showAppended = phase === 3
   return (
     <g>
@@ -1444,13 +1453,13 @@ function SampleTokenStrip({
       </text>
       {Array.from({ length: SAMPLE_TOKEN_COUNT }).map((_, i) => {
         const x = SAMPLE_TOKEN_X + i * (SAMPLE_TOKEN_CELL_W + SAMPLE_TOKEN_GAP)
-        const isPrompt = i < SAMPLE_PROMPT.length
+        const isPrompt = i < SAMPLE_PROMPT_TOKENS.length
         const isLast = i === SAMPLE_LAST_IDX
-        const isAppendSlot = i === SAMPLE_PROMPT.length
+        const isAppendSlot = i === SAMPLE_PROMPT_TOKENS.length
         const ch = isPrompt
-          ? SAMPLE_PROMPT[i]
+          ? SAMPLE_PROMPT_TOKENS[i]
           : isAppendSlot && showAppended
-            ? sampledChar
+            ? sampledToken
             : ''
         const stroke = isLast
           ? COL_HIDDEN
@@ -1491,7 +1500,7 @@ function SampleTokenStrip({
                     ? COL_SAMPLED
                     : 'rgba(255,255,255,0.85)'
               }>
-              {ch === ' ' ? '·' : ch}
+              {chipLabel(ch)}
             </text>
           </g>
         )
@@ -1511,7 +1520,7 @@ function SampleTokenStrip({
       )}
       {showAppended && (
         <motion.text
-          x={SAMPLE_TOKEN_X + SAMPLE_PROMPT.length * (SAMPLE_TOKEN_CELL_W + SAMPLE_TOKEN_GAP) + SAMPLE_TOKEN_CELL_W / 2}
+          x={SAMPLE_TOKEN_X + SAMPLE_PROMPT_TOKENS.length * (SAMPLE_TOKEN_CELL_W + SAMPLE_TOKEN_GAP) + SAMPLE_TOKEN_CELL_W / 2}
           y={SAMPLE_TOKEN_Y - 24}
           textAnchor="middle"
           fontSize="10" fontFamily="var(--font-mono)" fill={COL_SAMPLED}
@@ -1648,14 +1657,14 @@ function SampleLogitsColumn({ phase, speed }: { phase: number; speed: number }) 
         <motion.rect
           x={SAMPLE_LOGITS_X - 6} y={SAMPLE_LOGITS_Y - 6}
           width={SAMPLE_LOGITS_W + 12}
-          height={SAMPLE_CHARS.length * SAMPLE_LOGITS_ROW_H + 12} rx={4}
+          height={SAMPLE_CANDIDATES.length * SAMPLE_LOGITS_ROW_H + 12} rx={4}
           fill="none" stroke={COL_LOGIT} strokeWidth={1.6}
           initial={{ opacity: 0 }}
           animate={{ opacity: [0.3, 0.9, 0.3] }}
           transition={{ duration: 1.8 / speed, repeat: Infinity, ease: 'easeInOut' }}
         />
       )}
-      {SAMPLE_CHARS.map((ch, i) => {
+      {SAMPLE_CANDIDATES.map((ch, i) => {
         const y = SAMPLE_LOGITS_Y + i * SAMPLE_LOGITS_ROW_H
         const logit = SAMPLE_LOGITS[i]
         const minLogit = -1
@@ -1677,7 +1686,7 @@ function SampleLogitsColumn({ phase, speed }: { phase: number; speed: number }) 
               y={y + 2}
               height={SAMPLE_LOGITS_ROW_H - 4}
               rx={2}
-              fill={`rgba(96,165,250,${0.35 + (1 - i / SAMPLE_CHARS.length) * 0.5})`}
+              fill={`rgba(96,165,250,${0.35 + (1 - i / SAMPLE_CANDIDATES.length) * 0.5})`}
               initial={false}
               animate={{ width: targetW }}
               transition={{
@@ -1693,7 +1702,7 @@ function SampleLogitsColumn({ phase, speed }: { phase: number; speed: number }) 
               textAnchor="end"
               fontSize="11" fontFamily="var(--font-mono)" fontStyle="italic"
               fill={ACCENT.dim}>
-              {ch === ' ' ? '·' : ch}
+              {chipLabel(ch)}
             </text>
           </g>
         )
@@ -1705,7 +1714,7 @@ function SampleLogitsColumn({ phase, speed }: { phase: number; speed: number }) 
         logits
       </text>
       <text x={SAMPLE_LOGITS_X + SAMPLE_LOGITS_W / 2}
-        y={SAMPLE_LOGITS_Y + SAMPLE_CHARS.length * SAMPLE_LOGITS_ROW_H + 18}
+        y={SAMPLE_LOGITS_Y + SAMPLE_CANDIDATES.length * SAMPLE_LOGITS_ROW_H + 18}
         textAnchor="middle"
         fontSize="9" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
         65 raw scores
@@ -1739,7 +1748,7 @@ function SampleProbBars({
           transition={{ duration: 1.8 / speed, repeat: Infinity, ease: 'easeInOut' }}
         />
       )}
-      {SAMPLE_CHARS.map((ch, i) => {
+      {SAMPLE_CANDIDATES.map((ch, i) => {
         const y = SAMPLE_BARS_Y + i * SAMPLE_BARS_ROW_H
         const p = probs[i]
         const barW = trackW * p
@@ -1751,7 +1760,7 @@ function SampleProbBars({
               textAnchor="end"
               fontSize="13" fontFamily="var(--font-mono)" fontStyle="italic"
               fill={isSampled ? COL_SAMPLED : 'rgba(255,255,255,0.7)'}>
-              {ch === ' ' ? '·' : ch}
+              {chipLabel(ch)}
             </text>
             <rect x={trackX} y={y + 4}
               width={trackW} height={SAMPLE_BARS_ROW_H - 8} rx={2}
@@ -1827,14 +1836,15 @@ function SampleBox({
           x={SAMPLE_BOX_X + SAMPLE_BOX_W / 2}
           y={SAMPLE_BOX_Y + SAMPLE_BOX_H / 2 + 28}
           textAnchor="middle"
-          fontSize="84" fontFamily="var(--font-display)" fontStyle="italic"
+          fontSize={char.length > 3 ? 56 : 84}
+          fontFamily="var(--font-display)" fontStyle="italic"
           fill={COL_SAMPLED}
           initial={{ opacity: 0, scale: 0.5 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 1.3 }}
           transition={{ duration: 0.3 / speed }}
         >
-          {char === ' ' ? '·' : char}
+          {chipLabel(char)}
         </motion.text>
       </AnimatePresence>
     </g>
@@ -1887,7 +1897,7 @@ function SampleAppendArc({ phase, speed }: { phase: number; speed: number }) {
   const fromY = SAMPLE_BOX_Y
   const toX =
     SAMPLE_TOKEN_X +
-    SAMPLE_PROMPT.length * (SAMPLE_TOKEN_CELL_W + SAMPLE_TOKEN_GAP) +
+    SAMPLE_PROMPT_TOKENS.length * (SAMPLE_TOKEN_CELL_W + SAMPLE_TOKEN_GAP) +
     SAMPLE_TOKEN_CELL_W / 2
   const toY = SAMPLE_TOKEN_Y + SAMPLE_TOKEN_CELL_H + 4
   const ctrlX = (fromX + toX) / 2 + 80
@@ -1949,7 +1959,7 @@ function SampleStats({
     { label: 'T', value: temp.toFixed(2), color: ACCENT.amber },
     { label: 'top prob', value: `${(maxProb * 100).toFixed(1)}%`, color: COL_LOGIT },
     { label: 'entropy', value: `${entropy.toFixed(2)} bits`, color: ACCENT.mint },
-    { label: 'vocab', value: '12 / 65', color: ACCENT.dim },
+    { label: 'vocab', value: '12 of ≈50K', color: ACCENT.dim },
   ]
   return (
     <g transform="translate(700, 770)">
@@ -2130,7 +2140,7 @@ export function SampleSplitPane() {
         ),
         stats: [
           { label: 'd_model', value: '384', color: COL_HIDDEN },
-          { label: 'vocab · V', value: '65', color: COL_WOUT },
+          { label: 'vocab · V', value: '50,257', color: COL_WOUT },
           { label: 'this scene', value: 'top 12 shown' },
           { label: 'generation', value: 'autoregressive' },
         ],
@@ -2401,7 +2411,7 @@ function KVTokenStrip({ step }: { step: number }) {
               textAnchor="middle"
               fontSize="22" fontFamily="var(--font-display)" fontStyle="italic"
               fill={textColor}>
-              {ch === ' ' ? '·' : ch}
+              {chipLabel(ch)}
             </text>
           </g>
         )
@@ -2604,7 +2614,7 @@ function KVCacheMatrix({
             textAnchor="end"
             fontSize="11" fontFamily="var(--font-mono)" fontStyle="italic"
             fill={labelColor}>
-            {ch === ' ' ? '·' : ch}
+            {chipLabel(ch)}
           </text>
         )
       })}
