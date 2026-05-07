@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { useSpeed, usePlaying } from './speedContext'
 import { usePrompt } from './promptContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
+import { displayTokens } from '@/lib/displayTokens'
 
 /* =========================================================================
  * ACT I VIZ — left-pane visualizations for the new split-pane Act I scenes.
@@ -1516,8 +1517,11 @@ export function VizEmbedding() {
   const speed = useSpeed()
   const playing = usePlaying()
   const { prompt } = usePrompt()
-  const promptChars = (prompt || 'The cat sat').split('').slice(0, 8)
-  const ids = promptChars.map((ch) => ch.charCodeAt(0) % 65)
+  const tokens = useMemo(
+    () => displayTokens(prompt).slice(0, 8),
+    [prompt],
+  )
+  const ids = tokens.map((t) => t.id)
 
   const [cursor, setCursor] = useState(0)
   useEffect(() => {
@@ -1545,6 +1549,7 @@ export function VizEmbedding() {
   const activeRow = activeId % ROWS
 
   // Detect repeated IDs in the visible prompt — for the "shared row" hint
+  const visibleTokens = tokens.slice(0, 6)
   const visibleIds = ids.slice(0, 6)
   const idCounts = visibleIds.reduce<Record<number, number[]>>(
     (acc, id, i) => {
@@ -1607,17 +1612,21 @@ export function VizEmbedding() {
         {/* ────── Left — token IDs column ────── */}
         <g>
           <text x={130} y={matrixY - 18} fontSize="10" fontFamily="var(--font-mono)"
-            fill={ACCENT.dim} letterSpacing="0.22em">TOKEN IDs</text>
+            fill={ACCENT.dim} letterSpacing="0.22em">TOKEN  ·  ID</text>
           {visibleIds.map((id, i) => {
             const isActive = i === cursor
             const isDuplicate =
               idCounts[id] && idCounts[id].length > 1 && !isActive
+            const tok = visibleTokens[i]
+            const tokDisplay = tok
+              ? (tok.text.startsWith(' ') ? '·' + tok.text.slice(1) : tok.text)
+              : ''
             return (
               <g key={i}>
                 {/* Active gets a glow halo */}
                 {isActive && (
                   <motion.rect
-                    x={92} y={matrixY + i * 50 - 6} width={86} height={48} rx={5}
+                    x={82} y={matrixY + i * 50 - 6} width={106} height={48} rx={5}
                     fill="rgba(167,139,250,0.10)"
                     animate={{ opacity: [0.45, 0.95, 0.45] }}
                     transition={{
@@ -1628,8 +1637,8 @@ export function VizEmbedding() {
                   />
                 )}
                 <motion.rect
-                  x={100} y={matrixY + i * 50}
-                  width={70} height={36} rx={3}
+                  x={90} y={matrixY + i * 50}
+                  width={90} height={36} rx={3}
                   fill="rgba(255,255,255,0.015)"
                   stroke="rgba(255,255,255,0.10)"
                   opacity={0.42}
@@ -1648,16 +1657,34 @@ export function VizEmbedding() {
                   transition={{ duration: 0.3 }}
                   strokeWidth={isActive ? 1.8 : 1}
                 />
+                {/* Token text — top line of the chip */}
                 <motion.text
-                  x={135} y={matrixY + i * 50 + 24}
+                  x={135} y={matrixY + i * 50 + 14}
                   textAnchor="middle"
-                  fontSize={isActive ? 17 : 14}
+                  fontSize={isActive ? 13 : 11}
                   fontFamily="var(--font-mono)"
-                  fill="rgba(255,255,255,0.45)"
-                  opacity={0.55}
-                  initial={{ fill: 'rgba(255,255,255,0.45)', opacity: 0.55 }}
+                  fill="rgba(255,255,255,0.55)"
+                  opacity={0.7}
+                  initial={{ fill: 'rgba(255,255,255,0.55)', opacity: 0.7 }}
                   animate={{
-                    fill: isActive ? '#fff' : 'rgba(255,255,255,0.45)',
+                    fill: isActive ? '#fff' : 'rgba(255,255,255,0.55)',
+                    opacity: isActive ? 1 : 0.7,
+                  }}
+                  transition={{ duration: 0.3 }}
+                >
+                  ‘{tokDisplay}’
+                </motion.text>
+                {/* ID — bottom line of the chip */}
+                <motion.text
+                  x={135} y={matrixY + i * 50 + 30}
+                  textAnchor="middle"
+                  fontSize={isActive ? 13 : 11}
+                  fontFamily="var(--font-mono)"
+                  fill="rgba(255,255,255,0.4)"
+                  opacity={0.55}
+                  initial={{ fill: 'rgba(255,255,255,0.4)', opacity: 0.55 }}
+                  animate={{
+                    fill: isActive ? ACCENT.violet : 'rgba(255,255,255,0.4)',
                     opacity: isActive ? 1 : 0.55,
                   }}
                   transition={{ duration: 0.3 }}
@@ -1668,7 +1695,7 @@ export function VizEmbedding() {
                 {/* Curved connector — solid for active, dashed for duplicate */}
                 {(isActive || isDuplicate) && (
                   <motion.path
-                    d={`M 175 ${matrixY + i * 50 + 18} Q 320 ${matrixY + i * 50 + 18}, ${matrixX - 6} ${matrixY + activeRow * CELL_H + CELL_H / 2}`}
+                    d={`M 185 ${matrixY + i * 50 + 18} Q 320 ${matrixY + i * 50 + 18}, ${matrixX - 6} ${matrixY + activeRow * CELL_H + CELL_H / 2}`}
                     stroke={ACCENT.violet}
                     strokeWidth={isActive ? 1.8 : 1}
                     strokeOpacity={isActive ? 0.9 : 0.4}
@@ -1951,7 +1978,7 @@ export function VizEmbedding() {
             {'  →  '}
             row{' '}
             <tspan fill={ACCENT.violet} fontWeight={500}>{activeId}</tspan>
-            {' of 65  →  '}
+            {' of 50,257  →  '}
             vector ∈ ℝ
             <tspan fontSize="13" dy="-6">384</tspan>
           </text>
@@ -3334,22 +3361,31 @@ export function EmbeddingSplitPane() {
   const speed = useSpeed()
   const playing = usePlaying()
   const { prompt } = usePrompt()
-  const promptChars = (prompt || 'The cat sat').split('').slice(0, 8)
-  const ids = promptChars.map((c) => c.charCodeAt(0) % 65)
+  // BPE-style display tokens, shared with VizEmbedding and the persistent
+  // strip overlay so highlighted text / ID / lookup all agree.
+  const tokens = useMemo(
+    () => displayTokens(prompt).slice(0, 8),
+    [prompt],
+  )
+  const total = Math.max(tokens.length, 1)
 
   // Match the cursor cycle inside VizEmbedding (2200ms)
   const [cursor, setCursor] = useState(0)
   useEffect(() => {
     if (!playing) return
     const id = setInterval(
-      () => setCursor((c) => (c + 1) % Math.max(ids.length, 1)),
+      () => setCursor((c) => (c + 1) % total),
       2200 / speed,
     )
     return () => clearInterval(id)
-  }, [ids.length, speed, playing])
+  }, [total, speed, playing])
 
-  const currentId = ids[cursor] ?? 0
-  const currentCh = promptChars[cursor] ?? '?'
+  const current = tokens[cursor]
+  const currentId = current?.id ?? 0
+  const currentText = current?.text ?? '?'
+  const displayText = currentText.startsWith(' ')
+    ? '·' + currentText.slice(1)
+    : currentText
 
   // Synthetic vector preview — first 4 dims of a deterministic vector for the ID
   const previewDims = Array.from({ length: 4 }).map((_, i) => {
@@ -3374,15 +3410,15 @@ export function EmbeddingSplitPane() {
         phase: (
           <PhaseChip
             current={cursor + 1}
-            total={Math.max(ids.length, 1)}
-            label={`token ‘${currentCh === ' ' ? '·' : currentCh}’`}
+            total={total}
+            label={`token ‘${displayText}’`}
             accent={ACCENT.violet}
           />
         ),
         stats: [
-          { label: 'V', value: '65' },
+          { label: 'V', value: '50,257' },
           { label: 'd_model', value: '384' },
-          { label: 'params', value: '24,960' },
+          { label: 'params', value: '~19M' },
         ],
         equation: {
           label: 'live lookup',
@@ -3396,7 +3432,7 @@ export function EmbeddingSplitPane() {
           ),
         },
         infoCallout:
-          'E is learned during training and shared across all positions — the same row is returned every time that token appears.',
+          'Tokens shown BPE-style (vocab ≈ 50K, what real LLMs use). The nanoGPT this site runs is char-level (vocab=65) — same row-lookup mechanism, smaller table.',
       }}
     />
   )

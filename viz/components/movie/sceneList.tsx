@@ -95,7 +95,12 @@ export const SCENES: MovieScene[] = [
     title: 'This is what happens inside.',
     caption: 'A full transformer, from prompt to next token. Every layer, every head.',
     accent: ACCENT.blue,
-    durationMs: 32000,
+    // Panel ends with a shrink-and-fade morph that lands ~20.7s in for the
+    // default prompt ("To be, or not to be"). 22s gives ~1.3s of buffer
+    // before cutting to scene 2. The original 32s reserved time for a
+    // Phase 3 camera dive that hasn't been built — until then, anything
+    // past the morph is just a black screen.
+    durationMs: 22000,
     details: `Every time you send a prompt to an AI, it runs through a stack like this. We're going to walk through it end-to-end — starting with the raw text, ending with the next character it picks.`,
     render: () => <IntroColdOpenPanel />,
     // Phase 1: cold open is a fullscreen chat UI — no 3D underneath yet.
@@ -132,6 +137,9 @@ export const SCENES: MovieScene[] = [
     promptAware: true,
     part: 'tokenize',
     panelAnchor: 'fullscreen',
+    // Body teaches char-level explicitly. Hide the global BPE-style strip
+    // so it doesn't contradict the lesson — Scene 4 hands off to BPE.
+    showTokenStrip: false,
     details: `The tokenizer is a pure lookup — it turns every raw character into a fixed integer using a vocabulary table built once, before training. In our tiny model the vocab has exactly 65 entries (52 letters — 26 upper + 26 lower — plus newline, space, punctuation, and the lone digit "3" that appears in the Shakespeare corpus), so every ID lives in [0, 65).
 
 Real models never do character-level. They use subword tokens (BPE, Unigram, SentencePiece) with vocabularies of 32k–256k. But the lookup is identical: take the string, look up each token, emit the integer ID. That's the whole "tokenization" step.
@@ -152,6 +160,9 @@ Nothing about the model cares what the original characters looked like after thi
     durationMs: 36000,
     part: 'tokenize',
     panelAnchor: 'fullscreen',
+    // BPE merge demo on a different word in the body — keep the global
+    // strip hidden so the viewer focuses on the merge tree.
+    showTokenStrip: false,
     details: `BPE ("byte-pair encoding") is how modern tokenizers are built. Start with a vocabulary of all 256 bytes. Count every adjacent-pair of tokens in the training corpus. Merge the most frequent pair into one new token. Repeat thousands of times.
 
 After training, you're left with a merge table. At inference time, apply the same merges greedily to any input string. Common English words become one token ("the"), rare words split into multiple subwords ("arborescent" → "ar" + "bor" + "escent").
@@ -166,7 +177,7 @@ Note: the actual nanoGPT this project is built around uses character-level token
     section: ACT_I,
     breadcrumb: ['Input', 'Embedding lookup'],
     bridgeIn: 'IDs are just integers. To do math on them, look each one up in a table…',
-    focusedToken: 3,
+    focusedToken: 1,
     kicker: 'embeddings',
     title: 'Each token becomes a vector.',
     caption:
@@ -187,7 +198,7 @@ This is where the network first starts to encode meaning. Tokens that behave sim
     section: ACT_I,
     breadcrumb: ['Input', 'Positional encoding'],
     bridgeIn: 'But the vector says nothing about WHERE in the sentence the token sat. Add that next.',
-    focusedToken: 3,
+    focusedToken: 1,
     kicker: 'positional encoding',
     title: 'Position gets baked in.',
     caption:
@@ -245,7 +256,7 @@ Nothing in the model has done attention yet. Tokens have not "talked" to each ot
     section: ACT_II,
     breadcrumb: ['Block 0', 'LayerNorm'],
     bridgeIn: 'Inside Block 0 now. Step one: shape the input so the math stays stable.',
-    focusedToken: 3,
+    focusedToken: 1,
     kicker: 'layernorm',
     title: 'Normalize before every sublayer.',
     caption:
@@ -266,7 +277,7 @@ Modern models (LLaMA, PaLM) switched to RMSNorm, which drops the mean-subtractio
     section: ACT_II,
     breadcrumb: ['Block 0', 'Attention', 'Q · K · V'],
     bridgeIn: 'Same vector, three new roles — query, key, value.',
-    focusedToken: 3,
+    focusedToken: 1,
     wide: true,
     kicker: 'q · k · v',
     title: 'One vector. Three roles.',
@@ -288,7 +299,7 @@ All three are learned. Nothing special about the split — they start as random 
     section: ACT_II,
     breadcrumb: ['Block 0', 'Attention'],
     bridgeIn: 'Q asks "who matches me?" K answers. That dot product is the whole game.',
-    focusedToken: 3,
+    focusedToken: 1,
     wide: true,
     kicker: 'self-attention',
     title: 'Attention — 4 sub-phases.',
@@ -312,7 +323,7 @@ This is the mechanism that lets "the animal didn't cross the street because IT w
     section: ACT_II,
     breadcrumb: ['Block 0', 'Attention', 'Multi-head'],
     bridgeIn: 'One head only learns one pattern. Run six in parallel — they specialize.',
-    focusedToken: 3,
+    focusedToken: 1,
     wide: true,
     kicker: 'multi-head',
     title: 'Six heads in parallel.',
@@ -336,7 +347,7 @@ Empirically, the heads DO specialize. Different heads attend to different kinds 
     section: ACT_II,
     breadcrumb: ['Block 0', 'FFN'],
     bridgeIn: 'Attention mixed information across tokens. Now process each token alone.',
-    focusedToken: 3,
+    focusedToken: 1,
     wide: true,
     kicker: 'feed-forward',
     title: 'Expand. Fire. Compress.',
@@ -364,7 +375,7 @@ Attention moves information BETWEEN tokens. FFN processes information WITHIN a s
     section: ACT_II,
     breadcrumb: ['Block 0', 'FFN', 'One feature'],
     bridgeIn: 'Each of those 1536 hidden dims is its own learned pattern detector. Pick one.',
-    focusedToken: 3,
+    focusedToken: 1,
     kicker: 'feature detectors',
     title: 'Each hidden neuron detects something.',
     subGroup: { label: 'FFN · interpretation', index: 2, total: 3, color: ACCENT.amber },
@@ -386,7 +397,7 @@ Interpretability research is largely about teasing out what each dimension repre
     section: ACT_II,
     breadcrumb: ['Block 0', 'FFN', 'Activation'],
     bridgeIn: 'How does each detector actually decide to fire? The activation function picks.',
-    focusedToken: 3,
+    focusedToken: 1,
     kicker: 'activation functions',
     title: 'How each feature decides to fire.',
     subGroup: { label: 'FFN · activation detail', index: 3, total: 3, color: ACCENT.amber },
@@ -429,7 +440,7 @@ Six blocks in our tiny model. GPT-2 Small had 12. GPT-2 XL had 48. GPT-4 reporte
     section: ACT_III,
     breadcrumb: ['Stack of 6', 'One signal climbing'],
     bridgeIn: 'That single block — repeated six times. Same recipe, deeper meaning each pass.',
-    focusedToken: 3,
+    focusedToken: 1,
     wide: true,
     kicker: 'residual stack',
     title: 'Stack six blocks.',

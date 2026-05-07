@@ -8,6 +8,7 @@ import { STAGE_VARIANTS, KIND_TIMING, incomingKindFor } from './transitions'
 import { SpeedContext, PlayingContext, usePlaying } from './speedContext'
 import { useActivations } from '@/lib/useActivations'
 import { useTransformer } from '@/lib/useTransformer'
+import { displayTokens } from '@/lib/displayTokens'
 
 /**
  * Where the 2D detail panel for this scene lives.
@@ -56,9 +57,12 @@ export interface MovieScene {
    */
   showTokenStrip?: boolean
   /**
-   * Index of the prompt token this scene focuses on (e.g. 3 = the "b" of
-   * "To be, or no"). When set, the persistent token strip glows that cell
-   * so the viewer knows which token's vector the scene is talking about.
+   * Index of the prompt token this scene focuses on. Indexes into the
+   * BPE-style display tokenization (lib/displayTokens) — for the canonical
+   * "To be, or not to be" prompt that's [To, ' be', ',', ' or', ' not',
+   * ' to', ' be'], so 1 = ' be'. When set, the persistent token strip
+   * glows that cell so the viewer knows which token's vector the scene is
+   * talking about.
    */
   focusedToken?: number
   /**
@@ -1415,7 +1419,7 @@ function BreadcrumbOverlay({
   )
 }
 
-const TOKEN_STRIP_MAX = 36
+const TOKEN_STRIP_MAX = 24
 
 function TokenStripOverlay({
   prompt,
@@ -1427,17 +1431,24 @@ function TokenStripOverlay({
   focusedToken?: number
 }) {
   const playing = usePlaying()
-  // Char-level model: each character is one token. Trim to context length.
-  const chars = (prompt || '').slice(0, TOKEN_STRIP_MAX).split('')
-  if (chars.length === 0) return null
+  // BPE-style display tokenization. Single source of truth lives in
+  // lib/displayTokens — same helper used by Scene 5's body so the strip
+  // and the embedding lookup agree on which units count as "tokens".
+  const tokens = displayTokens(prompt).slice(0, TOKEN_STRIP_MAX)
+  if (tokens.length === 0) return null
   return (
     <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center">
       <div className="flex items-center gap-[3px] rounded-[3px] border border-[var(--rule)] bg-[rgba(7,7,9,0.6)] px-2 py-1.5 backdrop-blur-sm">
         <div className="mono mr-2 text-[9px] tracking-widest text-[var(--fg-dim)]">
           tokens
         </div>
-        {chars.map((ch, i) => {
+        {tokens.map((tok, i) => {
           const isFocused = focusedToken === i
+          // Render leading space as a visible mid-dot so the chip clearly
+          // shows the space-prefix convention without losing its width.
+          const display = tok.text.startsWith(' ')
+            ? '·' + tok.text.slice(1)
+            : tok.text
           const animateFocused = playing
             ? {
                 borderColor: accent,
@@ -1460,7 +1471,7 @@ function TokenStripOverlay({
           return (
             <motion.div
               key={i}
-              className="mono flex h-5 min-w-[14px] items-center justify-center rounded-[2px] border px-1 text-[10px] leading-none"
+              className="mono flex h-5 min-w-[14px] items-center justify-center rounded-[2px] border px-1.5 text-[10px] leading-none"
               animate={
                 isFocused
                   ? animateFocused
@@ -1477,17 +1488,17 @@ function TokenStripOverlay({
                   ? { duration: 1.6, repeat: playing ? Infinity : 0, ease: 'easeInOut' }
                   : { duration: 0.3 }
               }
-              title={`token ${i}${isFocused ? ' · focused' : ''}`}
+              title={`token ${i} · id ${tok.id}${isFocused ? ' · focused' : ''}`}
             >
-              {ch === ' ' ? '·' : ch}
+              {display}
             </motion.div>
           )
         })}
         <div
           className="mono ml-2 tabular text-[9px] text-[var(--fg-dim)]"
-          style={{ color: chars.length === TOKEN_STRIP_MAX ? accent : undefined }}
+          style={{ color: tokens.length === TOKEN_STRIP_MAX ? accent : undefined }}
         >
-          {chars.length}
+          {tokens.length}
         </div>
       </div>
     </div>
