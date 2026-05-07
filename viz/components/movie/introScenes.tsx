@@ -28,9 +28,12 @@ const DIM = '#737373'
  */
 function pickReply(prompt: string): string | null {
   const p = prompt.trim().toLowerCase()
-  if (p.startsWith('to be, or not')) return ' — that is the question.'
-  if (p.startsWith('to be, or')) return ' not to be — that is the question.'
-  if (p.startsWith('to be')) return ', or not to be — that is the question.'
+  // Most-specific prefix first so each Hamlet-prefix prompt completes to
+  // the same canonical line: "To be, or not to be, that is the question."
+  if (p.startsWith('to be, or not to be')) return ', that is the question.'
+  if (p.startsWith('to be, or not')) return ' to be, that is the question.'
+  if (p.startsWith('to be, or')) return ' not to be, that is the question.'
+  if (p.startsWith('to be')) return ', or not to be, that is the question.'
   if (p.startsWith('hark') || p.startsWith('hark!')) return ', what light through yonder window breaks!'
   if (p.startsWith('romeo')) return ', wherefore art thou, Romeo?'
   if (p.startsWith('hamlet')) return ', dread sovereign of the night!'

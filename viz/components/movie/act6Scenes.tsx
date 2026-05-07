@@ -70,10 +70,11 @@ type Prediction = {
 
 // Canonical Hamlet line as BPE tokens. Both Scene 33 (single next-token
 // prediction) and Scene 34 (the autoregressive loop) ride this when the
-// prompt is a token-prefix of it.
+// prompt is a token-prefix of it. Final reads:
+// "To be, or not to be, that is the question."
 const HAMLET_BPE = [
   'To', ' be', ',', ' or', ' not', ' to', ' be',
-  ' —', ' that', ' is', ' the', ' question', '.',
+  ',', ' that', ' is', ' the', ' question', '.',
 ]
 
 const TOPK_BPE_POOL = [

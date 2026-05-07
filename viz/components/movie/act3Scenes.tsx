@@ -1267,13 +1267,14 @@ export function StackSplitPane() {
  * ====================================================================== */
 
 // BPE-style: prompt is the full "To be, or not to be" — 7 hand-tokenized
-// chunks ending on the second ' be'. That puts the predicted token at the
-// natural sentence break, where ' —' is the canonical Hamlet next token,
-// matching the cold-open's "— that is the question." reply.
+// chunks ending on the second ' be'. The argmax (',') matches the
+// generation Scene 34 lands on: "To be, or not to be, that is the
+// question." ' —' kept as a plausible runner-up (the alternate Hamlet
+// rendering with an em-dash).
 const SAMPLE_PROMPT_TOKENS = ['To', ' be', ',', ' or', ' not', ' to', ' be']
 const SAMPLE_LAST_IDX = SAMPLE_PROMPT_TOKENS.length - 1
 const SAMPLE_CANDIDATES = [
-  ' —', ',', ' that', ' is', ' the', '.', ' a', ' to', '?', '!', ';', ' or',
+  ',', ' —', ' that', ' is', ' the', '.', ' a', ' to', '?', '!', ';', ' or',
 ]
 const SAMPLE_LOGITS = [4.5, 3.6, 2.8, 2.2, 1.9, 1.4, 1.1, 0.7, 0.5, 0.2, -0.1, -0.3]
 
