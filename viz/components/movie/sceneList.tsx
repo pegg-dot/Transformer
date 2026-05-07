@@ -132,7 +132,7 @@ export const SCENES: MovieScene[] = [
     promptAware: true,
     part: 'tokenize',
     panelAnchor: 'fullscreen',
-    details: `The tokenizer is a pure lookup — it turns every raw character into a fixed integer using a vocabulary table built once, before training. In our tiny model the vocab has exactly 65 entries (52 letters, 10 digits, plus a handful of punctuation marks from the Shakespeare corpus), so every ID lives in [0, 65).
+    details: `The tokenizer is a pure lookup — it turns every raw character into a fixed integer using a vocabulary table built once, before training. In our tiny model the vocab has exactly 65 entries (52 letters — 26 upper + 26 lower — plus newline, space, punctuation, and the lone digit "3" that appears in the Shakespeare corpus), so every ID lives in [0, 65).
 
 Real models never do character-level. They use subword tokens (BPE, Unigram, SentencePiece) with vocabularies of 32k–256k. But the lookup is identical: take the string, look up each token, emit the integer ID. That's the whole "tokenization" step.
 
@@ -454,9 +454,9 @@ Each block asks "given what I just read, what's a better representation?" and nu
     focusedToken: 11,
     wide: true,
     kicker: 'softmax + sampling',
-    title: 'Guess the next character.',
+    title: 'Pick the next token.',
     caption:
-      'Unembed → 65 logits → softmax → temperature → weighted die roll. Drag the temperature slider!',
+      'Unembed → 65 logits → softmax → temperature → sampled next token (here: a character). Drag the slider.',
     accent: ACCENT.red,
     durationMs: 27000,
     part: 'sample',
@@ -533,7 +533,7 @@ This scalar is the only number backprop cares about. Every weight in the model g
     bridgeIn: 'Every position predicts the next token — every position gets its own loss.',
     kicker: 'loss · per-position',
     title: 'Every position gets its own loss.',
-    subGroup: { label: 'loss · per-sequence', index: 2, total: 3, color: ACCENT.red },
+    subGroup: { label: 'loss · per-position', index: 2, total: 3, color: ACCENT.red },
     caption:
       'A length-T sequence produces T separate predictions in parallel. Losses average into L_seq.',
     accent: ACCENT.red,
@@ -750,7 +750,7 @@ RoPE also extrapolates better to longer sequences than training length, which ma
 
 RMSNorm: drop the mean-subtraction in LayerNorm. Fewer norm operations, with strong training stability in practice.
 
-SwiGLU: replace the MLP's single activation with a gated pair — SiLU(W_gate·x) ⊙ (W_up·x), then a W_down projection back to hidden_dim. Often uses wider intermediate projections than a plain GELU MLP, but improves quality per compute/parameter.
+SwiGLU: replace the MLP's single activation with a gated pair — SiLU(W_gate·x) ⊙ (W_up·x), then a W_down projection back to hidden_dim. Adds a third projection, so to keep total params comparable, the intermediate width is usually scaled down (e.g. (8/3)·d instead of 4·d). Improves quality per compute/parameter.
 
 GQA (grouped-query attention): instead of N Q/K/V heads, use N query heads but a smaller number G of K/V heads. The KV cache scales with K/V heads, so going from N to G shrinks it by ~N/G. Used by LLaMA-2 and most frontier open models.
 

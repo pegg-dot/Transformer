@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { COLORS, glyph, makeRng } from '../scenes/primitives'
 import { NumberPanelDiv } from './numberpanel'
-import { useSpeed } from './speedContext'
+import { useSpeed, usePlaying } from './speedContext'
 import { usePrompt } from './promptContext'
 
 /** ========= 01 · Tokenization ========= */
@@ -150,16 +150,18 @@ export function SceneTokenization() {
 const VOCAB_LETTERS = 'abcdefghijklmnop'.split('')
 export function SceneEmbedding() {
   const speed = useSpeed()
+  const playing = usePlaying()
   // Walk through the matrix rows ONCE (single forward pass), then hold on the
   // last vector. Previous version looped perpetually which implied the model
   // was iterating — it's not; embedding is a one-shot lookup per token.
   const [cursor, setCursor] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => {
       setCursor((c) => (c + 1 < VOCAB_LETTERS.length ? c + 1 : c))
     }, 1100 / speed)
     return () => clearInterval(id)
-  }, [])
+  }, [playing])
 
   const rng = makeRng(91)
   const MAT = VOCAB_LETTERS.map(() => Array.from({ length: 24 }).map(() => rng() * 2 - 1))
@@ -465,12 +467,14 @@ function useAttentionData() {
 
 function AttnOneToken() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { tokens, T, weights } = useAttentionData()
   const [query, setQuery] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => setQuery((q) => (q + 1 < T ? q + 1 : q)), 1400 / speed)
     return () => clearInterval(id)
-  }, [T])
+  }, [T, playing])
   // Clamp query if prompt shrank
   const q = Math.min(query, T - 1)
 
@@ -554,10 +558,12 @@ function AttnOneToken() {
 
 function AttnFullMatrix() {
   const speed = useSpeed()
+  const playing = usePlaying()
   // Show the T×T score matrix filling in cell-by-cell
   const { tokens, T, rawScores } = useAttentionData()
   const [fillIdx, setFillIdx] = useState(0)
   useEffect(() => {
+    if (!playing) return
     let i = 0
     const id = setInterval(() => {
       i++
@@ -565,7 +571,7 @@ function AttnFullMatrix() {
       setFillIdx(i)
     }, 80 / speed)
     return () => clearInterval(id)
-  }, [T])
+  }, [T, playing])
 
   const CELL = Math.max(34, Math.min(56, Math.floor(480 / T)))
   const MX = (1400 - T * CELL) / 2
@@ -654,12 +660,14 @@ function AttnFullMatrix() {
 
 function AttnSoftmaxRows() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { tokens, T, rawScores, weights } = useAttentionData()
   const [row, setRow] = useState(1)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => setRow((r) => ((r + 1 < T ? r + 1 : r) || 1)), 1800 / speed)
     return () => clearInterval(id)
-  }, [T])
+  }, [T, playing])
   const rowIdx = Math.min(row, T - 1) || Math.min(1, T - 1)
 
   const CELL = Math.max(42, Math.min(64, Math.floor(840 / T)))
@@ -745,13 +753,15 @@ function AttnSoftmaxRows() {
 }
 
 function AttnValueMixing() {
+  const playing = usePlaying()
   const { tokens, T, weights } = useAttentionData()
   const { seed } = usePrompt()
   const [query, setQuery] = useState(2)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => setQuery((q) => ((q + 1 < T ? q + 1 : q)) || Math.min(2, T - 1)), 2600)
     return () => clearInterval(id)
-  }, [T])
+  }, [T, playing])
   const q = Math.min(query, T - 1)
 
   // Deterministic V vectors seeded by prompt
@@ -850,8 +860,10 @@ function AttnValueMixing() {
 }
 
 export function SceneAttention() {
+  const playing = usePlaying()
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     // 4 sub-phases cycle through
     // Match scene duration (36s) exactly — 4 phases × 9s each → phase 0 returns precisely when scene advances
     const timings = [10000, 10000, 10000, 10000]
@@ -862,7 +874,7 @@ export function SceneAttention() {
       timer = setTimeout(next, timings[cur])
     }, timings[0])
     return () => clearTimeout(timer)
-  }, [])
+  }, [playing])
 
   const { T } = useAttentionData()
   const PHASE_LABELS = ['A · one-query zoom', 'B · full Q·Kᵀ matrix', 'C · row-wise softmax', 'D · value mixing']
@@ -908,12 +920,14 @@ export function SceneAttention() {
 /** ========= 05 · Multi-head Parallel ========= */
 export function SceneMultiHead() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt } = usePrompt()
   const [tick, setTick] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => setTick((t) => t + 1), 1200 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // Take first 6-8 chars of the prompt
   const tokens = prompt.split('').slice(0, 8)
@@ -1047,13 +1061,15 @@ export function SceneMultiHead() {
 /** ========= 06 · Feed-forward ========= */
 export function SceneFFN() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     // Single forward pass — previously looped, implying iterative computation.
     // FFN runs once per token per layer. Walk the 5 phases once and hold.
     const id = setInterval(() => setPhase((p) => (p + 1 < 5 ? p + 1 : p)), 3200 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const rng = makeRng(71)
   const INPUT = Array.from({ length: 6 }).map(() => rng() * 2 - 1)
@@ -1369,6 +1385,7 @@ export function SceneStack() {
 /** ========= 08 · Softmax + sampling (interactive temperature) ========= */
 export function SceneSample() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const [temp, setTemp] = useState(1.0)
   const [touched, setTouched] = useState(false)
   const [sampled, setSampled] = useState(0)
@@ -1382,6 +1399,7 @@ export function SceneSample() {
   // Previously oscillated forever, which looked like temperature was
   // constantly changing in inference — it's a fixed knob.
   useEffect(() => {
+    if (!playing) return
     if (touched) return
     const start = performance.now()
     const SWEEP_DURATION = 15.7  // ~2 full sine cycles at ω=0.8
@@ -1398,7 +1416,7 @@ export function SceneSample() {
     }
     frame = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(frame)
-  }, [touched])
+  }, [touched, playing])
 
   const scaled = LOGITS.map((x) => x / temp)
   const max = Math.max(...scaled)
@@ -1410,6 +1428,7 @@ export function SceneSample() {
   const entropy = probs.reduce((a, p) => a + (p > 0 ? -p * Math.log2(p) : 0), 0)
 
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => {
       let r = Math.random()
       for (let i = 0; i < probs.length; i++) {
@@ -1419,7 +1438,7 @@ export function SceneSample() {
       setSampled(probs.length - 1)
     }, 1300 / speed)
     return () => clearInterval(id)
-  }, [temp])
+  }, [temp, playing])
 
   const barW = 70
   const barGap = 12
@@ -1567,14 +1586,16 @@ export function SceneSample() {
 /** ========= 09 · KV cache growing ========= */
 export function SceneKVCache() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt } = usePrompt()
   const SEQ = prompt.split('').slice(0, 10)  // limit to 10 tokens for visual
   const [step, setStep] = useState(0)
 
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => setStep((s) => (s + 1 < SEQ.length ? s + 1 : s)), 1500 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const CELL = 22
   const D_K = 20
@@ -1916,6 +1937,7 @@ export function ScenePositional() {
 /** ========= 11 · Layer Normalization ========= */
 export function SceneLayerNorm() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const D = 20
   const rng = makeRng(201)
   const raw = Array.from({ length: D }).map(() => rng() * 4 - 2)
@@ -1927,10 +1949,11 @@ export function SceneLayerNorm() {
 
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     // 4 phases × 4s = 16s (matches scene duration)
     const id = setInterval(() => setPhase((p) => (p + 1 < 4 ? p + 1 : p)), 4500 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const CELL_W = 44
   const CELL_H = 38
@@ -2128,11 +2151,13 @@ function BPEByteVocab() {
 
 function BPESingleMerge() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const [step, setStep] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => setStep((s) => (s + 1 < 4 ? s + 1 : s)), 1500 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const pairs = [
     { a: 'e', b: 'r', count: 843, merged: 'er' },
@@ -2265,12 +2290,14 @@ function BPEMergeTree() {
 
 export function SceneBPE() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     // 3 sub-phases × 10s = 30s (matches scene duration — no sub-phase gets repeated)
     const id = setInterval(() => setPhase((p) => (p + 1 < 3 ? p + 1 : p)), 10670 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   return (
     <div className="relative h-full w-full">
@@ -2300,11 +2327,13 @@ export function SceneBPE() {
 /** ========= 16 · RoPE (Rotary Position Embeddings) ========= */
 export function SceneRoPE() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const [tick, setTick] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => setTick((t) => t + 1), 1500 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const N_POS = 6
   const currentPos = tick % N_POS
@@ -2445,13 +2474,15 @@ export function SceneRoPE() {
 /** ========= 17 · Modern architecture (RMSNorm + SwiGLU + GQA) ========= */
 export function SceneModern() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const [panel, setPanel] = useState(0)
 
   useEffect(() => {
+    if (!playing) return
     // 3 panels × 7.33s = 22s (matches scene duration)
     const id = setInterval(() => setPanel((p) => (p + 1 < 3 ? p + 1 : p)), 8000 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const PANELS = [
     { kicker: 'normalization', classic: 'LayerNorm', modern: 'RMSNorm' },
@@ -2670,14 +2701,16 @@ export function SceneModern() {
 /** ========= SUB · FFN · GELU curve ========= */
 export function SceneFFNGelu() {
   const speed = useSpeed()
+  const playing = usePlaying()
   // Single sweep of the probe dot from x=-3 to x=+5, then hold at +5.
   // Previously the dot bounced forever, which looked like the function
   // was being "explored" — it's just a fixed curve.
   const [tick, setTick] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => setTick((t) => (t < 80 ? t + 1 : t)), 90 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const W = 1400
   const H = 600
@@ -2765,11 +2798,13 @@ export function SceneFFNGelu() {
 /** ========= SUB · FFN · Neuron-as-feature ========= */
 export function SceneFFNFeature() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const [tick, setTick] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => setTick((t) => (t + 1 < 6 ? t + 1 : t)), 1700 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const FEATURES = [
     { name: 'ends-with-vowel',       activates: [true, false, false, true, true, false] },
@@ -2860,6 +2895,7 @@ function H_CAP(v: number) { return v }
 /** ========= FINAL · Output · the whole thing produces this ========= */
 export function SceneOutput() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt } = usePrompt()
 
   // Canned continuation (Shakespeare-flavored so it looks authentic to the tinyshakespeare model)
@@ -2878,11 +2914,12 @@ export function SceneOutput() {
   const [typed, setTyped] = useState(0)
 
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => {
       setTyped((t) => Math.min(t + 1, totalChars))
     }, TYPE_MS)
     return () => clearInterval(id)
-  }, [totalChars])
+  }, [totalChars, playing])
 
   const visibleChars = continuation.slice(0, typed)
   const fullyTyped = typed >= totalChars

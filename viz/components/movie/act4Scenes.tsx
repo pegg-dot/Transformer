@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
-import { useSpeed } from './speedContext'
+import { useSpeed, usePlaying } from './speedContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
 
 const ACCENT = {
@@ -92,16 +92,18 @@ function prand(seed: number): number {
 
 export function VizAct4Intro() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 3
   const phaseLabels = ['random at first', 'less wrong over time', 'trained']
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       4500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // Curve "draw progress" — locked to phase, but Framer animates the
   // pathLength smoothly between targets.
@@ -112,12 +114,13 @@ export function VizAct4Intro() {
   // Pipeline highlight cycles every ~1.6s through the four tokens.
   const [pipelineIdx, setPipelineIdx] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPipelineIdx((i) => (i + 1) % PIPELINE.length),
       1500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   return (
     <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
@@ -668,16 +671,18 @@ function LossAxisMarker({ progress }: { progress: number }) {
 
 export function Act4IntroSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 3
   const phaseLabels = ['random at first', 'less wrong over time', 'trained']
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       4500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const subtitleByPhase: ReactNode[] = [
     <>
@@ -818,15 +823,17 @@ function ceToneColor(tone: 'low' | 'mid' | 'high'): string {
 
 export function VizCrossEntropy() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = CE_PHASES.length
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       5000 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const s = CE_PHASES[phase]
   const pCorrect = s.probs[CE_TARGET_IDX]
@@ -1298,15 +1305,17 @@ export function VizCrossEntropy() {
 
 export function CrossEntropySplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = CE_PHASES.length
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       5000 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const s = CE_PHASES[phase]
   const pCorrect = s.probs[CE_TARGET_IDX]
@@ -1884,15 +1893,17 @@ export function VizCELossSeq({ phase }: { phase: number }) {
 
 export function CELossSeqSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 3
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       5500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const phaseLabels = ['one column', 'shift the target row', 'collect into L_seq']
 
@@ -1926,7 +1937,7 @@ export function CELossSeqSplitPane() {
     <SplitPaneScene
       viz={<VizCELossSeq phase={phase} />}
       text={{
-        kicker: 'ACT IV · LOSS · PER-SEQUENCE',
+        kicker: 'ACT IV · LOSS · PER-POSITION',
         title: 'Every position gets its own loss.',
         subtitle: subtitleByPhase[phase],
         accent: ACCENT.amber,
@@ -2483,15 +2494,17 @@ export function VizCELossBatch({ phase }: { phase: number }) {
 
 export function CELossBatchSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 4
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       4500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const phaseLabels = [
     'hero echo',
@@ -2965,6 +2978,7 @@ function BpGradTile({
 
 export function VizBackprop({ phase }: { phase: number }) {
   const speed = useSpeed()
+  const playing = usePlaying()
 
   // beat 0 — forward state, no pulse
   // beat 1 — pulse sweeps right→left, blocks light red one by one,
@@ -2984,6 +2998,7 @@ export function VizBackprop({ phase }: { phase: number }) {
   // scenes 8 and 13. Triggered after the backward sweep has resolved.
   const [diveT, setDiveT] = useState({ s: 1, tx: 0, ty: 0, blur: 0 })
   useEffect(() => {
+    if (!playing) return
     setDiveT({ s: 1, tx: 0, ty: 0, blur: 0 })
     // Scene duration is 21s; phases cycle every 6s. Dive starts at 18s
     // (entering the second cycle's beat 0). Duration 2.4s, so by 20.4s the
@@ -3021,7 +3036,7 @@ export function VizBackprop({ phase }: { phase: number }) {
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [speed])
+  }, [speed, playing])
   const diving = diveT.s > 1.01
 
   return (
@@ -3427,15 +3442,17 @@ export function VizBackprop({ phase }: { phase: number }) {
 
 export function BackpropSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 3
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       6000 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const phaseLabels = ['forward · saved', 'backward sweep', 'all gradients in']
 
@@ -4230,15 +4247,17 @@ export function VizBpJacobian({ phase }: { phase: number }) {
 
 export function BpJacobianSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 4
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       4500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const phaseLabels = [
     'isolate the layer',
@@ -4274,7 +4293,7 @@ export function BpJacobianSplitPane() {
 
   const calloutByPhase: ReactNode[] = [
     'Simplified one-layer view. Real transformer blocks contain LayerNorm + multi-head attention + FFN + residual adds — many local Jacobians chained together. The principle is identical, just deeper.',
-    'For a matmul y = Wx, the Jacobian ∂y/∂x is just W itself. For a nonlinearity like GELU, the Jacobian is diagonal. For a residual block, it has an identity component. Each layer only needs to know its own local Jacobian.',
+    'For a matmul y = Wx, the Jacobian ∂y/∂x is just W itself — so the actual matrix update reads ∂L/∂x = Wᵀ · ∂L/∂y (same chain rule, transposed for shape). For a nonlinearity like GELU, the Jacobian is diagonal. For a residual block, it has an identity component. Each layer only needs to know its own local Jacobian.',
     'This is the chain rule made physical: incoming gradient × local derivative = outgoing gradient. The autodiff library (PyTorch, JAX) walks this calculation backward through every operation in the forward graph automatically.',
     'Two outputs per backward step at every layer: the incoming-gradient transform that gets passed back, and the weight-gradient that stays put. The optimizer uses ∂L/∂W to take the actual learning step in Scene 27.',
   ]
@@ -5029,15 +5048,17 @@ export function VizBpAccum({ phase }: { phase: number }) {
 
 export function BpAccumulationSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 4
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       4500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const phaseLabels = [
     'per-example ∇W',
@@ -5852,21 +5873,24 @@ export function VizGradientDescent({ phase, stepIdx }: { phase: number; stepIdx:
 
 export function GradientDescentSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 4
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       5500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // Smooth step counter. Beats 0–1 hold at step 0; beat 2 advances from
   // 0→32 over ~4.8s so the yellow point visibly rolls down the hill;
   // beat 3 holds at 32. Drives both the viz and the stats panel.
   const [stepIdx, setStepIdx] = useState(0)
   useEffect(() => {
+    if (!playing) return
     if (phase < 2) {
       setStepIdx(0)
       return
@@ -5889,7 +5913,7 @@ export function GradientDescentSplitPane() {
       }
     }, stepMs)
     return () => clearInterval(id)
-  }, [phase, speed])
+  }, [phase, speed, playing])
 
   const safeIdx = Math.max(0, Math.min(GD_TRAIL.length - 1, stepIdx))
   const cur = GD_TRAIL[safeIdx]
@@ -5957,7 +5981,7 @@ export function GradientDescentSplitPane() {
         ],
         equation: {
           label: 'one step',
-          body: <>W ← W − η · ∇W_batch L</>,
+          body: <>W ← W − η · ∇<sub>W</sub>L</>,
         },
         infoCallout: calloutByPhase[phase],
       }}
@@ -6641,23 +6665,26 @@ export function VizGdRavine({ phase, stepIdx }: { phase: number; stepIdx: number
 
 export function GdRavineSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 3
   // Phase-specific durations: setup beats are short, the descent beat
   // is held long so all 24 zig-zag steps actually play out.
   const PHASE_DURATIONS_MS = [4500, 5000, 9500] as const
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setTimeout(
       () => setPhase((p) => (p + 1) % PHASES),
       PHASE_DURATIONS_MS[phase] / speed,
     )
     return () => clearTimeout(id)
-  }, [phase, speed])
+  }, [phase, speed, playing])
 
   // Smooth step counter — beat 2 advances 0→GR_STEPS over ~8s, ~330ms
   // per step, so each zig-zag is clearly readable.
   const [stepIdx, setStepIdx] = useState(0)
   useEffect(() => {
+    if (!playing) return
     if (phase < 2) {
       setStepIdx(0)
       return
@@ -6676,7 +6703,7 @@ export function GdRavineSplitPane() {
       }
     }, stepMs)
     return () => clearInterval(id)
-  }, [phase, speed])
+  }, [phase, speed, playing])
 
   const safeIdx = Math.max(0, Math.min(GR_TRAIL.length - 1, stepIdx))
   const cur = GR_TRAIL[safeIdx]
@@ -7412,20 +7439,23 @@ export function VizGdAdam({ phase, stepIdx }: { phase: number; stepIdx: number }
 
 export function GdAdamSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 3
   const PHASE_DURATIONS_MS = [4500, 8500, 6000] as const
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setTimeout(
       () => setPhase((p) => (p + 1) % PHASES),
       PHASE_DURATIONS_MS[phase] / speed,
     )
     return () => clearTimeout(id)
-  }, [phase, speed])
+  }, [phase, speed, playing])
 
   // Adam step counter — beat 1 advances 0→ADAM_STEPS over ~7s.
   const [stepIdx, setStepIdx] = useState(0)
   useEffect(() => {
+    if (!playing) return
     if (phase < 1) {
       setStepIdx(0)
       return
@@ -7448,7 +7478,7 @@ export function GdAdamSplitPane() {
       }
     }, stepMs)
     return () => clearInterval(id)
-  }, [phase, speed])
+  }, [phase, speed, playing])
 
   const safeIdx = Math.max(0, Math.min(ADAM_TRAIL.length - 1, stepIdx))
   const cur = ADAM_TRAIL[safeIdx]
@@ -7470,14 +7500,14 @@ export function GdAdamSplitPane() {
     </>,
     <>
       Each parameter ends up with its own effective learning rate{' '}
-      <em>η / √v</em>. Steep directions get small steps; shallow
+      <em>η / √v̂</em>. Steep directions get small steps; shallow
       directions get full steps. The optimizer adapts to the local
       geometry of the loss.
     </>,
   ]
 
   const calloutByPhase: ReactNode[] = [
-    'The vanilla path stalled at roughly w₁ ≈ -0.59, w₂ ≈ 0.08 in Scene 28. The cross-valley component dies fast (the bouncing decays) but the along-valley drift is glacial because the gradient there is tiny.',
+    'The vanilla path stalled at roughly w₁ ≈ -0.59, w₂ ≈ 0.08 in Scene 28. The cross-valley component dies fast (the bouncing decays) but the along-valley drift is glacial because the gradient there is tiny. (m and v are bias-corrected to m̂, v̂ before use, so early steps aren\'t artificially small.)',
     'Both moments are exponentially weighted: m_t = β₁·m_{t-1} + (1-β₁)·g, v_t = β₂·v_{t-1} + (1-β₂)·g². With β₁=0.9, β₂=0.999 the optimizer remembers the last ~10 and ~1000 steps respectively.',
     'AdamW (used in most modern transformer training) decouples weight decay from the m/v scaling. Lion uses sign(m) instead of m/√v for ~50% memory savings. They all build on the same momentum + per-parameter scaling idea.',
   ]
@@ -7508,7 +7538,7 @@ export function GdAdamSplitPane() {
         ],
         equation: {
           label: 'one rule, per-direction step',
-          body: <>W ← W − η · m / (√v + ε)</>,
+          body: <>W ← W − η · m̂ / (√v̂ + ε)</>,
         },
         infoCallout: calloutByPhase[phase],
       }}

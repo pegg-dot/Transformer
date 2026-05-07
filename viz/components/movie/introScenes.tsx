@@ -19,8 +19,6 @@ const DIM = '#737373'
 
 /** --- Cold open (Prologue) --- */
 
-const PROMPT_PREFIX = 'What if I asked my AI to finish this sentence: '
-
 /**
  * Pick a hand-tuned continuation that completes the user's prompt in
  * Shakespearean style. Returns null when there's no specific match —
@@ -52,10 +50,13 @@ export function IntroColdOpenPanel() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   const CHAR_MS = 80
-  // Type out the prompt the viewer chose (defaults to "To be, or no").
-  // The wrapper sentence ("What if I asked my AI…") fades in pre-typed,
-  // and only the user's prompt itself is character-typed for emphasis.
-  const promptText = `${PROMPT_PREFIX}${prompt}`
+  // The model receives the user's prompt verbatim — no wrapper, no
+  // instructional framing. Earlier versions prepended "What if I asked my
+  // AI to finish this sentence:" but that's misleading: the char-level
+  // model never sees that wrapper. The explanatory framing now lives in
+  // a caption above the box; the box itself shows only what the model
+  // actually consumes.
+  const promptText = prompt
   const chars = promptText.split('')
 
   // ─── Timeline (seconds, at speed 1×) ─────────────────────────────
@@ -215,6 +216,19 @@ export function IntroColdOpenPanel() {
           </div>
         </motion.div>
 
+        {/* Framing caption — explains the experiment WITHOUT becoming part
+            of what the model receives. The box below shows the actual prompt
+            the model consumes. */}
+        <motion.div
+          className="font-serif italic text-[14px] leading-snug text-center"
+          style={{ color: DIM, maxWidth: 460 }}
+          initial={{ opacity: 0, y: -2 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: (T_HEADER + 0.15) / speed, duration: 0.5 / speed, ease: 'easeOut' }}
+        >
+          Suppose we prompt the model with a partial sentence.
+        </motion.div>
+
         {/* Chat zone — input fades out, conversation fades in */}
         <div className="relative w-full max-w-[560px]" style={{ minHeight: 220 }}>
           {/* Input box */}
@@ -237,8 +251,11 @@ export function IntroColdOpenPanel() {
               ease: 'easeInOut',
             }}
           >
-            <div className="flex items-center gap-3">
-              <div className="flex-1 min-h-[22px] font-mono text-[14px]" style={{ color: FG }}>
+            <div className="flex items-start gap-3">
+              <div
+                className="flex-1 min-h-[22px] font-mono text-[14px] break-words"
+                style={{ color: FG, lineHeight: 1.45, wordBreak: 'break-word' }}
+              >
                 {chars.map((ch, i) => (
                   <motion.span
                     key={i}
@@ -362,9 +379,13 @@ export function IntroColdOpenPanel() {
                 ))}
               </motion.div>
 
-              {/* AI reply — live ONNX model streams real tokens for the
-                  user's prompt; falls back to a hand-tuned continuation
-                  if the model isn't ready in time. */}
+              {/* AI reply — for prompts with a hand-tuned canon answer
+                  (e.g. "To be, or not to be" → "— that is the question.")
+                  the canon answer ALWAYS wins, even if the live ONNX
+                  model has already streamed tokens. The cold open is the
+                  first-impression payoff and we want the famous line to
+                  land cleanly; the live model takes over for prompts
+                  without a canon match. */}
               <motion.div
                 className="-mt-3 text-[13px] leading-5"
                 style={{ fontStyle: 'italic', color: FG }}
@@ -376,7 +397,7 @@ export function IntroColdOpenPanel() {
                   ease: 'easeOut',
                 }}
               >
-                {live.text.length > 0 ? (
+                {handTuned === null && live.text.length > 0 ? (
                   <>
                     {live.text}
                     {!live.done && (
@@ -538,27 +559,42 @@ export function IntroColdOpenPanel() {
             delay={T_IDS_BEAT}
             speed={speed}
           >
-            <div className="flex gap-1.5">
-              {pipelineChars.map((ch, i) => (
-                <motion.div
-                  key={`id-${i}`}
-                  className="font-mono flex h-[34px] w-[28px] items-center justify-center rounded-[4px] border text-[12px] tabular-nums"
-                  style={{
-                    color: colorForIdx(i),
-                    borderColor: `${colorForIdx(i)}55`,
-                    background: 'rgba(255,255,255,0.02)',
-                  }}
-                  initial={{ opacity: 0, rotateX: -90 }}
-                  animate={{ opacity: 1, rotateX: 0 }}
-                  transition={{
-                    delay: (T_IDS_BEAT + 0.1 + i * 0.04) / speed,
-                    duration: 0.32 / speed,
-                    ease: [0.22, 1, 0.36, 1],
-                  }}
-                >
-                  {idForCh(ch)}
-                </motion.div>
-              ))}
+            <div className="flex flex-col gap-1">
+              <div className="flex gap-1.5">
+                {pipelineChars.map((ch, i) => (
+                  <motion.div
+                    key={`id-${i}`}
+                    className="font-mono flex h-[34px] w-[28px] items-center justify-center rounded-[4px] border text-[12px] tabular-nums"
+                    style={{
+                      color: colorForIdx(i),
+                      borderColor: `${colorForIdx(i)}55`,
+                      background: 'rgba(255,255,255,0.02)',
+                    }}
+                    initial={{ opacity: 0, rotateX: -90 }}
+                    animate={{ opacity: 1, rotateX: 0 }}
+                    transition={{
+                      delay: (T_IDS_BEAT + 0.1 + i * 0.04) / speed,
+                      duration: 0.32 / speed,
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                  >
+                    {idForCh(ch)}
+                  </motion.div>
+                ))}
+              </div>
+              <motion.div
+                className="font-mono text-[9px] tracking-[0.18em]"
+                style={{ color: 'rgba(255,255,255,0.4)' }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{
+                  delay: (T_IDS_BEAT + 0.6) / speed,
+                  duration: 0.4 / speed,
+                }}
+              >
+                ids shown are illustrative — the real lookup uses a fixed
+                65-entry vocab table
+              </motion.div>
             </div>
           </PipelineRow>
 

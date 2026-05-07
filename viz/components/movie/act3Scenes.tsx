@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useSpeed } from './speedContext'
+import { useSpeed, usePlaying } from './speedContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
 
 const ACCENT = {
@@ -65,15 +65,17 @@ function blockColor(i: number, sat = 70, light = 65, alpha = 1): string {
 
 export function VizActIIIntro() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 2
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       5000 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // Hero: block index 3 (slightly right-of-center stack slot at x=780)
   // Phase 0 starts heavily scaled up (2.6×) so this scene reads as the
@@ -407,16 +409,18 @@ function ActIIIIntroPhaseSummary({ phase }: { phase: number }) {
 
 export function ActIIIIntroSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 2
   const phaseLabels = ['the one block', 'multiplied into six']
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       5000 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const subtitleByPhase: ReactNode[] = [
     <>
@@ -476,16 +480,18 @@ export function ActIIIIntroSplitPane() {
 
 export function VizStack() {
   const speed = useSpeed()
+  const playing = usePlaying()
 
   const PHASES = 2
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       6500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   return (
     <div className="relative h-full w-full">
@@ -1159,16 +1165,18 @@ function StackPhaseSummary({ phase }: { phase: number }) {
 /* ─────────── Stack split-pane wrapper ─────────── */
 export function StackSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 2
   const phaseLabels = ['orient · six blocks', 'climbing · stream + deltas']
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       6500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const subtitleByPhase: ReactNode[] = [
     <>
@@ -1308,20 +1316,23 @@ const SAMPLE_BOX_H = 160
 
 export function VizSample() {
   const speed = useSpeed()
+  const playing = usePlaying()
 
   const PHASES = 4
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       5200 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const [temp, setTemp] = useState(1.0)
   const [touched, setTouched] = useState(false)
   useEffect(() => {
+    if (!playing) return
     if (touched) return
     const start = performance.now()
     const SWEEP_DURATION = 14
@@ -1338,18 +1349,31 @@ export function VizSample() {
     }
     frame = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(frame)
-  }, [touched])
+  }, [touched, playing])
 
-  const scaled = SAMPLE_LOGITS.map((x) => x / temp)
+  // T = 0 collapses to greedy (argmax). Avoid division by zero by branching;
+  // the resulting distribution is a one-hot on the top logit.
+  const isGreedy = temp <= 0
+  const scaled = isGreedy
+    ? SAMPLE_LOGITS.map(() => 0)
+    : SAMPLE_LOGITS.map((x) => x / temp)
   const max = Math.max(...scaled)
   const exps = scaled.map((x) => Math.exp(x - max))
   const sum = exps.reduce((a, b) => a + b, 0)
-  const probs = exps.map((e) => e / sum)
+  let probs = exps.map((e) => e / sum)
+  if (isGreedy) {
+    const argmax = SAMPLE_LOGITS.reduce(
+      (best, x, i) => (x > SAMPLE_LOGITS[best] ? i : best),
+      0,
+    )
+    probs = SAMPLE_LOGITS.map((_, i) => (i === argmax ? 1 : 0))
+  }
   const entropy = probs.reduce((a, p) => a + (p > 0 ? -p * Math.log2(p) : 0), 0)
   const maxProb = Math.max(...probs)
 
   const [sampled, setSampled] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => {
       let r = Math.random()
       for (let i = 0; i < probs.length; i++) {
@@ -1363,7 +1387,7 @@ export function VizSample() {
     }, 1500 / speed)
     return () => clearInterval(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [temp, speed])
+  }, [temp, speed, playing])
 
   return (
     <div className="relative h-full w-full">
@@ -2000,7 +2024,7 @@ function SampleTemperatureSlider({
         <span className="small-caps text-[var(--fg-dim)]">temperature</span>
         <input
           type="range"
-          min={0.1}
+          min={0}
           max={2}
           step={0.02}
           value={temp}
@@ -2010,10 +2034,12 @@ function SampleTemperatureSlider({
           }}
           className="flex-1 accent-[var(--accent-amber)]"
         />
-        <span className="tabular w-12 text-right text-[var(--fg)]">{temp.toFixed(2)}</span>
+        <span className="tabular w-20 text-right text-[var(--fg)]">
+          {temp <= 0 ? '0 · greedy' : temp.toFixed(2)}
+        </span>
       </div>
       <div className="mt-1 flex items-center justify-between text-[9px] text-[var(--fg-dim)]">
-        <span>drag me</span>
+        <span>drag me · 0 = greedy</span>
         <span>{touched ? 'user override · drag further' : 'auto-sweeping'}</span>
       </div>
     </div>
@@ -2022,6 +2048,7 @@ function SampleTemperatureSlider({
 
 export function SampleSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 4
   const phaseLabels = [
     'extract last hidden state',
@@ -2031,12 +2058,13 @@ export function SampleSplitPane() {
   ]
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       5200 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const subtitleByPhase: ReactNode[] = [
     <>
@@ -2089,7 +2117,7 @@ export function SampleSplitPane() {
       viz={<VizSample />}
       text={{
         kicker: 'ACT III · OUTPUT',
-        title: 'Pick the next character.',
+        title: 'Pick the next token.',
         subtitle: subtitleByPhase[phase],
         accent: ACCENT.amber,
         phase: (
@@ -2199,12 +2227,14 @@ function kvCellColor(v: number, baseHue: 'blue' | 'violet'): string {
 
 export function VizKVCache() {
   const speed = useSpeed()
+  const playing = usePlaying()
 
   // 4 phases. Step advances when phase wraps to 0.
   const PHASES = 4
   const [phase, setPhase] = useState(0)
   const [step, setStep] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => {
       setPhase((p) => {
         const np = (p + 1) % PHASES
@@ -2215,7 +2245,7 @@ export function VizKVCache() {
       })
     }, 1500 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   return (
     <div className="relative h-full w-full">
@@ -2825,6 +2855,7 @@ function KVPhaseSummary({ phase }: { phase: number }) {
 /* ─────────── KV cache split-pane wrapper ─────────── */
 export function KVCacheSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 4
   const phaseLabels = [
     'new token arrives',
@@ -2834,12 +2865,13 @@ export function KVCacheSplitPane() {
   ]
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       1500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const subtitleByPhase: ReactNode[] = [
     <>

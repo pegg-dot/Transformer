@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { PromptProvider, usePrompt, MAX_LEN } from './promptContext'
 import { ModelMap3D, type ModelPart } from './modelmap'
 import { STAGE_VARIANTS, KIND_TIMING, incomingKindFor } from './transitions'
-import { SpeedContext } from './speedContext'
+import { SpeedContext, PlayingContext, usePlaying } from './speedContext'
 import { useActivations } from '@/lib/useActivations'
 import { useTransformer } from '@/lib/useTransformer'
 
@@ -87,6 +87,19 @@ interface Props {
 
 const ACCENT_BLUE = '#60a5fa'
 
+// Short description per section, shown in the chapter-rail tooltip on hover.
+// Hand-curated so the tooltip reads as "what's in this chapter" rather than
+// a list of kickers.
+const CHAPTER_DESC: Record<string, string> = {
+  Prologue: 'The setup',
+  'Act I · Input': 'Tokenization · Embeddings · Position',
+  'Act II · Inside a Block': 'LayerNorm · Attention · FFN',
+  'Act III · The Full Stack': 'Residual stack · Sampling · KV cache',
+  'Act IV · Training': 'Loss · Backprop · Gradient descent',
+  'Act V · Modern Upgrades': 'RoPE · RMSNorm · SwiGLU · GQA',
+  'Act VI · The Output': 'Generation loop',
+}
+
 export function MovieOrchestrator(props: Props) {
   return (
     <PromptProvider>
@@ -107,6 +120,7 @@ function Inner({ scenes }: Props) {
   const [sceneListOpen, setSceneListOpen] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const tickRef = useRef<number | null>(null)
+  const stageRef = useRef<HTMLDivElement | null>(null)
   const { prompt, setPrompt } = usePrompt()
 
   // Pre-warm the heavy loaders so by the time the user clicks Play the
@@ -246,8 +260,133 @@ function Inner({ scenes }: Props) {
     setCycle((c) => c + 1)
   }
 
+  // Chapter index for the bottom rail. One chapter per `section`, with a
+  // hand-curated short description so the hover tooltip can read clean
+  // ("Tokenization · Embeddings · Position") rather than a list of every
+  // scene's kicker. Computed from the live scenes array so adding/reordering
+  // scenes Just Works.
+  const chapters = useMemo(() => {
+    type Chapter = {
+      section: string
+      label: string
+      desc: string
+      startIdx: number
+      endIdx: number
+      startMs: number
+      endMs: number
+      accent: string
+    }
+    const out: Chapter[] = []
+    let acc = 0
+    for (let i = 0; i < scenes.length; i++) {
+      const s = scenes[i]
+      const sectionKey = s.section ?? 'Scenes'
+      const last = out[out.length - 1]
+      if (!last || last.section !== sectionKey) {
+        out.push({
+          section: sectionKey,
+          label: trimActPrefix(sectionKey).toUpperCase(),
+          desc: '',
+          startIdx: i,
+          endIdx: i,
+          startMs: acc,
+          endMs: acc + s.durationMs,
+          accent: s.accent,
+        })
+      } else {
+        last.endIdx = i
+        last.endMs = acc + s.durationMs
+      }
+      acc += s.durationMs
+    }
+    for (const c of out) c.desc = CHAPTER_DESC[c.section] ?? ''
+    return out
+  }, [scenes])
+  const grandTotal = useMemo(
+    () => scenes.reduce((a, s) => a + s.durationMs, 0),
+    [scenes],
+  )
+
+  // Per-scene boundary fractions (0..1 of the whole tour). Chapter dividers
+  // are a subset of these, so we tag each so the rail can render chapter
+  // ticks always-visible and scene-only ticks only on hover.
+  const sceneBoundaries = useMemo(() => {
+    const out: { frac: number; isChapterStart: boolean }[] = []
+    if (grandTotal <= 0) return out
+    let acc = 0
+    for (let i = 1; i < scenes.length; i++) {
+      acc += scenes[i - 1].durationMs
+      const isChapterStart =
+        !!scenes[i].section && scenes[i].section !== scenes[i - 1].section
+      out.push({ frac: acc / grandTotal, isChapterStart })
+    }
+    return out
+  }, [scenes, grandTotal])
+
+  // Seek by absolute fraction of the whole tour. Used by chapter-region
+  // clicks: the user clicks somewhere inside a chapter, we map that local
+  // position to an absolute ms, then jump to the scene that contains it.
+  function seekToFraction(frac: number) {
+    const targetMs = Math.max(0, Math.min(1, frac)) * grandTotal
+    let acc = 0
+    for (let i = 0; i < scenes.length; i++) {
+      acc += scenes[i].durationMs
+      if (targetMs <= acc) {
+        jump(i)
+        return
+      }
+    }
+    jump(scenes.length - 1)
+  }
+
+  // Effective play state — the single boolean every animation should respect.
+  // True only when the user has actually pressed play AND nothing is gating
+  // the clock (popovers, end-card, act banner hold). Mirrors the gate used by
+  // the elapsed-clock RAF and the 3D stage's `playing` prop.
+  const effectivelyPlaying =
+    started && playing && !anyPopoverOpen && !finished && !actHeld
+
+  // Sweep all WAAPI + CSS animations under the stage and pause/resume them in
+  // lock-step with `effectivelyPlaying`. This catches the long tail of scene-
+  // internal `repeat: Infinity` motion-divs that don't read PlayingContext
+  // directly (179+ across acts), plus any CSS @keyframes. Re-runs on scene
+  // change so animations spawned by the new scene get gated too.
+  useEffect(() => {
+    const root = stageRef.current
+    if (!root || typeof (root as Element).getAnimations !== 'function') return
+    let cancelled = false
+    const apply = () => {
+      if (cancelled) return
+      const anims = root.getAnimations({ subtree: true })
+      for (const a of anims) {
+        // Skip animations on elements that opted out via
+        // `data-always-animate="true"` — used for chrome like the press-play
+        // splash whose enter/exit animations must complete regardless of
+        // the global play state.
+        const target = (a.effect as KeyframeEffect | null)?.target as Element | null
+        if (target?.closest?.('[data-always-animate="true"]')) continue
+        if (effectivelyPlaying) {
+          if (a.playState === 'paused') a.play()
+        } else {
+          if (a.playState === 'running') a.pause()
+        }
+      }
+    }
+    apply()
+    // Catch animations created on the same frame (framer-motion + react render
+    // order) — re-sweep on the next two frames.
+    const r1 = requestAnimationFrame(apply)
+    const r2 = requestAnimationFrame(() => requestAnimationFrame(apply))
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(r1)
+      cancelAnimationFrame(r2)
+    }
+  }, [effectivelyPlaying, currentId, cycle])
+
   return (
     <SpeedContext.Provider value={speed}>
+    <PlayingContext.Provider value={effectivelyPlaying}>
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg)]">
       {/* Header — single row, compact */}
       <header className="relative z-20 flex h-12 shrink-0 items-center gap-4 border-b border-[var(--rule)] px-4">
@@ -489,7 +628,7 @@ function Inner({ scenes }: Props) {
       {/* Stage row — 3D leads (flex-1), 2D detail rail at ~32% on the right.
           Phase 1 default. Scenes can opt into 'fullscreen' to overlay the
           stage with their 2D panel (e.g. cold open) or 'hidden' to go pure 3D. */}
-      <div className="relative flex flex-1 overflow-hidden">
+      <div ref={stageRef} className="relative flex flex-1 overflow-hidden">
         {/* 3D stage — visible whenever the 2D panel isn't fullscreen */}
         {panelAnchor !== 'fullscreen' && (
           <div className="relative flex-1 overflow-hidden">
@@ -500,7 +639,7 @@ function Inner({ scenes }: Props) {
               duration={current.durationMs}
               playing={playing && !anyPopoverOpen && !finished && !actHeld}
               worldPanel={
-                panelAnchor === 'world'
+                panelAnchor === 'world' && started
                   ? {
                       node: current.render(),
                       pos: current.worldPanelPos ?? [0, 1.5, 0],
@@ -532,20 +671,27 @@ function Inner({ scenes }: Props) {
             }
           >
             <div className="relative h-full overflow-hidden">
+              {/* Scene only mounts after the user presses Play. Without this
+                  gate, scenes with delay-based framer-motion (e.g. the
+                  cold open's typed-prompt + chat sequence) would start
+                  running their animations behind the splash and could
+                  leak into the page on first paint. */}
               <AnimatePresence mode="sync" initial={false}>
-                <motion.div
-                  key={`${current.id}-${cycle}`}
-                  variants={STAGE_VARIANTS[incomingKind]}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={{ duration: incomingTiming.duration, ease: incomingTiming.easing }}
-                  className="absolute inset-0 flex items-center justify-center px-4 py-3"
-                >
-                  <div className="h-full w-full max-w-[1400px]">
-                    {current.render()}
-                  </div>
-                </motion.div>
+                {started && (
+                  <motion.div
+                    key={`${current.id}-${cycle}`}
+                    variants={STAGE_VARIANTS[incomingKind]}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: incomingTiming.duration, ease: incomingTiming.easing }}
+                    className="absolute inset-0 flex items-center justify-center px-4 py-3"
+                  >
+                    <div className="h-full w-full max-w-[1400px]">
+                      {current.render()}
+                    </div>
+                  </motion.div>
+                )}
               </AnimatePresence>
             </div>
 
@@ -741,38 +887,60 @@ function Inner({ scenes }: Props) {
           />
         </div>
 
-        {/* Press-play splash — shown on first load until user clicks play */}
+        {/* Press-play splash — shown on first load until user clicks play.
+            data-always-animate excludes it from the global pause-all-
+            animations sweep so its enter/exit fades aren't frozen at
+            opacity ~0 when the player is paused (which it always is on
+            first load). */}
         <AnimatePresence>
           {!started && (
             <motion.div
+              data-always-animate="true"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.4 }}
-              className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-[rgba(7,7,9,0.94)] backdrop-blur-md"
+              className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-[rgba(7,7,9,0.985)] backdrop-blur-md"
             >
               <div
-                className="small-caps text-[11px] tracking-[0.25em]"
-                style={{ color: ACCENT_BLUE }}
+                className="small-caps text-[12px] tracking-[0.3em]"
+                style={{ color: ACCENT_BLUE, opacity: 1, textShadow: `0 0 18px ${ACCENT_BLUE}66` }}
               >
                 transformer.live
               </div>
-              <div className="display mt-5 max-w-[900px] px-6 text-center text-[clamp(40px,6.5vw,76px)] leading-[1.05] text-[var(--fg)]">
+              <div
+                className="display mt-5 max-w-[900px] px-6 text-center text-[clamp(40px,6.5vw,76px)] leading-[1.05]"
+                style={{
+                  color: '#ffffff',
+                  textShadow: '0 0 24px rgba(96,165,250,0.25), 0 1px 0 rgba(255,255,255,0.04)',
+                }}
+              >
                 Watch a transformer think.
               </div>
-              <p className="mt-5 max-w-[560px] px-6 text-center text-[14px] leading-7 text-[var(--fg-muted)]">
+              <p
+                className="mt-5 max-w-[560px] px-6 text-center text-[15px] leading-7"
+                style={{ color: '#d8d8d2' }}
+              >
                 A char-level GPT trained on Shakespeare, end-to-end. From prompt to next token — every layer, every head. About 10 minutes.
               </p>
               <button
                 type="button"
                 onClick={begin}
-                className="group mt-10 flex items-center gap-3 rounded-full border bg-[rgba(96,165,250,0.1)] px-9 py-4 transition-colors hover:bg-[rgba(96,165,250,0.22)]"
-                style={{ borderColor: ACCENT_BLUE, color: ACCENT_BLUE }}
+                className="group mt-10 flex items-center gap-3 rounded-full border-2 px-10 py-4 transition-all hover:scale-[1.03]"
+                style={{
+                  borderColor: ACCENT_BLUE,
+                  color: '#ffffff',
+                  background: `linear-gradient(180deg, ${ACCENT_BLUE} 0%, #3b82f6 100%)`,
+                  boxShadow: `0 0 32px ${ACCENT_BLUE}66, 0 8px 24px rgba(0,0,0,0.4)`,
+                }}
               >
-                <span className="text-[14px] leading-none">▶</span>
-                <span className="display text-[18px] leading-none">Play</span>
+                <span className="text-[15px] leading-none">▶</span>
+                <span className="display text-[19px] leading-none">Play</span>
               </button>
-              <div className="mt-8 mono text-[10px] tracking-wider text-[var(--fg-dim)]">
+              <div
+                className="mt-8 mono text-[10px] tracking-wider"
+                style={{ color: '#9a9a96' }}
+              >
                 space = play/pause · i = scene details · esc = close popovers
               </div>
             </motion.div>
@@ -798,8 +966,9 @@ function Inner({ scenes }: Props) {
           </AnimatePresence>
         </div>
 
-        {/* Transport + timeline (extra top padding to fit act labels above the bar) */}
-        <div className="flex items-center gap-3 px-4 pt-6 pb-2">
+        {/* Transport + timeline. Chapter labels live in the rail's hover
+            tooltip now, so we don't reserve vertical space above the bar. */}
+        <div className="flex items-center gap-3 px-4 pt-3 pb-2.5">
           <button
             type="button"
             onClick={() => {
@@ -834,113 +1003,18 @@ function Inner({ scenes }: Props) {
             ▶
           </button>
 
-          {/* Segmented progress bar with act boundaries */}
-          <div className="relative flex h-2 flex-1 items-center gap-[1px]">
-            {scenes.map((s, i) => {
-              const flex = s.durationMs / total
-              const fillPct = i < safeIdx ? 1 : i === safeIdx ? sceneProgress : 0
-              const isCurrent = i === safeIdx
-              const prevSection = i > 0 ? scenes[i - 1].section : undefined
-              const isActStart = s.section && s.section !== prevSection
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => jump(i)}
-                  className="group relative h-full cursor-pointer"
-                  style={{ flex }}
-                >
-                  {/* Act-boundary tick + label above */}
-                  {isActStart && (
-                    <>
-                      <div
-                        className="pointer-events-none absolute top-[-8px] bottom-[-2px] left-0 w-px"
-                        style={{ background: s.accent, opacity: 0.55 }}
-                      />
-                      <div
-                        className="pointer-events-none absolute -top-[18px] left-0 small-caps whitespace-nowrap text-[8px] tracking-[0.18em]"
-                        style={{ color: s.accent, opacity: 0.85 }}
-                      >
-                        {trimActPrefix(s.section)}
-                      </div>
-                    </>
-                  )}
-                  {/* Fill bar (clipped) */}
-                  <div className="absolute inset-0 overflow-hidden rounded-full bg-[rgba(255,255,255,0.05)]">
-                    <div
-                      className="h-full transition-[width] duration-100"
-                      style={{
-                        width: `${fillPct * 100}%`,
-                        background: s.accent,
-                        opacity: isCurrent ? 1 : 0.55,
-                      }}
-                    />
-                  </div>
-
-                  {/* Hover highlight ring (not clipped) */}
-                  <div className="pointer-events-none absolute inset-0 rounded-full opacity-0 ring-1 ring-inset ring-white/30 transition-opacity duration-150 group-hover:opacity-100" />
-
-                  {/* Current-scene playhead dot */}
-                  {isCurrent && (
-                    <motion.div
-                      layoutId="scene-head"
-                      className="pointer-events-none absolute -top-[3px] h-2 w-2 rounded-full"
-                      style={{
-                        background: s.accent,
-                        left: `${fillPct * 100}%`,
-                        transform: 'translateX(-50%)',
-                        boxShadow: `0 0 10px ${s.accent}`,
-                      }}
-                    />
-                  )}
-
-                  {/* Tooltip (not clipped — opens upward) */}
-                  <div
-                    className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-3 w-max max-w-[240px] -translate-x-1/2 rounded-[3px] border border-[var(--rule-strong)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-left opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
-                  >
-                    <div className="flex items-baseline gap-2">
-                      <span
-                        className="mono text-[10px] tabular"
-                        style={{ color: s.accent }}
-                      >
-                        {String(i + 1).padStart(2, '0')}
-                      </span>
-                      <span className="small-caps text-[9px] text-[var(--fg-dim)]">
-                        {s.kicker}
-                      </span>
-                    </div>
-                    <div
-                      className="display mt-0.5 text-[13px] leading-tight"
-                      style={{ color: s.accent }}
-                    >
-                      {s.title}
-                    </div>
-                    {s.section && (
-                      <div
-                        className="mt-0.5 small-caps text-[9px]"
-                        style={{ color: s.accent, opacity: 0.6 }}
-                      >
-                        {s.section}
-                        {s.subGroup && (
-                          <span className="ml-1 mono tabular opacity-70">
-                            · {s.subGroup.label} ({s.subGroup.index}/{s.subGroup.total})
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <div className="mt-1 mono text-[9px] text-[var(--fg-dim)] tabular">
-                      {formatMs(s.durationMs)}
-                    </div>
-                    {/* Arrow pointing down to segment */}
-                    <div
-                      className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-[var(--rule-strong)] bg-[var(--bg-elevated)]"
-                      style={{ marginTop: -4 }}
-                    />
-                  </div>
-                </button>
-              )
-            })}
-          </div>
+          {/* Continuous chapter rail. One unbroken line. Chapter changes
+              show as small dividers; chapter info lives on hover via a
+              tooltip; the rail thickens on hover like YouTube. */}
+          <ChapterRail
+            chapters={chapters}
+            sceneBoundaries={sceneBoundaries}
+            cumulativePct={total > 0 ? cumulative / total : 0}
+            currentAccent={current.accent}
+            onSeek={seekToFraction}
+            currentSceneTitle={current.title}
+            currentSceneIdx={safeIdx}
+          />
 
           <span className="shrink-0 mono tabular text-[10px] text-[var(--fg-muted)]">
             {formatMs(cumulative)} / {formatMs(total)}
@@ -948,6 +1022,7 @@ function Inner({ scenes }: Props) {
         </div>
       </div>
     </div>
+    </PlayingContext.Provider>
     </SpeedContext.Provider>
   )
 }
@@ -957,6 +1032,275 @@ function formatMs(ms: number) {
   const mm = Math.floor(s / 60)
   const ss = s % 60
   return `${mm}:${String(ss).padStart(2, '0')}`
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Continuous chapter rail
+//
+// One unbroken horizontal line spanning the full width of the transport
+// row. Played progress fills as a single segment. Chapter changes show as
+// small ticks. Hovering anywhere over a chapter brightens that chapter's
+// span and pops a small tooltip above with the chapter name, scene range,
+// and a one-line description. Click anywhere to seek to that absolute
+// position; the rail finds the scene that contains the click and jumps
+// to it.
+// ────────────────────────────────────────────────────────────────────────
+
+interface ChapterMeta {
+  section: string
+  label: string
+  desc: string
+  startIdx: number
+  endIdx: number
+  startMs: number
+  endMs: number
+  accent: string
+}
+
+function ChapterRail({
+  chapters,
+  sceneBoundaries,
+  cumulativePct,
+  currentAccent,
+  currentSceneTitle,
+  currentSceneIdx,
+  onSeek,
+}: {
+  chapters: ChapterMeta[]
+  sceneBoundaries: { frac: number; isChapterStart: boolean }[]
+  cumulativePct: number
+  currentAccent: string
+  currentSceneTitle: string
+  currentSceneIdx: number
+  onSeek: (frac: number) => void
+}) {
+  const [railHovered, setRailHovered] = useState(false)
+  const totalMs = chapters.length > 0 ? chapters[chapters.length - 1].endMs : 0
+  const pctFor = (ms: number) => (totalMs > 0 ? ms / totalMs : 0)
+
+  return (
+    <div
+      className="relative flex h-3 flex-1 items-center"
+      onMouseEnter={() => setRailHovered(true)}
+      onMouseLeave={() => setRailHovered(false)}
+    >
+      {/* Base track — single continuous thin line spanning the full width. */}
+      <div
+        className="absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full transition-[height] duration-150"
+        style={{
+          height: railHovered ? 4 : 2,
+          background: 'rgba(255,255,255,0.07)',
+        }}
+      />
+
+      {/* Played fill — one continuous segment, 0 → cumulativePct, painted in
+          the current scene's accent. */}
+      <div
+        className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full transition-[height,width] duration-150"
+        style={{
+          height: railHovered ? 4 : 2,
+          width: `${Math.max(0, Math.min(1, cumulativePct)) * 100}%`,
+          background: currentAccent,
+          opacity: 0.85,
+          boxShadow: `0 0 8px ${currentAccent}55`,
+        }}
+      />
+
+      {/* Scene-level ticks — hidden by default; fade in on rail hover so
+          the user can see scene boundaries within each chapter without the
+          rail looking busy at rest. Drawn first so chapter ticks paint
+          on top. */}
+      {sceneBoundaries
+        .filter((b) => !b.isChapterStart)
+        .map((b) => (
+          <div
+            key={`scene-${b.frac}`}
+            className="pointer-events-none absolute top-1/2 -translate-y-1/2 transition-[opacity,height] duration-150"
+            style={{
+              left: `${b.frac * 100}%`,
+              width: 1,
+              height: railHovered ? 5 : 0,
+              background: 'rgba(255,255,255,0.28)',
+              opacity: railHovered ? 0.7 : 0,
+            }}
+          />
+        ))}
+
+      {/* Chapter dividers — always visible. Slightly taller and brighter
+          than scene ticks so the structural beat reads first. Skip the
+          very first chapter since that's the start of the rail. */}
+      {chapters.slice(1).map((c) => (
+        <div
+          key={c.startIdx}
+          className="pointer-events-none absolute top-1/2 -translate-y-1/2 transition-[opacity,height] duration-150"
+          style={{
+            left: `${pctFor(c.startMs) * 100}%`,
+            width: 1,
+            height: railHovered ? 10 : 8,
+            background: 'rgba(255,255,255,0.5)',
+            opacity: railHovered ? 0.85 : 0.55,
+          }}
+        />
+      ))}
+
+      {/* Per-chapter hover regions. Each is an invisible button covering
+          its chapter span; on hover it brightens that span and pops a
+          tooltip above. Clicking anywhere inside the region seeks to the
+          scene at the click's absolute position. */}
+      {chapters.map((c) => (
+        <ChapterHoverRegion
+          key={c.startIdx}
+          chapter={c}
+          startPct={pctFor(c.startMs)}
+          endPct={pctFor(c.endMs)}
+          onSeek={onSeek}
+          railHovered={railHovered}
+          isCurrent={currentSceneIdx >= c.startIdx && currentSceneIdx <= c.endIdx}
+          currentSceneTitle={currentSceneTitle}
+        />
+      ))}
+
+      {/* Playhead dot — sits exactly at cumulativePct. Glows in the current
+          scene's accent. */}
+      <motion.div
+        className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+        animate={{
+          width: railHovered ? 12 : 9,
+          height: railHovered ? 12 : 9,
+        }}
+        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          left: `${Math.max(0, Math.min(1, cumulativePct)) * 100}%`,
+          background: currentAccent,
+          boxShadow: `0 0 14px ${currentAccent}cc, 0 0 2px rgba(0,0,0,0.6)`,
+        }}
+      />
+    </div>
+  )
+}
+
+function ChapterHoverRegion({
+  chapter,
+  startPct,
+  endPct,
+  onSeek,
+  railHovered,
+  isCurrent,
+  currentSceneTitle,
+}: {
+  chapter: ChapterMeta
+  startPct: number
+  endPct: number
+  onSeek: (frac: number) => void
+  railHovered: boolean
+  isCurrent: boolean
+  currentSceneTitle: string
+}) {
+  const [hovered, setHovered] = useState(false)
+  const widthPct = endPct - startPct
+  const sceneCount = chapter.endIdx - chapter.startIdx + 1
+  const sceneRange =
+    sceneCount === 1
+      ? `Scene ${chapter.startIdx + 1}`
+      : `Scenes ${chapter.startIdx + 1}–${chapter.endIdx + 1}`
+
+  return (
+    <button
+      type="button"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect()
+        const local = (e.clientX - rect.left) / rect.width
+        const absFrac = startPct + local * widthPct
+        onSeek(absFrac)
+      }}
+      className="group/chapter absolute inset-y-0 z-10 cursor-pointer focus:outline-none"
+      style={{
+        left: `${startPct * 100}%`,
+        width: `${widthPct * 100}%`,
+      }}
+      // No `title` attribute on purpose — that triggers the browser's
+      // native gray tooltip on top of our custom card. aria-label keeps
+      // the chapter info accessible to screen readers.
+      aria-label={`${chapter.label}, ${sceneRange}`}
+    >
+      {/* Chapter brightening overlay — sits on top of the base track for
+          this chapter's span. Hidden by default; on hover it lights up in
+          the chapter's accent so the eye knows which span the tooltip
+          refers to. */}
+      <motion.div
+        className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full"
+        animate={{
+          opacity: hovered ? 0.5 : 0,
+          height: railHovered ? 4 : 2,
+        }}
+        transition={{ duration: 0.18 }}
+        style={{ background: chapter.accent }}
+      />
+
+      {/* Tooltip — fades + slides up from the rail. Centered on the
+          chapter span. */}
+      <AnimatePresence>
+        {hovered && (
+          <motion.div
+            key="tip"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-3 w-max max-w-[280px] -translate-x-1/2 rounded-[4px] border bg-[rgba(7,7,9,0.94)] px-3 py-2 text-left shadow-2xl backdrop-blur-md"
+            style={{
+              borderColor: `${chapter.accent}55`,
+              boxShadow: `0 12px 32px rgba(0,0,0,0.45), 0 0 18px ${chapter.accent}22`,
+            }}
+          >
+            <div
+              className="small-caps text-[10px] tracking-[0.22em]"
+              style={{ color: chapter.accent }}
+            >
+              {chapter.label}
+            </div>
+            <div className="mt-1 mono text-[10px] tabular text-[var(--fg-muted)]">
+              {sceneRange}
+              <span className="ml-2 opacity-60">
+                · {formatMs(chapter.endMs - chapter.startMs)}
+              </span>
+            </div>
+            {chapter.desc && (
+              <div
+                className="mt-1.5 text-[12px] leading-snug"
+                style={{ color: 'rgba(236,236,233,0.92)' }}
+              >
+                {chapter.desc}
+              </div>
+            )}
+            {isCurrent && currentSceneTitle && (
+              <div
+                className="mt-2 border-t pt-1.5 text-[11px] italic leading-snug"
+                style={{
+                  borderColor: 'rgba(255,255,255,0.08)',
+                  color: chapter.accent,
+                }}
+              >
+                now: {currentSceneTitle}
+              </div>
+            )}
+            {/* Bottom arrow */}
+            <div
+              className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 rotate-45"
+              style={{
+                marginTop: -4,
+                background: 'rgba(7,7,9,0.94)',
+                borderRight: `1px solid ${chapter.accent}55`,
+                borderBottom: `1px solid ${chapter.accent}55`,
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </button>
+  )
 }
 
 function StatusPill({
@@ -1082,6 +1426,7 @@ function TokenStripOverlay({
   accent: string
   focusedToken?: number
 }) {
+  const playing = usePlaying()
   // Char-level model: each character is one token. Trim to context length.
   const chars = (prompt || '').slice(0, TOKEN_STRIP_MAX).split('')
   if (chars.length === 0) return null
@@ -1093,23 +1438,32 @@ function TokenStripOverlay({
         </div>
         {chars.map((ch, i) => {
           const isFocused = focusedToken === i
+          const animateFocused = playing
+            ? {
+                borderColor: accent,
+                color: accent,
+                backgroundColor: ['rgba(96,165,250,0.18)', 'rgba(96,165,250,0.32)', 'rgba(96,165,250,0.18)'],
+                boxShadow: [
+                  `0 0 8px ${accent}40`,
+                  `0 0 18px ${accent}88`,
+                  `0 0 8px ${accent}40`,
+                ],
+                scale: [1, 1.1, 1],
+              }
+            : {
+                borderColor: accent,
+                color: accent,
+                backgroundColor: 'rgba(96,165,250,0.18)',
+                boxShadow: `0 0 8px ${accent}40`,
+                scale: 1,
+              }
           return (
             <motion.div
               key={i}
               className="mono flex h-5 min-w-[14px] items-center justify-center rounded-[2px] border px-1 text-[10px] leading-none"
               animate={
                 isFocused
-                  ? {
-                      borderColor: accent,
-                      color: accent,
-                      backgroundColor: ['rgba(96,165,250,0.18)', 'rgba(96,165,250,0.32)', 'rgba(96,165,250,0.18)'],
-                      boxShadow: [
-                        `0 0 8px ${accent}40`,
-                        `0 0 18px ${accent}88`,
-                        `0 0 8px ${accent}40`,
-                      ],
-                      scale: [1, 1.1, 1],
-                    }
+                  ? animateFocused
                   : {
                       borderColor: 'rgba(255,255,255,0.12)',
                       color: 'var(--fg-muted)',
@@ -1120,7 +1474,7 @@ function TokenStripOverlay({
               }
               transition={
                 isFocused
-                  ? { duration: 1.6, repeat: Infinity, ease: 'easeInOut' }
+                  ? { duration: 1.6, repeat: playing ? Infinity : 0, ease: 'easeInOut' }
                   : { duration: 0.3 }
               }
               title={`token ${i}${isFocused ? ' · focused' : ''}`}
@@ -1155,6 +1509,7 @@ function BridgeNarrator({
   accent: string
   sceneKey: string
 }) {
+  const playing = usePlaying()
   const [visible, setVisible] = useState(true)
   useEffect(() => {
     setVisible(true)
@@ -1187,10 +1542,14 @@ function BridgeNarrator({
             <motion.span
               className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
               style={{ background: accent }}
-              animate={{ opacity: [0.4, 1, 0.4], scale: [0.85, 1.15, 0.85] }}
+              animate={
+                playing
+                  ? { opacity: [0.4, 1, 0.4], scale: [0.85, 1.15, 0.85] }
+                  : { opacity: 0.7, scale: 1 }
+              }
               transition={{
                 duration: 1.6,
-                repeat: Infinity,
+                repeat: playing ? Infinity : 0,
                 ease: 'easeInOut',
               }}
             />

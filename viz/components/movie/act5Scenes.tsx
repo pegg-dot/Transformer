@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
-import { useSpeed } from './speedContext'
+import { useSpeed, usePlaying } from './speedContext'
 import { usePrompt } from './promptContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
 
@@ -402,6 +402,7 @@ function Connector({
 
 /* ─────────── The viz ─────────── */
 export function VizAct5Intro() {
+  const playing = usePlaying()
   // Stagger schedule (seconds, real time — speed handled by parent timing).
   const t = {
     block: 0.15,
@@ -425,6 +426,7 @@ export function VizAct5Intro() {
   // zoomed into where RoPE applies; rope opens with the rotation demo.
   const [diveT, setDiveT] = useState({ s: 1, tx: 0, ty: 0, blur: 0 })
   useEffect(() => {
+    if (!playing) return
     setDiveT({ s: 1, tx: 0, ty: 0, blur: 0 })
     const startMs = 11500
     const durMs = 2200
@@ -458,7 +460,7 @@ export function VizAct5Intro() {
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [])
+  }, [playing])
   const diving = diveT.s > 1.01
 
   // Callout box geometry.
@@ -480,6 +482,7 @@ export function VizAct5Intro() {
   // Connector targets (where the line lands inside the block).
   const ropeTarget = { x: SLOT_X + SLOT_W - 8, y: ATT_Y + 90 }
   const rmsTarget1 = { x: SLOT_X + 8, y: NORM1_Y + PLATE_H / 2 }
+  const rmsTarget2 = { x: SLOT_X + 8, y: NORM2_Y + PLATE_H / 2 }
   const swiTarget = { x: SLOT_X + SLOT_W - 8, y: FFN_Y + 90 }
   const gqaTarget = { x: SLOT_X + 8, y: ATT_Y + ATT_H - 40 }
 
@@ -862,6 +865,13 @@ export function VizAct5Intro() {
       <Connector
         from={{ x: RMS_X + calloutW, y: RMS_Y + calloutH / 2 }}
         to={rmsTarget1}
+        accent={ACCENT.blue}
+        delay={t.rms - 0.05}
+      />
+      {/* Second RMSNorm connector — applied to BOTH norm slots, not just NORM1 */}
+      <Connector
+        from={{ x: RMS_X + calloutW, y: RMS_Y + calloutH / 2 }}
+        to={rmsTarget2}
         accent={ACCENT.blue}
         delay={t.rms - 0.05}
       />
@@ -1547,7 +1557,7 @@ function RotationPlane({
 function RotatePanel({ active, posIdx }: { active: boolean; posIdx: number }) {
   const p = ROPE_POS_CYCLE[posIdx]
   const { prompt } = usePrompt()
-  // Use the actual character at the cycled position (mod prompt length).
+  // Use the actual token (a character in this char-level model) at the cycled position.
   const promptStr = prompt.length > 0 ? prompt : 'To be, or not to be'
   const tokIdx = p % promptStr.length
   const tokChar = promptStr[tokIdx] ?? '·'
@@ -1633,7 +1643,7 @@ function RotatePanel({ active, posIdx }: { active: boolean; posIdx: number }) {
         fontSize={10}
         letterSpacing={2}
       >
-        FROM YOUR PROMPT
+        TOKEN @ pos p
       </text>
       <motion.g
         key={`tok-${p}-${tokChar}`}
@@ -2106,21 +2116,24 @@ export function VizRoPE({ phase, posIdx }: { phase: number; posIdx: number }) {
 /* ─────────── Split-pane wrapper ─────────── */
 export function RopeSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 3
   // Total ~21s to match the existing scene budget.
   const PHASE_DURATIONS_MS = [4500, 8000, 8500] as const
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setTimeout(
       () => setPhase((p) => (p + 1) % PHASES),
       PHASE_DURATIONS_MS[phase] / speed,
     )
     return () => clearTimeout(id)
-  }, [phase, speed])
+  }, [phase, speed, playing])
 
   // Cycle through ROPE_POS_CYCLE only during phase 1.
   const [posIdx, setPosIdx] = useState(0)
   useEffect(() => {
+    if (!playing) return
     if (phase !== 1) return
     setPosIdx(0)
     const stepMs = PHASE_DURATIONS_MS[1] / ROPE_POS_CYCLE.length / speed
@@ -2128,7 +2141,7 @@ export function RopeSplitPane() {
       setPosIdx((i) => (i + 1) % ROPE_POS_CYCLE.length)
     }, stepMs)
     return () => clearInterval(id)
-  }, [phase, speed])
+  }, [phase, speed, playing])
 
   const phaseLabels = ['the old way', 'rotate Q/K', 'relative position']
   const subtitleByPhase: ReactNode[] = [
@@ -3500,16 +3513,18 @@ export function VizModern({ phase }: { phase: number }) {
 /* ─────────── Split-pane wrapper ─────────── */
 export function ModernSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 3
   const PHASE_DURATIONS_MS = [9000, 9000, 9000] as const
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setTimeout(
       () => setPhase((p) => (p + 1) % PHASES),
       PHASE_DURATIONS_MS[phase] / speed,
     )
     return () => clearTimeout(id)
-  }, [phase, speed])
+  }, [phase, speed, playing])
 
   const phaseAccent = [ACCENT.blue, ACCENT.amber, ACCENT.mint][phase]
   const phaseLabels = ['RMSNorm', 'SwiGLU', 'GQA']
@@ -3554,8 +3569,8 @@ export function ModernSplitPane() {
 
   const calloutByPhase: ReactNode[] = [
     'RMSNorm works because mean-centering carries a cost; in practice, models train stably without it. Dropping that step removes a bandwidth-bound reduction, which is why it tends to speed up training without hurting quality.',
-    'Common shape: hidden_dim → 4·hidden_dim through both the gate path AND the up path, then ⊙, then a down projection back to hidden_dim. SwiGLU MLPs often use wider intermediate projections than a plain GELU MLP, but improve quality per compute/parameter in common configs.',
-    'Used by LLaMA-2 (8 Q : 1 KV), LLaMA-3, Mistral, Gemini, Qwen. Inference latency is dominated by reading the KV cache from HBM; shrinking it 4–8× makes long-context decoding much faster.',
+    'Three projections instead of two: gate, up, down. To keep total params comparable to a plain 2-matrix MLP, the intermediate width is usually scaled DOWN — LLaMA uses ≈ (8/3)·d_model instead of 4·d_model. Better quality per compute/param in practice.',
+    'Used by LLaMA-2/3, Mistral, Gemini, Qwen. LLaMA-2-70B uses 64 query heads and 8 KV heads (8:1 per group). The viz above shows a smaller 4:1 example for clarity. Inference latency is dominated by reading the KV cache from HBM; shrinking it makes long-context decoding much faster.',
   ]
 
   return (

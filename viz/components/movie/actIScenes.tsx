@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { useSpeed } from './speedContext'
+import { useSpeed, usePlaying } from './speedContext'
 import { usePrompt } from './promptContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
 
@@ -788,12 +788,16 @@ export function VizTokenization() {
 /* ─────────────────── Scene C · BPE ─────────────────── */
 
 /**
- * BPE walkthrough — single unified merge tree for the word "unbelievably".
+ * BPE walkthrough — single unified merge tree for the word "language".
+ * 8 chars fit a clean 3-level binary tree: 4 lvl1 → 2 lvl2 → 1 root, and
+ * the lvl2 outputs ARE the natural BPE finals (BPE stops merging once a
+ * useful subword frontier is reached, rather than collapsing to the full
+ * word). This keeps the tree internally consistent.
  *
- *   1. BYTES         12 hex codes (the starting vocab is 256 bytes)
+ *   1. BYTES         8 hex codes (the starting vocab is 256 bytes)
  *   2. INITIAL TOKENS each byte rendered as its character
- *   3. MERGE STEPS    multi-level binary tree of merges (numbered 1..7)
- *   4. FINAL TOKENS   the eventual subword tokenization (un / believ / ably)
+ *   3. MERGE STEPS    7-merge binary tree (4 lvl1 → 2 lvl2 → 1 root)
+ *   4. FINAL TOKENS   the BPE-stopping-point tokenization (lang / uage)
  *
  * Phase cycles through the 7 numbered merges. The active merge is highlighted
  * with a dashed violet stroke + glow; previously-completed merges stay
@@ -801,20 +805,22 @@ export function VizTokenization() {
  */
 export function VizBPE() {
   const speed = useSpeed()
+  const playing = usePlaying()
 
   const TOTAL_PHASES = 7
   const [phase, setPhase] = useState(0) // 0..TOTAL_PHASES-1, then re-cycles
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % TOTAL_PHASES),
       2400 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // ── Geometry ──────────────────────────────────────────────────────────
   // Word: u n b e l i e v a b l y (12 chars)
-  const word = 'unbelievably'.split('')
+  const word = 'language'.split('')
   const CELL_W = 56
   const CELL_GAP = 8
   const STEP = CELL_W + CELL_GAP // 64 per byte/initial cell
@@ -838,15 +844,15 @@ export function VizBPE() {
   // Merge tree — 7 numbered merges in a binary tree
   // Levels: 1 (4 first-level), 2 (2 second-level), 3 (1 root)
   const lvl1 = [
-    { id: 1, label: 'un',   left: cellCenter(0), right: cellCenter(1) },
-    { id: 2, label: 'be',   left: cellCenter(2), right: cellCenter(3) },
-    { id: 3, label: 'lie',  left: cellCenter(4), right: cellCenter(5) },
-    { id: 4, label: 'ably', left: cellCenter(8), right: cellCenter(9) },
+    { id: 1, label: 'la', left: cellCenter(0), right: cellCenter(1) },
+    { id: 2, label: 'ng', left: cellCenter(2), right: cellCenter(3) },
+    { id: 3, label: 'ua', left: cellCenter(4), right: cellCenter(5) },
+    { id: 4, label: 'ge', left: cellCenter(6), right: cellCenter(7) },
   ].map((m) => ({ ...m, cx: (m.left + m.right) / 2 }))
 
   const lvl2 = [
-    { id: 5, label: 'unbe',     leftMerge: 1, rightMerge: 2 },
-    { id: 6, label: 'lievably', leftMerge: 3, rightMerge: 4 },
+    { id: 5, label: 'lang', leftMerge: 1, rightMerge: 2 },
+    { id: 6, label: 'uage', leftMerge: 3, rightMerge: 4 },
   ].map((m) => {
     const l = lvl1.find((x) => x.id === m.leftMerge)!
     const r = lvl1.find((x) => x.id === m.rightMerge)!
@@ -857,15 +863,16 @@ export function VizBPE() {
     const l = lvl2.find((x) => x.id === 5)!
     const r = lvl2.find((x) => x.id === 6)!
     return [
-      { id: 7, label: 'unbelievably', left: l.cx, right: r.cx, cx: (l.cx + r.cx) / 2 },
+      { id: 7, label: 'language', left: l.cx, right: r.cx, cx: (l.cx + r.cx) / 2 },
     ]
   })()
 
-  // Final-token row at the bottom
+  // Final-token row at the bottom — BPE doesn't always merge all the way to
+  // the root; in practice it stops at a useful subword frontier (here: the
+  // lvl2 outputs). Two tokens cover all 8 cells with no gaps.
   const finals = [
-    { label: 'un',     cx: cellCenter(0.5) }, // sits over u, n
-    { label: 'believ', cx: cellCenter(4.5) }, // over b, e, l, i, e, v
-    { label: 'ably',   cx: cellCenter(9.5) }, // over a, b, l, y
+    { label: 'lang', cx: cellCenter(1.5) }, // over l, a, n, g
+    { label: 'uage', cx: cellCenter(5.5) }, // over u, a, g, e
   ]
 
   // Helpers
@@ -880,13 +887,13 @@ export function VizBPE() {
   // Pretty rule strings for the rules table
   const ruleFor = (id: number): string => {
     switch (id) {
-      case 1: return 'u + n → un'
-      case 2: return 'b + e → be'
-      case 3: return 'l + i → li'
-      case 4: return 'li + e → lie'
-      case 5: return 'un + be → unbe'
-      case 6: return 'lie + vably → lievably'
-      case 7: return 'unbe + lievably → unbelievably'
+      case 1: return 'l + a → la'
+      case 2: return 'n + g → ng'
+      case 3: return 'u + a → ua'
+      case 4: return 'g + e → ge'
+      case 5: return 'la + ng → lang'
+      case 6: return 'ua + ge → uage'
+      case 7: return 'lang + uage → language'
       default: return ''
     }
   }
@@ -1507,19 +1514,21 @@ function MergeCard({
  */
 export function VizEmbedding() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt } = usePrompt()
   const promptChars = (prompt || 'The cat sat').split('').slice(0, 8)
   const ids = promptChars.map((ch) => ch.charCodeAt(0) % 65)
 
   const [cursor, setCursor] = useState(0)
   useEffect(() => {
+    if (!playing) return
     if (ids.length === 0) return
     const id = setInterval(
       () => setCursor((c) => (c + 1) % ids.length),
       2400 / speed,
     )
     return () => clearInterval(id)
-  }, [ids.length, speed])
+  }, [ids.length, speed, playing])
 
   // Matrix geometry
   const ROWS = 14
@@ -1942,9 +1951,20 @@ export function VizEmbedding() {
             {'  →  '}
             row{' '}
             <tspan fill={ACCENT.violet} fontWeight={500}>{activeId}</tspan>
-            {'  →  '}
+            {' of 65  →  '}
             vector ∈ ℝ
             <tspan fontSize="13" dy="-6">384</tspan>
+          </text>
+          <text
+            x={700}
+            y={848}
+            textAnchor="middle"
+            fontSize="11"
+            fontFamily="var(--font-mono)"
+            fill="rgba(255,255,255,0.45)"
+            letterSpacing="0.18em"
+          >
+            VIZ SHOWS A 14-ROW WINDOW · GLOW IS AT row mod 14
           </text>
         </motion.g>
 
@@ -1987,6 +2007,7 @@ export function VizEmbedding() {
  */
 export function VizPositional() {
   const speed = useSpeed()
+  const playing = usePlaying()
 
   const POSITIONS = 8
   const NUM_WAVES = 5
@@ -1995,12 +2016,13 @@ export function VizPositional() {
   // Cycle through positions
   const [pos, setPos] = useState(5)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPos((p) => (p + 1) % POSITIONS),
       1800 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // ── Geometry ──────────────────────────────────────────────────────────
   const WAVE_X0 = 140
@@ -3182,16 +3204,18 @@ export function TokensSplitPane() {
   const text = prompt || 'The cat sat on the mat.'
   const chars = text.split('').slice(0, 14)
   const speed = useSpeed()
+  const playing = usePlaying()
 
   // Cycle a "currently scanning" index in time with the left-pane scanner
   const [cursor, setCursor] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setCursor((c) => (c + 1) % chars.length),
       550 / speed,
     )
     return () => clearInterval(id)
-  }, [chars.length, speed])
+  }, [chars.length, speed, playing])
 
   const ch = chars[cursor] ?? '?'
   const id = ch.charCodeAt(0) % 65
@@ -3241,28 +3265,30 @@ export function TokensSplitPane() {
 /* ─────────── Scene 4 · BPE ─────────── */
 export function BPESplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   // Same 7-merge sequence as the VizBPE tree, in order. Phase chip,
   // stats, and "rule learned this step" all stay synchronized with the
   // tree's currently-active merge highlight.
   const rules = [
-    'u + n → un',
-    'b + e → be',
-    'l + i → li',
-    'li + e → lie',
-    'un + be → unbe',
-    'lie + vably → lievably',
-    'unbe + lievably → unbelievably',
+    'l + a → la',
+    'n + g → ng',
+    'u + a → ua',
+    'g + e → ge',
+    'la + ng → lang',
+    'ua + ge → uage',
+    'lang + uage → language',
   ]
   const TOTAL = rules.length // 7
 
   const [step, setStep] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setStep((s) => (s + 1) % TOTAL),
       2400 / speed,
     )
     return () => clearInterval(id)
-  }, [TOTAL, speed])
+  }, [TOTAL, speed, playing])
 
   const vocabAfter = 256 + step + 1
 
@@ -3306,6 +3332,7 @@ export function BPESplitPane() {
 /* ─────────── Scene 5 · Embedding ─────────── */
 export function EmbeddingSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt } = usePrompt()
   const promptChars = (prompt || 'The cat sat').split('').slice(0, 8)
   const ids = promptChars.map((c) => c.charCodeAt(0) % 65)
@@ -3313,12 +3340,13 @@ export function EmbeddingSplitPane() {
   // Match the cursor cycle inside VizEmbedding (2200ms)
   const [cursor, setCursor] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setCursor((c) => (c + 1) % Math.max(ids.length, 1)),
       2200 / speed,
     )
     return () => clearInterval(id)
-  }, [ids.length, speed])
+  }, [ids.length, speed, playing])
 
   const currentId = ids[cursor] ?? 0
   const currentCh = promptChars[cursor] ?? '?'
@@ -3377,16 +3405,18 @@ export function EmbeddingSplitPane() {
 /* ─────────── Scene 6 · Positional ─────────── */
 export function PositionalSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const POSITIONS = 8
 
   const [pos, setPos] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPos((p) => (p + 1) % POSITIONS),
       1100 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // Compute one PE sample at this position for the lowest frequency
   const peSample = Math.sin(pos * 1.0).toFixed(2)
@@ -3399,8 +3429,9 @@ export function PositionalSplitPane() {
         title: 'Position gets baked in.',
         subtitle: (
           <>
-            A unique sinusoidal pattern for each position is added directly
-            to the token embedding so the model knows order.
+            A position vector is added directly to the token embedding so the
+            model knows order. This nanoGPT learns its position table just
+            like the embedding table.
           </>
         ),
         accent: ACCENT.violet,
@@ -3432,7 +3463,7 @@ export function PositionalSplitPane() {
           ),
         },
         infoCallout:
-          'These patterns are fixed (not learned) and work across any sequence length — every position gets a distinct fingerprint.',
+          'The wave pattern is the original 2017 sinusoidal design (fixed, extrapolates to any length). This nanoGPT replaces it with a learned table; modern models replace both with RoPE — Scene 31.',
       }}
     />
   )

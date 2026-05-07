@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
-import { useSpeed } from './speedContext'
+import { useSpeed, usePlaying } from './speedContext'
 import { usePrompt } from './promptContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
 
@@ -1199,6 +1199,7 @@ export function VizAct6Intro({ phase, pred }: { phase: number; pred: Prediction 
 /* ─────────── Split-pane wrapper ─────────── */
 export function Act6IntroSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt, seed } = usePrompt()
   const pred = useMemo(() => predictFromPrompt(prompt, seed), [prompt, seed])
 
@@ -1206,12 +1207,13 @@ export function Act6IntroSplitPane() {
   const PHASE_DURATIONS_MS = [4500, 5000, 5000, 5500] as const
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setTimeout(
       () => setPhase((p) => (p + 1) % PHASES),
       PHASE_DURATIONS_MS[phase] / speed,
     )
     return () => clearTimeout(id)
-  }, [phase, speed])
+  }, [phase, speed, playing])
 
   const phaseLabels = ['context', 'projection', 'softmax', 'selection']
   const phaseAccent = [ACCENT.amber, ACCENT.blue, ACCENT.cyan, ACCENT.mint][phase]
@@ -1253,8 +1255,8 @@ export function Act6IntroSplitPane() {
         &lsquo;{pred.nextLabel}&rsquo;
       </strong>
       ). Temperature / top-k / top-p sample from the distribution. The chosen
-      token is appended to your prompt — and the whole forward pass runs again
-      for the next one.
+      token is appended to your prompt — and the next decode pass runs on just
+      that new token, reusing cached K/V from earlier positions.
     </>,
   ]
 
@@ -1262,7 +1264,7 @@ export function Act6IntroSplitPane() {
     'During training, the model predicts a next token at every position. At inference, we only sample at the last position because that is the only position whose context includes everything in the prompt.',
     'The output head is often tied to the input embedding matrix (W_U = E^T) — same parameters used to map tokens → vectors are reused to map vectors → tokens. That weight tying saves params and tends to help quality.',
     'Logits are scale-sensitive: dividing them by a "temperature" T before softmax flattens the distribution (T > 1) or sharpens it (T < 1). Temperature 0 collapses to the argmax — pure greedy decoding.',
-    'This single forward pass is what produces ONE token. Scene 34 shows what happens when you do it again, and again, and again — feeding each pick back as the new last position.',
+    'This single decode pass produced ONE token. Scene 34 plays the loop — each new pass conditions on the cached K/V, not a re-run of the full prompt.',
   ]
 
   // Show the trailing window in the stats chip so the right pane reflects
@@ -2086,6 +2088,7 @@ export function VizOutputLoop({
 /* ─────────── Split-pane wrapper ─────────── */
 export function OutputSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt, seed } = usePrompt()
 
   const nGenSteps = useMemo(() => genStepsFor(prompt), [prompt])
@@ -2126,6 +2129,7 @@ export function OutputSplitPane() {
   }, [prompt, seed])
 
   useEffect(() => {
+    if (!playing) return
     if (done) return
     const total = stepDurationMs(step)
     const { pulseEndMs, landEndMs, restEndMs } = subPhaseDurations(total)
@@ -2144,7 +2148,7 @@ export function OutputSplitPane() {
       clearTimeout(t2)
       clearTimeout(t3)
     }
-  }, [step, speed, done, nGenSteps])
+  }, [step, speed, done, nGenSteps, playing])
 
   // Per-step animation durations forwarded to the viz so framer's transitions
   // match the step machine.

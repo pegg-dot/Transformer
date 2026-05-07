@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
-import { useSpeed } from './speedContext'
+import { useSpeed, usePlaying } from './speedContext'
 import { usePrompt } from './promptContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
 
@@ -38,6 +38,7 @@ const ACT2_KICKER = 'ACT II · INSIDE A BLOCK'
 
 export function VizAct2Intro() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt } = usePrompt()
   const tokens = (prompt || 'To be, or not to be').split('').slice(0, 14)
 
@@ -53,6 +54,7 @@ export function VizAct2Intro() {
   // Block 0 center is (heroBlock.x + heroBlock.w/2, heroCenterY).
   const [diveT, setDiveT] = useState({ s: 1, tx: 0, ty: 0, blur: 0 })
   useEffect(() => {
+    if (!playing) return
     setDiveT({ s: 1, tx: 0, ty: 0, blur: 0 })
     const startMs = 10500 / speed // when the dive begins
     const durMs = 2400 / speed
@@ -87,7 +89,7 @@ export function VizAct2Intro() {
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [speed])
+  }, [speed, playing])
   const diving = diveT.s > 1.01
 
   // Block stack — Block 0 is the hero (front-left), others recede diagonally
@@ -766,16 +768,18 @@ export function VizAct2Intro() {
 /* ─────────── Scene 8 wrapper ─────────── */
 export function Act2IntroSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   // Cycle through "what's inside Block 0" hint phases for the right pane
   const phases = ['Attention first', 'then a small FFN', 'add to residual', 'repeat ×6']
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % phases.length),
       2400 / speed,
     )
     return () => clearInterval(id)
-  }, [phases.length, speed])
+  }, [phases.length, speed, playing])
 
   return (
     <SplitPaneScene
@@ -845,6 +849,7 @@ export function Act2IntroSplitPane() {
 
 export function VizLayerNorm() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt } = usePrompt()
   const tokens = (prompt || 'To be, or not to be').split('').slice(0, 14)
   const FOCUSED = 3
@@ -896,12 +901,13 @@ export function VizLayerNorm() {
   const PHASES = 5
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       2400 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // Stage visibility — stage K appears at phase K
   const stageOpacity = (k: number): number =>
@@ -1615,6 +1621,7 @@ function ParamStrip({
 /* ─────────── Scene 9 wrapper ─────────── */
 export function LayerNormSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   // Sync phase chip with the viz's phase progression
   const PHASES = 5
   const phaseLabels = [
@@ -1626,19 +1633,20 @@ export function LayerNormSplitPane() {
   ]
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       2400 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   return (
     <SplitPaneScene
       viz={<VizLayerNorm />}
       text={{
         kicker: ACT2_KICKER,
-        title: 'Re-center. Re-scale. Re-tilt.',
+        title: 'Re-center. Re-scale. Re-tune.',
         subtitle: (
           <>
             Before each sublayer the activations get a controlled
@@ -1703,6 +1711,7 @@ const COL_V = '#34d399' // green/mint
 
 export function VizQKV() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt } = usePrompt()
   const tokens = (prompt || 'To be, or not to be').split('').slice(0, 14)
   const FOCUSED = 3
@@ -1711,12 +1720,13 @@ export function VizQKV() {
   const PHASES = 4
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       2400 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // ── Math: deterministic signed values for source vector + matrix → output ──
   const D = 12
@@ -2272,6 +2282,7 @@ export function VizQKV() {
 /* ─────────── Scene 10 wrapper ─────────── */
 export function QKVSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 4
   const phaseLabels = [
     'projecting Q',
@@ -2281,12 +2292,13 @@ export function QKVSplitPane() {
   ]
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       2400 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   return (
     <SplitPaneScene
@@ -2365,6 +2377,7 @@ const COL_V_ATT = '#34d399'
 
 export function VizAttention() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt } = usePrompt()
   const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
   const T = tokens.length
@@ -2380,12 +2393,13 @@ export function VizAttention() {
   const PHASES = 4
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       9500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // Deterministic raw scores for the focused row (position `focused`).
   // Earlier positions get real values; future positions are -∞ (masked).
@@ -3052,6 +3066,7 @@ function PhaseA({
   speed: number
 }) {
   void _focused
+  const playing = usePlaying()
   const T = tokens.length
   // Token row geometry (right-side viz area)
   const X0 = 460
@@ -3098,6 +3113,7 @@ function PhaseA({
 
   const [scenarioIdx, setScenarioIdx] = useState(0)
   useEffect(() => {
+    if (!playing) return
     if (SCENARIOS.length <= 1) return
     const id = setInterval(() => {
       setScenarioIdx((i) => (i + 1) % SCENARIOS.length)
@@ -3106,7 +3122,7 @@ function PhaseA({
     // SCENARIOS is derived from tokens which is stable across renders;
     // changing prompt remounts PhaseA via parent key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [speed, SCENARIOS.length])
+  }, [speed, SCENARIOS.length, playing])
 
   const cur = SCENARIOS[Math.min(scenarioIdx, SCENARIOS.length - 1)]
   const focused = cur.query
@@ -4623,6 +4639,7 @@ function PhaseSummary({ phase }: { phase: number }) {
 /* ─────────── Scene 11 wrapper ─────────── */
 export function AttentionSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 4
   const phaseLabels = [
     'one-query zoom',
@@ -4632,12 +4649,13 @@ export function AttentionSplitPane() {
   ]
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       9500 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   return (
     <SplitPaneScene
@@ -4670,9 +4688,9 @@ export function AttentionSplitPane() {
           label: 'attention',
           body: (
             <>
-              Attn(<tspan style={{ color: COL_Q_ATT }}>Q</tspan>,
-              {' '}<tspan style={{ color: COL_K_ATT }}>K</tspan>,
-              {' '}<tspan style={{ color: COL_V_ATT }}>V</tspan>) ={' '}
+              Attn(<span style={{ color: COL_Q_ATT }}>Q</span>,
+              {' '}<span style={{ color: COL_K_ATT }}>K</span>,
+              {' '}<span style={{ color: COL_V_ATT }}>V</span>) ={' '}
               softmax(QKᵀ / √d_k) V
             </>
           ),
@@ -4752,6 +4770,7 @@ function patternFor(headIdx: number, f: number, T: number): number[] {
 
 export function VizMultiHead() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt } = usePrompt()
   const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
   const T = tokens.length
@@ -4762,6 +4781,7 @@ export function VizMultiHead() {
   const FOCUSED_MAX = Math.max(FOCUSED_MIN, T - 1)
   const [focused, setFocused] = useState(Math.min(3, FOCUSED_MAX))
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => {
       setFocused((f) => {
         const next = f + 1
@@ -4769,17 +4789,18 @@ export function VizMultiHead() {
       })
     }, 2200 / speed)
     return () => clearInterval(id)
-  }, [FOCUSED_MAX, speed])
+  }, [FOCUSED_MAX, speed, playing])
 
   const PHASES = 3
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       8000 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // ── Geometry ──────────────────────────────────────────────────────────
   // Container: x=140..1380, y=160..820
@@ -5810,6 +5831,7 @@ function relu(z: number): number {
 
 export function VizFFN() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const { prompt } = usePrompt()
   const tokens = (prompt || 'To be, or not to be').split('').slice(0, 19)
   const T = tokens.length
@@ -5819,12 +5841,13 @@ export function VizFFN() {
   const PHASES = 5
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       3200 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // ── Dive-in into one hidden neuron ─────────────────────────────────
   // Mirrors scene 8's dive into Block 0. Scene 13 is "FFN structure";
@@ -5833,6 +5856,7 @@ export function VizFFN() {
   // center cell so the cut into scene 14 reads as a continuation.
   const [diveT, setDiveT] = useState({ s: 1, tx: 0, ty: 0, blur: 0 })
   useEffect(() => {
+    if (!playing) return
     setDiveT({ s: 1, tx: 0, ty: 0, blur: 0 })
     const startMs = 16000 / speed
     const durMs = 2200 / speed
@@ -5871,7 +5895,7 @@ export function VizFFN() {
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [speed])
+  }, [speed, playing])
   const diving = diveT.s > 1.01
 
   // ── Math: deterministic vectors ─────────────────────────────────────
@@ -6655,6 +6679,7 @@ function FFNPhaseSummary({ phase }: { phase: number }) {
 /* ─────────── FFN split-pane wrapper ─────────── */
 export function FFNSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 5
   const phaseLabels = [
     'one token enters',
@@ -6665,12 +6690,13 @@ export function FFNSplitPane() {
   ]
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       3200 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const subtitleByPhase: ReactNode[] = [
     <>
@@ -6757,6 +6783,7 @@ export function FFNSplitPane() {
 
 export function MultiHeadSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 3
   const phaseLabels = [
     'split into 6 heads',
@@ -6765,12 +6792,13 @@ export function MultiHeadSplitPane() {
   ]
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       8000 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // Per-phase right-pane content
   const subtitleByPhase: ReactNode[] = [
@@ -6953,27 +6981,30 @@ function ffColorProduct(p: number): string {
 
 export function VizFFNFeature() {
   const speed = useSpeed()
+  const playing = usePlaying()
 
   // 3 phases, ~7s each
   const PHASES = 3
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       7000 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // Token stream cursor — monotonically increasing for stable React keys
   const [streamIdx, setStreamIdx] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setStreamIdx((i) => i + 1),
       950 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const currentToken = FF_TOKEN_STREAM[streamIdx % FF_TOKEN_STREAM.length]
   const currentActivation = ffActivationFor(currentToken)
@@ -7666,6 +7697,7 @@ function FFFeaturePhaseSummary({ phase }: { phase: number }) {
 /* ─────────── FFN-feature split-pane wrapper ─────────── */
 export function FFNFeatureSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 3
   const phaseLabels = [
     'isolate one neuron',
@@ -7674,12 +7706,13 @@ export function FFNFeatureSplitPane() {
   ]
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       7000 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const subtitleByPhase: ReactNode[] = [
     <>
@@ -7791,24 +7824,27 @@ const FFG_W1X = Array.from({ length: 16 }).map(
 
 export function VizFFNGelu() {
   const speed = useSpeed()
+  const playing = usePlaying()
 
   // 3 phases × ~6.3s
   const PHASES = 3
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       6300 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   // Probe sweeps continuously between -2.6 and +2.6
   const [probeTick, setProbeTick] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(() => setProbeTick((t) => t + 1), 70 / speed)
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
   const probeZ = Math.sin(probeTick * 0.045) * 2.6
 
   return (
@@ -8434,6 +8470,7 @@ function FFGeluPhaseSummary({ phase }: { phase: number }) {
 /* ─────────── FFN-GELU split-pane wrapper ─────────── */
 export function FFNGeluSplitPane() {
   const speed = useSpeed()
+  const playing = usePlaying()
   const PHASES = 3
   const phaseLabels = [
     'inside the FFN: raw → activated',
@@ -8442,12 +8479,13 @@ export function FFNGeluSplitPane() {
   ]
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!playing) return
     const id = setInterval(
       () => setPhase((p) => (p + 1) % PHASES),
       6300 / speed,
     )
     return () => clearInterval(id)
-  }, [speed])
+  }, [speed, playing])
 
   const subtitleByPhase: ReactNode[] = [
     <>
@@ -8467,7 +8505,7 @@ export function FFNGeluSplitPane() {
   const equationByPhase: { label: string; body: ReactNode }[] = [
     {
       label: 'one neuron',
-      body: <>h<sub>i</sub> = GELU((W₁ x)<sub>i</sub>)</>,
+      body: <>h<sub>i</sub> = act((W₁ x)<sub>i</sub>) — this nanoGPT: ReLU</>,
     },
     {
       label: 'three gates',

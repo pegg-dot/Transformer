@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 import type { ReactNode } from 'react'
-import { useSpeed } from './speedContext'
+import { useSpeed, usePlaying } from './speedContext'
 
 /**
  * One live numeric chip on the right pane. `value` is rendered as text;
@@ -63,8 +63,12 @@ export function SplitPaneScene({
   viz: ReactNode
   text: SceneTextPaneData
 }) {
+  const playing = usePlaying()
   return (
-    <div className="absolute inset-0 flex bg-[var(--bg)]">
+    <div
+      className="absolute inset-0 flex bg-[var(--bg)]"
+      data-paused={!playing || undefined}
+    >
       {/* Left pane — visualization. ~68% width. Includes subtle bg grid so
           empty space around letterboxed scenes reads as intentional stage. */}
       <div className="relative flex-1 overflow-hidden">
@@ -87,8 +91,8 @@ export function SplitPaneScene({
           aria-hidden
           className="pointer-events-none absolute bottom-0 left-0 right-0 h-[2px]"
           style={{ background: text.accent, mixBlendMode: 'screen' }}
-          animate={{ opacity: [0.10, 0.32, 0.10] }}
-          transition={{ duration: 3.4, repeat: Infinity, ease: 'easeInOut' }}
+          animate={playing ? { opacity: [0.10, 0.32, 0.10] } : { opacity: 0.10 }}
+          transition={{ duration: 3.4, repeat: playing ? Infinity : 0, ease: 'easeInOut' }}
         />
         {/* The viz itself, centered, filling the pane.
             The descendant selector hides legacy in-SVG number-chip strips
@@ -105,8 +109,8 @@ export function SplitPaneScene({
       <motion.div
         className="w-px shrink-0"
         style={{ background: 'var(--rule)' }}
-        animate={{ opacity: [0.85, 1, 0.85] }}
-        transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}
+        animate={playing ? { opacity: [0.85, 1, 0.85] } : { opacity: 0.85 }}
+        transition={{ duration: 4.2, repeat: playing ? Infinity : 0, ease: 'easeInOut' }}
       />
 
       {/* Right pane — persistent commentary. ~32% width. */}
@@ -122,6 +126,7 @@ export function SplitPaneScene({
 
 export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
   const speed = useSpeed()
+  const playing = usePlaying()
   return (
     <div className="relative flex h-full w-full min-h-0 flex-col overflow-hidden px-6 py-5 lg:px-8 lg:py-6">
       {/* Ambient scanner — a faint horizontal violet line that sweeps top→
@@ -133,11 +138,11 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
           background: `linear-gradient(180deg, transparent 0%, ${data.accent}10 50%, transparent 100%)`,
           mixBlendMode: 'screen',
         }}
-        animate={{ y: ['-40%', '140%'] }}
+        animate={playing ? { y: ['-40%', '140%'] } : { y: '-40%' }}
         transition={{
           duration: 9 / speed,
           ease: 'linear',
-          repeat: Infinity,
+          repeat: playing ? Infinity : 0,
           repeatDelay: 2 / speed,
         }}
       />
@@ -162,10 +167,14 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
           <motion.span
             className="inline-block h-1.5 w-1.5 rounded-full"
             style={{ background: data.accent }}
-            animate={{ opacity: [0.35, 1, 0.35], scale: [0.85, 1.15, 0.85] }}
+            animate={
+              playing
+                ? { opacity: [0.35, 1, 0.35], scale: [0.85, 1.15, 0.85] }
+                : { opacity: 0.55, scale: 1 }
+            }
             transition={{
               duration: 1.6 / speed,
-              repeat: Infinity,
+              repeat: playing ? Infinity : 0,
               ease: 'easeInOut',
             }}
           />
@@ -190,28 +199,32 @@ export function SceneTextPane({ data }: { data: SceneTextPaneData }) {
             className="h-px"
             style={{ background: data.accent }}
             initial={{ width: 0, opacity: 0.7 }}
-            animate={{
-              width: ['0%', '78%', '78%', '78%'],
-              opacity: [0.7, 1, 0.55, 1],
-              boxShadow: [
-                `0 0 0 ${data.accent}00`,
-                `0 0 8px ${data.accent}aa`,
-                `0 0 2px ${data.accent}33`,
-                `0 0 8px ${data.accent}aa`,
-              ],
-            }}
+            animate={
+              playing
+                ? {
+                    width: ['0%', '78%', '78%', '78%'],
+                    opacity: [0.7, 1, 0.55, 1],
+                    boxShadow: [
+                      `0 0 0 ${data.accent}00`,
+                      `0 0 8px ${data.accent}aa`,
+                      `0 0 2px ${data.accent}33`,
+                      `0 0 8px ${data.accent}aa`,
+                    ],
+                  }
+                : { width: '78%', opacity: 0.7, boxShadow: `0 0 4px ${data.accent}55` }
+            }
             transition={{
               width: { duration: 0.7 / speed, delay: 0.2 / speed, ease: 'easeOut' },
               opacity: {
                 duration: 4 / speed,
                 delay: 1.0 / speed,
-                repeat: Infinity,
+                repeat: playing ? Infinity : 0,
                 ease: 'easeInOut',
               },
               boxShadow: {
                 duration: 4 / speed,
                 delay: 1.0 / speed,
-                repeat: Infinity,
+                repeat: playing ? Infinity : 0,
                 ease: 'easeInOut',
               },
             }}
