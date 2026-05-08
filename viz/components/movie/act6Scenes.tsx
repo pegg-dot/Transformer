@@ -1236,32 +1236,33 @@ export function Act6IntroSplitPane() {
   const phaseLabels = ['context', 'projection', 'softmax', 'selection']
   const phaseAccent = [ACCENT.amber, ACCENT.blue, ACCENT.cyan, ACCENT.mint][phase]
 
-  const promptLen = prompt.length
-  const lastAbsPos = Math.max(0, promptLen - 1)
-  const lastChar = prompt[promptLen - 1] ?? ''
-  const lastCharLabel = lastChar === ' ' ? '·' : lastChar
+  const promptTokenCount = pred.basePosition + pred.promptTokens.length
+  const lastTokenAbsPos = pred.basePosition + pred.lastIdx
+  const lastToken = pred.promptTokens[pred.lastIdx] ?? ''
+  const lastTokenLabel = chipLabel(lastToken)
   const winnerPct = `${(pred.topK[0].p * 100).toFixed(0)}%`
+  const promptTailText = pred.promptTokens.map(chipLabel).join('')
 
   const subtitleByPhase: ReactNode[] = [
     <>
-      All six blocks already ran on every character of <em>your</em> prompt.
+      All six blocks already ran on every token of <em>your</em> prompt.
       The network now has one hidden vector per position. For predicting the
-      next character, only the{' '}
+      next token, only the{' '}
       <strong style={{ color: ACCENT.amber }}>last position</strong> (
-      <code>&lsquo;{lastCharLabel}&rsquo;</code> at index{' '}
-      <code>{lastAbsPos}</code>) matters.
+      <code>&lsquo;{lastTokenLabel}&rsquo;</code> at index{' '}
+      <code>{lastTokenAbsPos}</code>) matters.
     </>,
     <>
       A single linear layer — the <em>output head</em> or <em>unembedding</em>
        — projects <code>h_T</code> from <code>d_model</code> down to{' '}
       <code>vocab_size</code>. The result is a vector of{' '}
       <strong style={{ color: ACCENT.cyan }}>logits</strong>: one raw score per
-      possible next character.
+      possible next token.
     </>,
     <>
       <strong style={{ color: ACCENT.mint }}>Softmax</strong> turns logits into
       a probability distribution. Every entry is ≥ 0; they sum to 1. The top
-      candidate after &ldquo;…{prompt.slice(-Math.min(8, promptLen))}&rdquo; is{' '}
+      candidate after &ldquo;…{promptTailText}&rdquo; is{' '}
       <strong style={{ color: ACCENT.mint }}>
         &lsquo;{pred.nextLabel}&rsquo;
       </strong>{' '}
@@ -1285,10 +1286,6 @@ export function Act6IntroSplitPane() {
     'This single decode pass produced ONE token. Scene 34 plays the loop — each new pass conditions on the cached K/V, not a re-run of the full prompt.',
   ]
 
-  // Show the trailing window in the stats chip so the right pane reflects
-  // the same tokens the strip is showing.
-  const promptTail = pred.promptTokens.map(chipLabel).join('')
-
   return (
     <SplitPaneScene
       viz={<VizAct6Intro phase={phase} pred={pred} />}
@@ -1306,8 +1303,8 @@ export function Act6IntroSplitPane() {
           />
         ),
         stats: [
-          { label: 'prompt tail', value: `"${promptTail}"`, color: ACCENT.amber },
-          { label: 'prompt len', value: String(promptLen), color: ACCENT.amber },
+          { label: 'prompt tail', value: `"${promptTailText}"`, color: ACCENT.amber },
+          { label: 'prompt len', value: `${promptTokenCount} tokens`, color: ACCENT.amber },
           {
             label: 'top guess',
             value:
@@ -1350,7 +1347,7 @@ export function Act6IntroSplitPane() {
  * left side is supposed to do most of the explaining.
  *
  * Prompt-aware: the strip starts from the user's actual prompt, and each
- * generated character comes from the same `predictFromPrompt` heuristic
+ * generated token comes from the same `predictFromPrompt` heuristic
  * extended one step at a time.
  * ====================================================================== */
 
@@ -2187,10 +2184,10 @@ export function OutputSplitPane() {
     phaseAccent = ACCENT.mint
     subtitle = onHamletPath ? (
       <>
-        And there it is — <em>“to be, or not to be — that is the question.”</em>
-        Real models keep going for hundreds or thousands of tokens, each one
-        another decode pass through the same six blocks. That&apos;s the whole
-        machine.
+        And there it is — <em>“To be, or not to be, that is the question.”</em>
+        Each one of those tokens was a separate decode pass through the same
+        six blocks. Real models keep this loop going for hundreds or thousands
+        of tokens. That&apos;s the whole machine.
       </>
     ) : (
       <>
@@ -2235,7 +2232,14 @@ export function OutputSplitPane() {
     )
   }
 
-  const settledGenerated = (done ? generated : subPhase === 'rest' ? generated.slice(0, step + 1) : generated.slice(0, step)).join('')
+  const settledGeneratedTokens = done
+    ? generated
+    : subPhase === 'rest'
+      ? generated.slice(0, step + 1)
+      : generated.slice(0, step)
+  const settledGenerated = settledGeneratedTokens.join('')
+  const settledGeneratedCount = settledGeneratedTokens.length
+  const promptTokenCount = promptAllTokens.length
 
   return (
     <SplitPaneScene
@@ -2266,9 +2270,25 @@ export function OutputSplitPane() {
           />
         ),
         stats: [
-          { label: 'visible prompt', value: `${promptForStrip.length} chars shown`, color: ACCENT.amber },
-          { label: 'so far', value: settledGenerated.length > 0 ? `"${settledGenerated.replace(/ /g, '·')}"` : '—', color: ACCENT.mint },
-          { label: 'this step', value: subPhase === 'land' || subPhase === 'rest' ? `'${chipLabel(generated[step] ?? '')}'` : 'next token', color: ACCENT.mint },
+          { label: 'prompt', value: `${promptTokenCount} tokens`, color: ACCENT.amber },
+          {
+            label: 'so far',
+            value:
+              settledGeneratedCount > 0
+                ? `+${settledGeneratedCount} · "${settledGenerated}"`
+                : '—',
+            color: ACCENT.mint,
+          },
+          {
+            label: 'this step',
+            value:
+              done
+                ? '— done —'
+                : subPhase === 'land' || subPhase === 'rest'
+                  ? `+'${chipLabel(generated[step] ?? '')}'`
+                  : 'next token',
+            color: ACCENT.mint,
+          },
           { label: 'cost / token', value: '1 decode pass', color: ACCENT.violet },
         ],
         equation: {
