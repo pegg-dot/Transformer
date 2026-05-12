@@ -1,16 +1,6 @@
 'use client'
 
 import { type MovieScene } from './MovieOrchestrator'
-import {
-  SceneAttention,
-  SceneBPE,
-  SceneEmbedding,
-  SceneLayerNorm,
-  SceneMultiHead,
-  ScenePositional,
-  SceneQKV,
-  SceneTokenization,
-} from './scenes'
 import { IntroColdOpenPanel } from './introScenes'
 import {
   PanelQKV,

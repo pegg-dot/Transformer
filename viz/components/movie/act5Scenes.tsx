@@ -1447,6 +1447,7 @@ function RotationPlane({
       {/* Q vector (amber) — halo behind tip pulses, line + dot spring to new pos */}
       {active && (
         <motion.circle
+          initial={false}
           cx={qx}
           cy={qy}
           r={11}
@@ -1500,6 +1501,7 @@ function RotationPlane({
       {/* K vector (blue) — same pattern */}
       {active && (
         <motion.circle
+          initial={false}
           cx={kx}
           cy={ky}
           r={11}

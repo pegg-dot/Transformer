@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { useSpeed, usePlaying } from './speedContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
+import { HAMLET_BPE_FULL, HAMLET_PROMPT_LEN } from '@/lib/displayTokens'
 
 const ACCENT = {
   violet: '#a78bfa',
@@ -1399,12 +1400,12 @@ const CELS_VB_W = 1400
 const CELS_VB_H = 1000
 
 // 7 input BPE tokens → 7 next-token targets. Inputs are the canonical
-// "To be, or not to be" tokenization shared with the rest of the movie;
-// targets are the same sequence shifted right by one — so position 0
-// (input 'To') has target ' be', position 6 (input second ' be') has
-// target ',' (the comma that opens Hamlet's "…, that is the question.").
-const CELS_INPUTS = ['To', ' be', ',', ' or', ' not', ' to', ' be']
-const CELS_TARGETS = [' be', ',', ' or', ' not', ' to', ' be', ',']
+// "To be, or not to be" prompt shared via lib/displayTokens; targets are
+// the same sequence shifted right by one — so position 0 (input 'To')
+// has target ' be', position 6 (input second ' be') has target ','
+// (the comma that opens Hamlet's "…, that is the question.").
+const CELS_INPUTS = HAMLET_BPE_FULL.slice(0, HAMLET_PROMPT_LEN).map((t) => t.text)
+const CELS_TARGETS = HAMLET_BPE_FULL.slice(1, HAMLET_PROMPT_LEN + 1).map((t) => t.text)
 const CELS_T = CELS_INPUTS.length
 
 // Per-position losses (deterministic). Mostly low with a few hot spots so
@@ -4419,7 +4420,9 @@ function bpaAvgMag(r: number, c: number): number {
 // Sign-ish: per-cell, randomly red (positive) or blue (negative) for the
 // per-example tiles, to make them feel like real (signed) gradients.
 function bpaSampleSign(i: number, r: number, c: number): 1 | -1 {
-  return ((i + r + c) % 2 === 0 ? 1 : -1) * (Math.sin(i * 11 + r * 5 + c * 3) > 0 ? 1 : -1)
+  const a = (i + r + c) % 2 === 0 ? 1 : -1
+  const b = Math.sin(i * 11 + r * 5 + c * 3) > 0 ? 1 : -1
+  return a === b ? 1 : -1
 }
 
 export function VizBpAccum({ phase }: { phase: number }) {

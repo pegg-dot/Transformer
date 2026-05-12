@@ -1755,8 +1755,10 @@ export function VizEmbedding() {
             </g>
           ))}
 
-          {/* Active row glow halo (drawn over the row) */}
+          {/* Active row glow halo (drawn over the row). initial={false}
+              prevents Framer from springing in from (0, 0) on mount. */}
           <motion.rect
+            initial={false}
             animate={{
               y: activeRow * CELL_H - 3,
               x: (ROWS - activeRow) * SKEW_X * CELL_H - 3,

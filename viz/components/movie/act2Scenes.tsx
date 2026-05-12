@@ -7705,11 +7705,15 @@ export function FFNFeatureSplitPane() {
     'tokens stream past',
     'activation profile',
   ]
+  // Clamp at the final phase instead of wrapping back to 0. Scene
+  // duration (21s) equals one full cycle (3×7s) exactly — a wrap would
+  // fire phase 2→0 right at the scene cut and flash phase-0-only
+  // content for one frame before the next scene.
   const [phase, setPhase] = useState(0)
   useEffect(() => {
     if (!playing) return
     const id = setInterval(
-      () => setPhase((p) => (p + 1) % PHASES),
+      () => setPhase((p) => (p < PHASES - 1 ? p + 1 : p)),
       7000 / speed,
     )
     return () => clearInterval(id)
@@ -7827,13 +7831,15 @@ export function VizFFNGelu() {
   const speed = useSpeed()
   const playing = usePlaying()
 
-  // 3 phases × ~6.3s
+  // 3 phases × ~6.3s = 18.9s, scene duration 19s — 0.1s buffer is too
+  // tight to absorb the wrap. Clamp at the final phase so phase 2 holds
+  // for the last sliver of the scene instead of wrapping to 0.
   const PHASES = 3
   const [phase, setPhase] = useState(0)
   useEffect(() => {
     if (!playing) return
     const id = setInterval(
-      () => setPhase((p) => (p + 1) % PHASES),
+      () => setPhase((p) => (p < PHASES - 1 ? p + 1 : p)),
       6300 / speed,
     )
     return () => clearInterval(id)
@@ -8132,6 +8138,7 @@ function FFGeluZoomNeuron({ probeZ, speed }: { probeZ: number; speed: number }) 
               stroke="rgba(255,255,255,0.20)" strokeWidth={0.5} />
             {/* Output bar from 0 to value */}
             <motion.rect
+              initial={false}
               x={Math.min(probeBarX, barEnd)}
               y={rowY + 4}
               width={Math.abs(barEnd - probeBarX)}
@@ -8289,12 +8296,13 @@ function FFGeluCurvesPanel({
         fill={COL_SWISH} opacity={0.5}
         animate={{ cx: probePx, cy: cy - swish(probeZ) * Y_SCALE }}
         transition={{ duration: 0.1 }} />
-      <motion.circle cx={probePx} cy={cy - relu(probeZ) * Y_SCALE} r={6}
+      <motion.circle initial={false} cx={probePx} cy={cy - relu(probeZ) * Y_SCALE} r={6}
         fill={COL_RELU} filter="url(#ffg-glow)"
         animate={{ cx: probePx, cy: cy - relu(probeZ) * Y_SCALE }}
         transition={{ duration: 0.1 }} />
       {/* Active-activation badge near the ReLU probe dot */}
       <motion.text
+        initial={false}
         x={probePx + 12}
         y={cy - relu(probeZ) * Y_SCALE - 8}
         fontSize="9"

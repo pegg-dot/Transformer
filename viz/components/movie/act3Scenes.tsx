@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSpeed, usePlaying } from './speedContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
-import { chipLabel } from '@/lib/displayTokens'
+import { chipLabel, HAMLET_PROMPT_TOKENS } from '@/lib/displayTokens'
 
 const ACCENT = {
   violet: '#a78bfa',
@@ -1260,7 +1260,7 @@ export function StackSplitPane() {
 }
 
 /* =========================================================================
- * Scene 18 — sample: "Pick the next character."
+ * Scene 18 — sample: "Pick the next token."
  *
  * One continuous transformation pipeline, phase-gated by emphasis only —
  * every stage is mounted always, so the eye reads:
@@ -1282,12 +1282,12 @@ export function StackSplitPane() {
  * Phase 4 — SAMPLE + APPEND: char flies up to next slot in token strip
  * ====================================================================== */
 
-// BPE-style: prompt is the full "To be, or not to be" — 7 hand-tokenized
-// chunks ending on the second ' be'. The argmax (',') matches the
-// generation Scene 34 lands on: "To be, or not to be, that is the
-// question." ' —' kept as a plausible runner-up (the alternate Hamlet
-// rendering with an em-dash).
-const SAMPLE_PROMPT_TOKENS = ['To', ' be', ',', ' or', ' not', ' to', ' be']
+// BPE-style: prompt is the full "To be, or not to be" — 7 BPE tokens
+// shared with the rest of the movie via lib/displayTokens. The argmax
+// (',') matches the generation Scene 34 lands on: "To be, or not to be,
+// that is the question." ' —' kept as a plausible runner-up (the
+// alternate Hamlet rendering with an em-dash).
+const SAMPLE_PROMPT_TOKENS = HAMLET_PROMPT_TOKENS.map((t) => t.text)
 const SAMPLE_LAST_IDX = SAMPLE_PROMPT_TOKENS.length - 1
 const SAMPLE_CANDIDATES = [
   ',', ' —', ' that', ' is', ' the', '.', ' a', ' to', '?', '!', ';', ' or',
@@ -1734,7 +1734,7 @@ function SampleLogitsColumn({ phase, speed }: { phase: number; speed: number }) 
         y={SAMPLE_LOGITS_Y + SAMPLE_CANDIDATES.length * SAMPLE_LOGITS_ROW_H + 18}
         textAnchor="middle"
         fontSize="9" fontFamily="var(--font-mono)" fill={ACCENT.dim}>
-        65 raw scores
+        ≈50K raw scores
       </text>
     </g>
   )
@@ -2134,7 +2134,7 @@ export function SampleSplitPane() {
 
   const calloutByPhase: ReactNode[] = [
     'During training every position predicts in parallel; during generation we only need the last. The hidden states for prior positions stay in the KV cache (next scene).',
-    'W_out is shape (d × V) = (384 × 65) for this tiny model. Some models (e.g. GPT-2) tie this matrix to the input embedding to save parameters.',
+    'W_out is shape (d × V) = (384 × ≈50K) for a typical BPE model. Some models (e.g. GPT-2) tie this matrix to the input embedding to save parameters.',
     'T = 1 means trust the distribution as-is. T → 0 collapses to argmax (greedy). T > 1 flattens — more random, more diverse, more creative.',
     'After the token is sampled it gets appended to the sequence and the whole forward pass runs again. That\'s autoregressive generation.',
   ]

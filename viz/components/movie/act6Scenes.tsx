@@ -5,7 +5,11 @@ import { motion } from 'framer-motion'
 import { useSpeed, usePlaying } from './speedContext'
 import { usePrompt } from './promptContext'
 import { SplitPaneScene, PhaseChip } from './splitPane'
-import { displayTokens, chipLabel } from '@/lib/displayTokens'
+import {
+  displayTokens,
+  chipLabel,
+  HAMLET_BPE_FULL,
+} from '@/lib/displayTokens'
 
 const ACCENT = {
   violet: '#a78bfa',
@@ -68,14 +72,10 @@ type Prediction = {
   topK: TopKEntry[]
 }
 
-// Canonical Hamlet line as BPE tokens. Both Scene 33 (single next-token
-// prediction) and Scene 34 (the autoregressive loop) ride this when the
-// prompt is a token-prefix of it. Final reads:
-// "To be, or not to be, that is the question."
-const HAMLET_BPE = [
-  'To', ' be', ',', ' or', ' not', ' to', ' be',
-  ',', ' that', ' is', ' the', ' question', '.',
-]
+// Canonical Hamlet line as BPE tokens. Single source of truth lives in
+// lib/displayTokens — same array drives scene 18's candidate list and
+// scene 22's loss-seq targets, so any retuning propagates everywhere.
+const HAMLET_BPE = HAMLET_BPE_FULL.map((t) => t.text)
 
 const TOPK_BPE_POOL = [
   ',', '.', ' the', ' a', ' is', ' was', ' that', ' to',

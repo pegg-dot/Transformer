@@ -17,17 +17,41 @@
  */
 export type DisplayToken = { text: string; id: number }
 
-const HAMLET: Record<string, DisplayToken[]> = {
-  'to be, or not to be': [
-    { text: 'To',   id: 1675 },
-    { text: ' be',  id: 307  },
-    { text: ',',    id: 11   },
-    { text: ' or',  id: 393  },
-    { text: ' not', id: 407  },
-    { text: ' to',  id: 284  },
-    { text: ' be',  id: 307  },
-  ],
-}
+/**
+ * Canonical Hamlet line tokenized BPE-style, with plausible GPT-2 IDs.
+ * Single source of truth — scenes 3, 5, 18, 22, 33, 34 all consume slices
+ * of this so the prompt portion and the generated continuation stay in
+ * lockstep no matter how the line is re-tuned.
+ *
+ *   indices 0..6  → the prompt:        "To be, or not to be"
+ *   indices 7..12 → the continuation:  ", that is the question."
+ */
+export const HAMLET_BPE_FULL: DisplayToken[] = [
+  { text: 'To',        id: 1675 },
+  { text: ' be',       id: 307  },
+  { text: ',',         id: 11   },
+  { text: ' or',       id: 393  },
+  { text: ' not',      id: 407  },
+  { text: ' to',       id: 284  },
+  { text: ' be',       id: 307  },
+  { text: ',',         id: 11   },
+  { text: ' that',     id: 326  },
+  { text: ' is',       id: 318  },
+  { text: ' the',      id: 262  },
+  { text: ' question', id: 1808 },
+  { text: '.',         id: 13   },
+]
+
+/** Length of the prompt portion ("To be, or not to be"). */
+export const HAMLET_PROMPT_LEN = 7
+
+/** Just the prompt portion of the Hamlet line. */
+export const HAMLET_PROMPT_TOKENS: DisplayToken[] =
+  HAMLET_BPE_FULL.slice(0, HAMLET_PROMPT_LEN)
+
+/** Just the continuation portion (what generation should produce). */
+export const HAMLET_CONTINUATION_TOKENS: DisplayToken[] =
+  HAMLET_BPE_FULL.slice(HAMLET_PROMPT_LEN)
 
 function stableId(t: string): number {
   let h = 5381
@@ -59,8 +83,7 @@ export function tokenStrings(
 export function displayTokens(prompt: string | null | undefined): DisplayToken[] {
   if (!prompt) return []
   const key = prompt.trim().toLowerCase()
-  const canon = HAMLET[key]
-  if (canon) return canon
+  if (key === 'to be, or not to be') return HAMLET_PROMPT_TOKENS
 
   // Generic fallback: keep leading whitespace attached to the next
   // word-or-number; punctuation (and stray symbols) become their own tokens.
