@@ -67,15 +67,16 @@ function blockColor(i: number, sat = 70, light = 65, alpha = 1): string {
 export function VizActIIIntro() {
   const speed = useSpeed()
   const playing = usePlaying()
-  const PHASES = 2
+  // One-shot phase machine: 0 → 1 and stay. Previous setInterval wrapped
+  // phase 1 → 0 right at scene-cut time, which caused the rightmost
+  // sibling block (and the rest of the stack) to start fading out for a
+  // frame before the cut. setTimeout doesn't wrap, so phase 1 holds for
+  // the remainder of the scene.
   const [phase, setPhase] = useState(0)
   useEffect(() => {
     if (!playing) return
-    const id = setInterval(
-      () => setPhase((p) => (p + 1) % PHASES),
-      5000 / speed,
-    )
-    return () => clearInterval(id)
+    const id = setTimeout(() => setPhase(1), 5000 / speed)
+    return () => clearTimeout(id)
   }, [speed, playing])
 
   // Hero: block index 3 (slightly right-of-center stack slot at x=780)
@@ -219,9 +220,9 @@ export function VizActIIIntro() {
             stroke={ACCENT.cyan}
             strokeWidth={1.6}
             initial={{ opacity: 0 }}
-            animate={{ opacity: phase === 0 ? [0.35, 0.85, 0.35] : 0 }}
+            animate={{ opacity: phase === 0 ? [0.4, 0.65, 0.4] : 0 }}
             transition={{
-              duration: 2.0 / speed,
+              duration: 2.6 / speed,
               repeat: Infinity,
               ease: 'easeInOut',
             }}
@@ -276,16 +277,17 @@ export function VizActIIIntro() {
             }}
             transition={{ duration: 1.2 / speed, delay: phase >= 1 ? 1.3 / speed : 0, ease: 'easeOut' }}
           />
-          {/* Bloom halo */}
+          {/* Bloom halo — softer than before so the 6-block stack
+              isn't washed out behind it. */}
           <motion.rect
             x={STREAM_X_START} y={STREAM_Y}
             height={STREAM_H} rx={STREAM_H / 2}
             fill="url(#intro-stream-bright)"
             filter="url(#intro-bloom)"
-            initial={{ width: 0, opacity: 0.5 }}
+            initial={{ width: 0, opacity: 0 }}
             animate={{
               width: phase >= 1 ? STREAM_LEN : 0,
-              opacity: phase >= 1 ? [0.6, 0.95, 0.85] : 0,
+              opacity: phase >= 1 ? 0.55 : 0,
             }}
             transition={{
               width: { duration: 1.2 / speed, delay: phase >= 1 ? 1.3 / speed : 0, ease: 'easeOut' },
@@ -827,10 +829,10 @@ function StackBlockBody({ idx, speed }: { idx: number; speed: number }) {
               height={cellSize - 2}
               rx={2}
               fill={color}
-              initial={{ opacity: 0.28 }}
-              animate={{ opacity: [0.28, 0.9, 0.28] }}
+              initial={{ opacity: 0.4 }}
+              animate={{ opacity: [0.4, 0.65, 0.4] }}
               transition={{
-                duration: 1.8 / speed,
+                duration: 2.4 / speed,
                 delay: (idx * 0.08 + q * 0.06 + k * 0.05) / speed,
                 repeat: Infinity,
                 ease: 'easeInOut',
@@ -859,10 +861,10 @@ function StackBlockBody({ idx, speed }: { idx: number; speed: number }) {
             width={barW}
             rx={2}
             fill={ACCENT.amber}
-            initial={{ height: 26, opacity: 0.32 }}
-            animate={{ height: [26, 70, 26], opacity: [0.32, 0.9, 0.32] }}
+            initial={{ height: 34, opacity: 0.4 }}
+            animate={{ height: [34, 56, 34], opacity: [0.4, 0.7, 0.4] }}
             transition={{
-              duration: 1.6 / speed,
+              duration: 2.2 / speed,
               delay: (idx * 0.1 + bi * 0.09) / speed,
               repeat: Infinity,
               ease: 'easeInOut',
