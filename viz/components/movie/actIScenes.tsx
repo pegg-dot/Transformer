@@ -541,6 +541,7 @@ export function VizActIIntro() {
 export function VizTokenization() {
   const { prompt } = usePrompt()
   const speed = useSpeed()
+  const playing = usePlaying()
 
   const tokens = useMemo(
     () => displayTokens(prompt).slice(0, 10),
@@ -549,6 +550,30 @@ export function VizTokenization() {
   const STAGGER = 0.12 / speed
   const PHASE_DROP = 1.6 / speed
   const PHASE_ID = 3.4 / speed
+  // Scanner doesn't begin stepping until the ID-pill reveal is complete
+  // plus a small settle. Before that it just rests on token 0.
+  const SCANNER_START_S = (3.4 + tokens.length * 0.12 + 1.6) / speed
+
+  // Cursor walks token-by-token through the strip. Cycle matches the
+  // right pane's cursor (TokensSplitPane) so they stay phase-aligned.
+  const [cursor, setCursor] = useState(0)
+  useEffect(() => {
+    if (!playing) return
+    if (tokens.length === 0) return
+    const startMs = SCANNER_START_S * 1000
+    const stepMs = 700 / speed
+    let intervalId: ReturnType<typeof setInterval> | null = null
+    const startTimer = setTimeout(() => {
+      intervalId = setInterval(
+        () => setCursor((c) => (c + 1) % tokens.length),
+        stepMs,
+      )
+    }, startMs)
+    return () => {
+      clearTimeout(startTimer)
+      if (intervalId) clearInterval(intervalId)
+    }
+  }, [tokens.length, speed, playing, SCANNER_START_S])
 
   const display = (t: string) => (t.startsWith(' ') ? '·' + t.slice(1) : t)
 
@@ -747,38 +772,28 @@ export function VizTokenization() {
           BPE-style subword tokens · vocab ≈ 50K · IDs in [0, ≈50K)
         </motion.text>
 
-        {/* Looping scanner — after the initial reveal, a violet bar sweeps
-            left→right repeatedly, briefly pulsing each token+ID column it
-            passes. Keeps the scene visually alive for its full duration. */}
+        {/* Token-following scanner — after the initial reveal, the violet
+            block snaps to each token+ID column in turn (driven by the
+            cursor state above, same step rate as the right-pane phase
+            chip). Spring transition gives the snap a soft settle. */}
         <motion.g
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: PHASE_ID + tokens.length * STAGGER + 1.2 / speed }}
         >
           <motion.rect
-            x={startX - cellW / 2}
+            initial={false}
+            animate={{ x: startX + cursor * cellW - cellW / 2 }}
+            transition={{ type: 'spring', stiffness: 220, damping: 26 }}
             y={400}
             width={cellW * 0.9}
             height={210}
             rx={6}
-            fill="rgba(167,139,250,0.06)"
+            fill="rgba(167,139,250,0.10)"
             stroke={ACCENT.violet}
-            strokeOpacity={0.55}
-            strokeWidth={1.5}
+            strokeOpacity={0.85}
+            strokeWidth={1.8}
             filter="url(#tok-glow)"
-            animate={{
-              x: [
-                startX - cellW / 2,
-                startX + (tokens.length - 1) * cellW - cellW / 2,
-                startX - cellW / 2,
-              ],
-            }}
-            transition={{
-              duration: (tokens.length * 0.55) / speed,
-              ease: 'linear',
-              repeat: Infinity,
-              delay: PHASE_ID + tokens.length * STAGGER + 1.6 / speed,
-            }}
           />
         </motion.g>
 
@@ -3242,15 +3257,25 @@ export function TokensSplitPane() {
   const speed = useSpeed()
   const playing = usePlaying()
 
-  // Cycle a "currently scanning" index in time with the left-pane scanner
+  // Cycle a "currently scanning" index in time with the left-pane scanner.
+  // Delay matches VizTokenization's SCANNER_START_S so both panes step
+  // through tokens together once the ID-pill reveal has finished.
   const [cursor, setCursor] = useState(0)
   useEffect(() => {
     if (!playing) return
-    const id = setInterval(
-      () => setCursor((c) => (c + 1) % total),
-      550 / speed,
-    )
-    return () => clearInterval(id)
+    const startMs = ((3.4 + total * 0.12 + 1.6) * 1000) / speed
+    const stepMs = 700 / speed
+    let intervalId: ReturnType<typeof setInterval> | null = null
+    const startTimer = setTimeout(() => {
+      intervalId = setInterval(
+        () => setCursor((c) => (c + 1) % total),
+        stepMs,
+      )
+    }, startMs)
+    return () => {
+      clearTimeout(startTimer)
+      if (intervalId) clearInterval(intervalId)
+    }
   }, [total, speed, playing])
 
   const current = tokens[cursor]

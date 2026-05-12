@@ -133,9 +133,10 @@ export const SCENES: MovieScene[] = [
     caption:
       'The prompt gets split into subword tokens, each mapped to an integer ID from the model vocabulary.',
     accent: ACCENT.violet,
-    // One scanner cycle is ~5.5s (10 tokens × 550ms). 10s = ~1.8 cycles
-    // — enough to read the IDs settling without the loop visibly repeating.
-    durationMs: 10000,
+    // Reveal (top text → pills → IDs → callout) runs to ~5.8s. Scanner
+    // then steps through 7 BPE tokens at 700ms each = 4.9s. 12s covers
+    // one full scanner pass with a small hold on the final token.
+    durationMs: 12000,
     promptAware: true,
     part: 'tokenize',
     panelAnchor: 'fullscreen',
