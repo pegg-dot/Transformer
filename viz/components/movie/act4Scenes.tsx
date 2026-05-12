@@ -1398,15 +1398,18 @@ export function CrossEntropySplitPane() {
 const CELS_VB_W = 1400
 const CELS_VB_H = 1000
 
-// 9 input positions → 9 next-token targets. Reads "The cat sa" → predicting
-// "he cat sat".
-const CELS_INPUTS = ['T', 'h', 'e', ' ', 'c', 'a', 't', ' ', 's']
-const CELS_TARGETS = ['h', 'e', ' ', 'c', 'a', 't', ' ', 's', 'a']
+// 7 input BPE tokens → 7 next-token targets. Inputs are the canonical
+// "To be, or not to be" tokenization shared with the rest of the movie;
+// targets are the same sequence shifted right by one — so position 0
+// (input 'To') has target ' be', position 6 (input second ' be') has
+// target ',' (the comma that opens Hamlet's "…, that is the question.").
+const CELS_INPUTS = ['To', ' be', ',', ' or', ' not', ' to', ' be']
+const CELS_TARGETS = [' be', ',', ' or', ' not', ' to', ' be', ',']
 const CELS_T = CELS_INPUTS.length
 
 // Per-position losses (deterministic). Mostly low with a few hot spots so
 // the mean is realistic and the per-column variance reads.
-const CELS_LOSSES = [0.62, 0.41, 0.55, 1.18, 0.38, 0.49, 1.92, 0.71, 1.34]
+const CELS_LOSSES = [0.62, 0.41, 0.55, 1.18, 0.38, 1.92, 0.71]
 const CELS_MEAN = +(CELS_LOSSES.reduce((a, b) => a + b, 0) / CELS_T).toFixed(2)
 
 const CELS_COL_W = 96
@@ -1434,7 +1437,8 @@ function celsLossColor(loss: number): string {
 }
 
 function celsTokDisplay(t: string): string {
-  return t === ' ' ? '␣' : t
+  if (t.startsWith(' ')) return '·' + t.slice(1)
+  return t
 }
 
 export function VizCELossSeq({ phase }: { phase: number }) {
