@@ -133,7 +133,9 @@ export const SCENES: MovieScene[] = [
     caption:
       'The prompt gets split into subword tokens, each mapped to an integer ID from the model vocabulary.',
     accent: ACCENT.violet,
-    durationMs: 26000,
+    // One scanner cycle is ~5.5s (10 tokens × 550ms). 10s = ~1.8 cycles
+    // — enough to read the IDs settling without the loop visibly repeating.
+    durationMs: 10000,
     promptAware: true,
     part: 'tokenize',
     panelAnchor: 'fullscreen',
@@ -156,7 +158,9 @@ Nothing about the model cares what the original text looked like after this poin
     caption:
       'Start from bytes. Count adjacent pairs. Merge the most frequent. Repeat — thousands of times. (This educational nanoGPT skips BPE and uses char-level from Scene 3; production GPTs all use BPE.)',
     accent: ACCENT.violet,
-    durationMs: 36000,
+    // 7 merge steps × 2.4s = 16.8s for one full cycle. 22s = ~1.3 cycles
+    // so the final "language" merge has time to land before the cut.
+    durationMs: 22000,
     part: 'tokenize',
     panelAnchor: 'fullscreen',
     // BPE merge demo on a different word in the body — keep the global
@@ -182,7 +186,9 @@ Note: the actual nanoGPT this project is built around uses character-level token
     caption:
       'A token ID indexes into a learned embedding table. The matching row IS the model’s view of that token.',
     accent: ACCENT.violet,
-    durationMs: 28000,
+    // 7 tokens × 2.2s cursor cycle = ~15.4s per full pass; 20s = ~1.3
+    // passes so every token's row gets pulled out without a visible loop.
+    durationMs: 20000,
     part: 'embed',
     panelAnchor: 'fullscreen',
     details: `The embedding matrix is a learned parameter table: shape [vocab_size, d_model]. In our tiny model that's [65, 384]. For every token ID, look up row ID, get back a 384-dimensional vector.
@@ -203,7 +209,8 @@ This is where the network first starts to encode meaning. Tokens that behave sim
     caption:
       'A position vector is added directly to the token embedding. This nanoGPT uses a learned table indexed by position; the original Transformer used fixed sinusoidal patterns; modern models use RoPE (Scene 31).',
     accent: ACCENT.violet,
-    durationMs: 26000,
+    // 8 positions × 1.8s = 14.4s for one full sweep. 17s = ~1.2 sweeps.
+    durationMs: 17000,
     part: 'positional',
     panelAnchor: 'fullscreen',
     details: `Attention on its own has no notion of order — "cat sat" and "sat cat" would produce identical attention outputs. Positional encoding fixes this by adding a position-dependent pattern to every embedding, so position 0 looks different from position 5 even for the same token.
@@ -261,7 +268,8 @@ Nothing in the model has done attention yet. Tokens have not "talked" to each ot
     caption:
       'Subtract mean → divide by std → scale & shift (γ, β). Runs before attention AND before FFN.',
     accent: ACCENT.violet,
-    durationMs: 26000,
+    // 5 phases × 2.4s = 12s for one full cycle. 14s = ~1.17 cycles.
+    durationMs: 14000,
     part: 'layernorm',
     panelAnchor: 'fullscreen',
     details: `LayerNorm stabilizes training. Without it, gradients through deep stacks of attention/FFN can explode or vanish. The fix: at every layer boundary, renormalize the input vector so its mean is 0 and variance is 1, then apply two learned scale/shift parameters (γ and β) to let the model undo the normalization if useful.
@@ -283,7 +291,8 @@ Modern models (LLaMA, PaLM) switched to RMSNorm, which drops the mean-subtractio
     caption:
       'Three learned matrices project the same input into query, key, and value vectors.',
     accent: ACCENT.violet,
-    durationMs: 22000,
+    // 4 phases × 2.4s = 9.6s for one full cycle. 12s = ~1.25 cycles.
+    durationMs: 12000,
     part: 'attention',
     panelAnchor: 'fullscreen',
     details: `Q, K, V are three linear projections of the same input vector. Every token gets its own Q (what am I looking for?), K (how can I be found?), and V (what do I contribute?). Three matrices, one shape each [d_model × d_head].
@@ -547,7 +556,8 @@ This scalar is the only number backprop cares about. Every weight in the model g
     caption:
       'A length-T sequence produces T separate predictions in parallel. Losses average into L_seq.',
     accent: ACCENT.red,
-    durationMs: 21000,
+    // 3 phases (~4.5s + 5s + 2.5s ≈ 12s). 13s gives ~1.1 cycles.
+    durationMs: 13000,
     part: 'loss',
     details: `A length-T sequence produces T separate next-token predictions in parallel (thanks to causal masking — the model can't cheat by looking ahead). Each position has its own prediction and its own target; you compute cross-entropy at every position and average.
 
