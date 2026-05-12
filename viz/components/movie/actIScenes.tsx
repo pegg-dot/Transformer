@@ -2656,16 +2656,16 @@ export function VizReadyForBlock0() {
   ]
   const colorFor = (t: number) => colorPalette[t % colorPalette.length]
 
-  // ── Composition (revised) ─────────────────────────────────────────────
-  // Composition centers around viewBox y≈420 — was bottom-heavy at y≈490
-  // with caption at 800–830 leaving the upper third dead. Moved everything
-  // up ~80px, shrunk the slab horizontally (was 920px wide, now 600px), and
-  // pushed Block 0 left so its intake face nearly touches the slab's front
-  // right edge. Reads as "matrix slides into block" instead of "matrix
-  // sits near block."
+  // ── Composition — one shared centerline drives everything ────────────
+  // AXIS_Y is the single horizontal transfer axis. Slab, connector, and
+  // Block 0 all derive their vertical positions from it so the handoff
+  // reads as "matrix → arrow → block" along a clean baseline instead of
+  // three separately-eyeballed shapes.
+  const AXIS_Y = 400
+  const SLAB_HALF_H = 100
   const slab = {
-    backY: 300,
-    frontY: 500,
+    backY: AXIS_Y - SLAB_HALF_H, // 300
+    frontY: AXIS_Y + SLAB_HALF_H, // 500
     backLeft: 180,
     backRight: 700,
     frontLeft: 140,
@@ -2677,15 +2677,28 @@ export function VizReadyForBlock0() {
     ` L ${slab.frontRight} ${slab.frontY}` +
     ` L ${slab.frontLeft} ${slab.frontY} Z`
 
-  // Block 0 intake — its left/front face touches the slab's front-right
-  // edge so the handoff is visually direct.
-  const intakeX = slab.frontRight + 18 // very small gap so slab "abuts" block
-  const intakeTop = slab.backY - 8
-  const intakeBot = slab.frontY + 8
-  // Block 0 origin (top-left of its top face). Moved left to align with
-  // slab's right edge.
-  const blockOX = intakeX + 4
-  const blockOY = slab.backY - 36
+  // Slab exit anchor — midpoint of the slab's right edge, sitting on AXIS_Y.
+  const slabExit = {
+    x: slab.frontRight,
+    y: AXIS_Y,
+  }
+
+  // Block 0 — body bounding box vertically centered on AXIS_Y. Block path
+  // is 320px tall, so half-height is 160. The +50/-50 perspective shifts
+  // in the hexagon path stretch the bbox an extra ~50px wider but stay
+  // symmetric in y.
+  const BLOCK_HALF_H = 160
+  const TRANSFER_GAP = 54 // visible space between slab exit and block entry
+  const blockEntry = {
+    x: slabExit.x + TRANSFER_GAP,
+    y: AXIS_Y,
+  }
+  const intakeX = blockEntry.x
+  const intakeTop = AXIS_Y - 108
+  const intakeBot = AXIS_Y + 108
+  // Block top-left so the path's bounding box (height 320) centers on AXIS_Y.
+  const blockOX = blockEntry.x + 4
+  const blockOY = AXIS_Y - BLOCK_HALF_H
 
   // Handoff pulse — fires once after the slab+block reveal, travels from the
   // slab's right edge into the intake slot and triggers a block-glow flash.
@@ -2995,14 +3008,34 @@ export function VizReadyForBlock0() {
             )
           })}
 
-          {/* Forward arrow — short, clean, slab-edge → intake. Shorter than
-              before (intake is now ~18px from slab) so the handoff is a
-              direct visual line rather than a long pointer. */}
-          <motion.path
-            d={`M ${slab.frontRight + 2} ${(slab.backY + slab.frontY) / 2} L ${intakeX - 6} ${(slab.backY + slab.frontY) / 2} M ${intakeX - 14} ${(slab.backY + slab.frontY) / 2 - 6} L ${intakeX - 4} ${(slab.backY + slab.frontY) / 2} L ${intakeX - 14} ${(slab.backY + slab.frontY) / 2 + 6}`}
-            stroke={ACCENT.violet} strokeWidth={2.2} fill="none" strokeLinecap="round"
-            initial={{ opacity: 0 }} animate={{ opacity: 0.85 }}
-            transition={{ delay: 2.0 / speed, duration: 0.5 / speed }} />
+          {/* Connector — slabExit → blockEntry, both on AXIS_Y. Drawn from
+              shared anchors, not eyeballed offsets, so the line lands on
+              the block's intake at the same vertical center as the slab's
+              output face. */}
+          {(() => {
+            const ax = slabExit.x + 2
+            const bx = blockEntry.x - 6
+            const ay = slabExit.y
+            const headLen = 10
+            const headHalf = 6
+            return (
+              <motion.path
+                d={
+                  `M ${ax} ${ay} L ${bx} ${ay}` +
+                  ` M ${bx - headLen} ${ay - headHalf}` +
+                  ` L ${bx} ${ay}` +
+                  ` L ${bx - headLen} ${ay + headHalf}`
+                }
+                stroke={ACCENT.violet}
+                strokeWidth={2.2}
+                fill="none"
+                strokeLinecap="round"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.9 }}
+                transition={{ delay: 2.0 / speed, duration: 0.5 / speed }}
+              />
+            )
+          })()}
         </motion.g>
 
         {/* ───── Handoff pulse — slab right edge → intake gate ─────
@@ -3013,14 +3046,14 @@ export function VizReadyForBlock0() {
           r={5}
           fill={ACCENT.violet}
           filter="url(#intake-bloom)"
-          cy={(slab.backY + slab.frontY) / 2}
-          initial={{ cx: slab.frontRight + 4, opacity: 0 }}
+          cy={AXIS_Y}
+          initial={{ cx: slabExit.x + 4, opacity: 0 }}
           animate={{
             cx: [
-              slab.frontRight + 4,
-              slab.frontRight + 4,
-              intakeX,
-              intakeX,
+              slabExit.x + 4,
+              slabExit.x + 4,
+              blockEntry.x,
+              blockEntry.x,
             ],
             opacity: [0, 0, 1, 0],
           }}
