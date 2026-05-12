@@ -193,18 +193,19 @@ export function VizActIIIntro() {
           )
         })}
 
-        {/* Hero block — animates between centered+scaled (phase A) and slot 3 (phase B) */}
+        {/* Hero block — animates between centered+scaled (phase A) and slot 3 (phase B).
+            initial={false} prevents Framer Motion from animating from the
+            SVG's default (scale=1) to the phase-0 target (scale=2.6) on
+            mount — which was the "zooms in really quickly at the beginning"
+            artifact. Mount now snaps to phase-0 state instantly; the phase
+            0→1 transition still animates normally. */}
         <motion.g
+          initial={false}
           animate={{
             x: heroDx,
             y: heroDy,
             scale: heroScale,
           }}
-          // Bigger initial scale (2.6 vs prior 1.45) means the pull-back
-          // covers more visual distance — extend the duration so the move
-          // reads as a deliberate camera dolly-out, not a snap. 2.6s gives
-          // the eye time to track the block shrinking and the siblings
-          // appearing without feeling rushed.
           transition={{ duration: 2.6 / speed, ease: [0.32, 0, 0.4, 1] }}
           style={{ transformOrigin: `${heroFinalX}px ${heroFinalY}px` }}
         >
