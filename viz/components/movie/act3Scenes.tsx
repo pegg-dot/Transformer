@@ -135,7 +135,9 @@ export function VizActIIIntro() {
           ACT III · THE FULL STACK · ZOOMING OUT
         </text>
 
-        {/* Title — crossfades between phases */}
+        {/* Title — crossfades between phases. Phase-1 title is delayed so
+            it lands AFTER the camera has finished pulling back, not while
+            the viewer's eye is still tracking the zoom-out motion. */}
         {[
           'the one block we just studied …',
           '… is repeated six times.',
@@ -147,7 +149,12 @@ export function VizActIIIntro() {
             fontStyle="italic" fill="rgba(255,255,255,0.95)"
             initial={{ opacity: 0 }}
             animate={{ opacity: phase === i ? 1 : 0 }}
-            transition={{ duration: 0.5 / speed, ease: 'easeOut' }}
+            transition={{
+              duration: 0.5 / speed,
+              ease: 'easeOut',
+              // Phase-1 title waits until the pull-back has mostly settled.
+              delay: i === 1 && phase === 1 ? 1.6 / speed : 0,
+            }}
           >
             {t}
           </motion.text>
@@ -194,8 +201,10 @@ export function VizActIIIntro() {
           }}
           // Bigger initial scale (2.6 vs prior 1.45) means the pull-back
           // covers more visual distance — extend the duration so the move
-          // reads as a deliberate camera dolly-out, not a snap.
-          transition={{ duration: 1.7 / speed, ease: [0.32, 0, 0.4, 1] }}
+          // reads as a deliberate camera dolly-out, not a snap. 2.6s gives
+          // the eye time to track the block shrinking and the siblings
+          // appearing without feeling rushed.
+          transition={{ duration: 2.6 / speed, ease: [0.32, 0, 0.4, 1] }}
           style={{ transformOrigin: `${heroFinalX}px ${heroFinalY}px` }}
         >
           <StackBlockBody idx={heroIdx} speed={speed} />
