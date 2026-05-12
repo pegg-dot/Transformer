@@ -437,7 +437,7 @@ Modern LLMs (LLaMA, PaLM, Mistral) push further with gated variants like SwiGLU:
     title: 'That block, six times over.',
     caption: 'Zoom back out. The block we just studied is the whole recipe — repeated six times, with one residual stream climbing through it all.',
     accent: ACCENT.cyan,
-    durationMs: 12000,
+    durationMs: 10000,
     details: `Act II was a deep dive into a single transformer block: LayerNorm, multi-head attention, FFN, two residual adds. Act III zooms back out. The full transformer is just that block, stacked six times. The signal — a 384-dim vector per token — climbs through every one of them, gathering refinements along the way.
 
 Six blocks in our tiny model. GPT-2 Small had 12. GPT-2 XL had 48. GPT-4 reportedly ~120. Depth is the only knob; the recipe is fixed.`,
