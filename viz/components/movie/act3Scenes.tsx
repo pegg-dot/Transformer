@@ -1101,23 +1101,27 @@ function StackInputOutput({ speed }: { speed: number }) {
         </text>
       </g>
 
-      {/* Output chip — magenta, glowing, scale-pulse to draw the eye */}
-      <motion.g
-        transform={`translate(1320, ${STREAM_Y - 14})`}
-        animate={{ scale: [1, 1.06, 1] }}
-        transition={{ duration: 2 / speed, repeat: Infinity, ease: 'easeInOut' }}
-        style={{ transformOrigin: `1350px ${STREAM_Y + 11}px` }}
-      >
-        <rect width={60} height={50} rx={4}
-          fill="rgba(236,72,153,0.18)"
-          stroke={ACCENT.pink} strokeWidth={1.6}
-          filter="url(#stack-glow)" />
-        <text x={30} y={32} textAnchor="middle"
-          fontSize="16" fontFamily="var(--font-display)" fontStyle="italic"
-          fill={ACCENT.pink}>
-          out
-        </text>
-      </motion.g>
+      {/* Output chip — magenta, glowing, scale-pulse to draw the eye.
+          Outer <g> handles SVG translate so Framer's CSS transform on the
+          inner motion.g (the scale pulse) doesn't blow away the translate
+          and render the chip at SVG origin (top-left). */}
+      <g transform={`translate(1320, ${STREAM_Y - 14})`}>
+        <motion.g
+          animate={{ scale: [1, 1.06, 1] }}
+          transition={{ duration: 2 / speed, repeat: Infinity, ease: 'easeInOut' }}
+          style={{ transformOrigin: '30px 25px' }}
+        >
+          <rect width={60} height={50} rx={4}
+            fill="rgba(236,72,153,0.18)"
+            stroke={ACCENT.pink} strokeWidth={1.6}
+            filter="url(#stack-glow)" />
+          <text x={30} y={32} textAnchor="middle"
+            fontSize="16" fontFamily="var(--font-display)" fontStyle="italic"
+            fill={ACCENT.pink}>
+            out
+          </text>
+        </motion.g>
+      </g>
     </g>
   )
 }
