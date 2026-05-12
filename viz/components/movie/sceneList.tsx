@@ -556,8 +556,10 @@ This scalar is the only number backprop cares about. Every weight in the model g
     caption:
       'A length-T sequence produces T separate predictions in parallel. Losses average into L_seq.',
     accent: ACCENT.red,
-    // 3 phases (~4.5s + 5s + 2.5s ≈ 12s). 13s gives ~1.1 cycles.
-    durationMs: 13000,
+    // 3 phases × 5500ms = 16.5s for one full cycle (the earlier audit
+    // misreported this as 12s — re-verified against the setInterval).
+    // 17s = ~1.03 cycles so L_seq has time to land before the cut.
+    durationMs: 17000,
     part: 'loss',
     details: `A length-T sequence produces T separate next-token predictions in parallel (thanks to causal masking — the model can't cheat by looking ahead). Each position has its own prediction and its own target; you compute cross-entropy at every position and average.
 
