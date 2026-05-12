@@ -79,11 +79,11 @@ export function VizActIIIntro() {
     return () => clearTimeout(id)
   }, [speed, playing])
 
-  // Hero: block index 3 (slightly right-of-center stack slot at x=780)
-  // Phase 0 starts heavily scaled up (2.6×) so this scene reads as the
-  // direct continuation of Act II's deep dive — viewer was inside the
-  // FFN at scene 15; we land on Block 0 still big, then pull back. The
-  // 1.45× we used before felt like a fresh zoom, not a continuation.
+  // Hero: block index 3 (slightly right-of-center stack slot at x=780).
+  // Phase 0 starts moderately scaled up (1.7×) — enough to read as
+  // "the block we just studied, isolated" while still leaving headroom
+  // for the labels and the bottom message panel. The earlier 2.6×
+  // pushed the block off the visible frame and felt too aggressive.
   const heroIdx = 3
   const heroFinalX = BLOCK_CENTERS[heroIdx]
   const heroFinalY = BLOCK_CENTER_Y
@@ -91,7 +91,7 @@ export function VizActIIIntro() {
   const heroCenterY = 420
   const heroDx = phase === 0 ? heroCenterX - heroFinalX : 0
   const heroDy = phase === 0 ? heroCenterY - heroFinalY : 0
-  const heroScale = phase === 0 ? 2.6 : 1
+  const heroScale = phase === 0 ? 1.7 : 1
 
   return (
     <div className="relative h-full w-full">
