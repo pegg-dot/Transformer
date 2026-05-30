@@ -48,11 +48,13 @@ Always see `PROJECT_STATE.md`. That file is the source of truth — every sessio
 
 ## Run the visualizer locally
 
-The interactive transformer movie lives in `viz/` (a Next.js 16 app). To watch it:
+The interactive transformer movie lives in `viz/` (a Next.js 16 app). Anyone can clone this repo and run it locally:
 
 ```bash
-# from the repo root
-cd viz
+# clone and enter the project
+git clone https://github.com/pegg-dot/Transformer.git
+cd Transformer/viz
+
 npm install        # first time only
 npm run dev        # starts the dev server
 ```
