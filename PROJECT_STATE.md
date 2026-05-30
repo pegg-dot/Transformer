@@ -2,9 +2,9 @@
 
 > This file is the source of truth for where the project is. Every session should **read this first** and **update it last**.
 
-**Last updated:** 2026-04-21 (Phase 2 finish-pass landed: perf audit, 10 MB compact activations, OG image, vercel.json. All prep pushed to main. Interactive `vercel login` + first deploy is the one remaining manual step.)
-**Current phase:** Phase 2 — deploy-ready. Everything except the one-time Vercel auth is done. After deploy + smoke-test, Phase 2 flips to ✅.
-**Next action:** Run the two commands at the bottom of the "Deploy handoff" section below. They open a browser for one-time Vercel auth, then publish. 5 minutes.
+**Last updated:** 2026-05-30 (Reconciliation pass. The viz grew far past the Phase-2 MVP into a full cinematic "movie" — ~34 scenes across Acts I–VI — over ~130 commits since Apr 21. README now ships clone+run instructions for anyone. Everything committed and pushed; working tree clean. Still never deployed to a public URL.)
+**Current phase:** Phase 2 — content complete, **not deployed**. The visualizer is a polished guided movie, runnable locally with `cd viz && npm install && npm run dev`. The only thing standing between this and Phase 2's actual success criterion ("a public, DM-able URL") is the one-time Vercel deploy, which has never been run.
+**Next action:** Decide whether to (a) deploy to a public URL — see "Deploy handoff" below — or (b) move on to Phase 3 (Llama-3 modernization), which is untouched. As of this update, Nate chose to just refresh this state file; no new build work started.
 
 ---
 
@@ -15,7 +15,7 @@
 | 0. Scaffold repo | ✅ Done | This repo | Docs + prompts in place |
 | 1. nanoGPT from scratch | ✅ Done | `model/gpt.py`, `train.py`, `sample.py`, `checkpoints/gpt.pt` | 10.79M params; loss 4.28→1.88 in 500 iters on MPS |
 | 1.5. Instrument for viz | ✅ Done | `model/capture_schema.py`, `hooks.py`, `capture.py`, `export_onnx.py`; `activations.json` (51 MB, T=66), `model.onnx` (42 MB) | Hooks attach externally; attn scores/weights recomputed from Q/K; ONNX matches PyTorch to <1e-5. 5000-iter retrain complete (train 1.05, val 1.50); artifacts regenerated against new checkpoint. |
-| 2. Visualizer MVP | ⚠️ Deploy-ready | `viz/` (Next.js 16, Turbopack, TS strict, Tailwind v4); `viz/PERF_AUDIT.md`; `viz/vercel.json`; OG+Twitter image routes | Live ONNX gen + 7 replay panels + Beginner/Advanced toggle + Explain-this popovers + `/tour` all working. Build + typecheck clean. Compact activations (10.6 MB / 3.5 MB gz) ship alongside canonical (27 MB). OG + Twitter 1200×630 images with attention-heatmap background. vercel.json sets immutable cache on model/activations/ort. Pending only: one-time `vercel login` + deploy, then flip this to ✅. |
+| 2. Visualizer MVP → **cinematic movie** | ⚠️ Content complete, **not deployed** | `viz/` (Next.js 16, Turbopack, TS strict, Tailwind v4) | Far exceeded the MVP. Homepage is now a guided **movie**: `MovieOrchestrator` plays ~34 scenes across 7 act files (`introScenes`, `actIScenes`, `act2`–`act6Scenes`) with dedicated scene components (`components/scenes/`), 3D deep-dives (`components/deepdive/`: 3D embedding space, multi-head parallel, self-attention step, FFN neurons, KV-cache steps), scene transitions, a speed control, chapter rail, and reload-returns-to-splash behavior. Original MVP pieces (live ONNX generator, 7 replay panels, Beginner/Advanced toggle, Explain-this popovers, `/tour`) still exist as components. Build + typecheck clean. Compact activations (10.6 MB / 3.5 MB gz) + canonical (27 MB). OG + Twitter 1200×630 images. vercel.json sets immutable cache. **Still pending: the one-time `vercel login` + deploy.** No `.vercel` link exists; there is no public URL. Until that runs, Phase 2's success criterion is unmet purely on logistics. |
 | 3. Modernize to Llama 3 | ⏳ Not started | Updated model + A/B toggle in viz | |
 | 4. Fine-tune (LoRA/Unsloth) | ⏳ Not started | Fine-tuned checkpoint | |
 | 5. RLVR with GRPO | ⏳ Not started | Reasoning checkpoint | |
@@ -98,6 +98,15 @@ None (deploy is manual only because CLI OAuth is interactive).
 ## Session log
 
 Append most recent at top.
+
+### 2026-05-30 — Reconciliation + README-for-strangers (no new build)
+- **Context:** ~130 commits landed between Apr 23 and May 30 that this file never recorded — the visualizer was rebuilt from the MVP panel-scroll into a full cinematic **movie**. This session reconciled the docs to reality; no model or feature work.
+- **What the viz actually is now:** `app/page.tsx` renders `MovieOrchestrator` over `SCENES` (~34 scenes). Acts live in `components/movie/` (`introScenes`, `actIScenes`, `act2Scenes`…`act6Scenes`, plus `sceneList`, `transitions`, `speedContext`, `promptContext`, `splitPane`, `panelKit`). Per-concept scenes in `components/scenes/` (Tokenization, Embedding, QKV, AttentionScores, AttentionArcs, MultiHead, FFN, Stack, Sampling). 3D deep-dives in `components/deepdive/` (EmbeddingSpace3D, MultiHeadParallel, SelfAttentionStep, FeedForwardNeurons, KVCacheSteps). Canon Hamlet "To be, or not to be" BPE tokens flow through via `lib/displayTokens.ts`.
+- **README:** root `README.md` already had a local-run section; added a `git clone …/Transformer.git` step so a stranger landing on the public GitHub repo can clone → `cd Transformer/viz` → `npm install` → `npm run dev` with no missing steps. Repo confirmed PUBLIC. `viz/README.md` is still create-next-app boilerplate (cosmetic; not blocking).
+- **Repo hygiene:** everything committed and pushed to `origin/main`; working tree clean.
+- **Honest status of the original roadmap:** Phases 0/1/1.5 ✅. Phase 2 over-delivered in content but **was never deployed** — no public URL, which is ironic given a shareable URL is the project's #1 stated goal. Phases 3 (Llama-3: RoPE/SwiGLU/RMSNorm/GQA — `model/gpt.py` is still the original), 4 (fine-tune), 5 (GRPO), 6 (public ship + writeup) are all untouched.
+- **Decision this session:** Nate asked "did we do all the phases?" → answer is no, and the standout gap is the missing deploy. Nate chose to just refresh this state file for now rather than deploy or start Phase 3.
+- **Cleanest next action when ready:** run the "Deploy handoff" commands below to close Phase 2 for real, OR open the Phase 3 prompt to modernize the model.
 
 ### 2026-04-21 — Phase 2 finish-pass (perf + OG + deploy prep)
 - **M1 — perf audit.** `viz/PERF_AUDIT.md` captured full baselines. `viz/public/` is 104 MB: `model.onnx` 42 MB + `activations.json` 27 MB + ORT WASM 36 MB + tiny assets. `npm run build` clean; first-load JS for `/` is ~1.5 MB raw / ~450 KB gz (well under the 1 MB hard constraint). Biggest chunk is three.js + r3f at 313 KB gz. Vercel auto-Brotlis `application/json` but not `application/octet-stream`, so model.onnx and the ORT WASM ship raw on the wire.
