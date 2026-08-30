@@ -1,131 +1,220 @@
 # Architecture
 
-The system is two tracks that compound: **Model** and **Viz**. They're joined by a simple handoff format — a captured activation record plus an ONNX export of the trained model.
+The repository has two connected parts: a **model track** in Python/PyTorch and a **visualization track** in Next.js/TypeScript.
 
-```
-  ┌────────────────────────────────────────────────────────────────┐
-  │                          MODEL TRACK                            │
-  │                                                                 │
-  │  tinyshakespeare ─▶ nanoGPT ─▶ Llama3-arch ─▶ fine-tune ─▶ RLVR │
-  │                      │             │                            │
-  │                  forward hooks capture every intermediate       │
-  │                      │             │                            │
-  │                      ▼             ▼                            │
-  │              activations.json   model.onnx                      │
-  └──────────────────────┬──────────────────────────────────────────┘
-                         │
-                         │  (handoff — both artifacts are the API between tracks)
-                         │
-  ┌──────────────────────▼──────────────────────────────────────────┐
-  │                           VIZ TRACK                             │
-  │                                                                  │
-  │  Next.js app ─▶ load ONNX via transformers.js ─▶ run live        │
-  │       │                                                          │
-  │       ├─ D3 heatmaps (attention, per head per layer)             │
-  │       ├─ react-three-fiber (embeddings in 3D, matrix animations) │
-  │       ├─ Framer Motion (token decode transitions)                │
-  │       └─ Tailwind + dark UI                                      │
-  │                                                                  │
-  │   Deployed: Vercel (static — no backend)                         │
-  └──────────────────────────────────────────────────────────────────┘
-```
+The Python side is the numerical source of truth. It trains the model, captures intermediate activations, and exports the trained network to ONNX. The browser side consumes those artifacts and turns them into an interactive explanation.
 
-## Why this split
-
-**Separation of concerns.** The model track is Python, PyTorch, and a GPU. The viz track is TypeScript, React, and a browser. Forcing a clean handoff (activations JSON + ONNX) means we can swap either side without rewriting the other.
-
-**In-browser inference.** Running the model client-side via transformers.js means:
-- No backend = free to host, infinite scale
-- Shareable as a single URL
-- Model runs on the visitor's laptop — feels magical
-- Forces the model to stay small (good constraint for a demo)
-
-**Raw PyTorch, not HuggingFace `transformers`.** The goal is understanding, not convenience. By Phase 4 (fine-tuning a real model) we'll use Unsloth + HuggingFace — but by then you've built attention by hand and the abstractions won't hide anything.
-
-## Stack
-
-### Model track
-
-- **Language:** Python 3.11+
-- **Framework:** PyTorch 2.x (raw — no `nn.Transformer`, no HF `transformers` until Phase 4)
-- **Training compute:** Local CPU / Apple Silicon MPS (Phase 1), Modal H100 (Phase 3+)
-- **Data:** tinyshakespeare (Phase 1–3), domain dataset (Phase 4+)
-- **Tokenization:** char-level (Phase 1), BPE (Phase 3+)
-- **Fine-tuning:** Unsloth + LoRA (Phase 4)
-- **RL:** HuggingFace TRL `GRPOTrainer` (Phase 5)
-- **Tracking:** Weights & Biases (Phase 3+)
-- **Export:** ONNX for in-browser inference, safetensors for checkpoints
-
-### Viz track
-
-- **Framework:** Next.js 15 (App Router)
-- **Language:** TypeScript (strict)
-- **Styling:** Tailwind CSS + custom dark theme
-- **Inference:** `@huggingface/transformers` (transformers.js) running ONNX in browser
-- **2D viz:** D3.js for heatmaps, distributions, line charts
-- **3D viz:** react-three-fiber for embedding space, matrix animations
-- **Animations:** Framer Motion for UI transitions
-- **Deployment:** Vercel (static export where possible)
-
-## The handoff format
-
-Phase 1.5 produces two files that are the API between tracks.
-
-### `activations.json` (or msgpack for size)
-
-One forward pass of the model on a given prompt, fully instrumented:
-
-```json
-{
-  "prompt": "To be or not to be",
-  "tokens": [{ "text": "T", "id": 23 }, ...],
-  "embeddings": [...],
-  "layers": [
-    {
-      "layer_idx": 0,
-      "attention": {
-        "q": [...], "k": [...], "v": [...],
-        "scores": [...],
-        "output": [...]
-      },
-      "ffn": { "activations": [...], "output": [...] },
-      "residual_out": [...]
-    },
-    ...
-  ],
-  "logits": [...],
-  "sampled_token": { "id": 42, "text": "e", "temperature": 0.8, "top_k": 40 }
-}
+```text
+┌──────────────────────────────────────────────────────────────┐
+│                         MODEL TRACK                          │
+│                                                              │
+│ Tiny Shakespeare                                             │
+│       |                                                      │
+│       v                                                      │
+│ character-level tokenizer                                    │
+│       |                                                      │
+│       v                                                      │
+│ raw PyTorch GPT (6 blocks, 6 heads, 384-wide)                │
+│       |                         |                            │
+│       | forward hooks           | ONNX export                │
+│       v                         v                            │
+│ captured activations        model.onnx                       │
+│       |                         |                            │
+└───────|─────────────────────────|────────────────────────────┘
+        |                         |
+        +------------+------------+
+                     |
+                     v
+┌──────────────────────────────────────────────────────────────┐
+│                    VISUALIZATION TRACK                       │
+│                                                              │
+│ Next.js 16 + React 19 + TypeScript                          │
+│       |                                                      │
+│       +--> captured activation playback                      │
+│       +--> ONNX Runtime Web inference                        │
+│       +--> D3 2D visualizations                              │
+│       +--> Three.js / react-three-fiber 3D deep dives        │
+│       +--> Framer Motion transitions                         │
+│       |                                                      │
+│       v                                                      │
+│ guided interactive transformer walkthrough                  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### `model.onnx`
+## Why the split exists
 
-Standard ONNX export of the trained model. transformers.js loads it in-browser. Use dynamic shapes for variable-length inputs.
+The two halves have different jobs.
 
-## Key design decisions
+**Python/PyTorch owns model behavior.** Training, sampling, tensor capture, and numerical verification stay close to the model implementation.
 
-**Decision: in-browser inference via ONNX over a Python backend.**
-- *Why:* Zero infra, free hosting, instant shareability.
-- *Trade-off:* Model must stay small (tens of millions of params max). Fine for a nanoGPT demo.
+**The browser owns explanation.** React components can focus on pedagogy, interaction, animation, and spatial presentation without embedding model-training logic into the frontend.
 
-**Decision: raw PyTorch for Phases 1–3.**
-- *Why:* Understanding is the whole point.
-- *Trade-off:* Slower to write. Worth it — AI-paired scaffolding absorbs most of the friction.
+The handoff is intentionally simple:
 
-**Decision: Socratic build loop in every phase prompt.**
-- *Why:* AI makes it easy to ship code you don't understand. That's the failure mode.
-- *Trade-off:* Slight slowdown per milestone. Strongly net positive.
+- captured activation data for replaying and explaining an instrumented forward pass
+- an exported ONNX model for browser-side inference
+- a vocabulary file for mapping between token IDs and characters
 
-**Decision: hand-type the model, Claude scaffolds the rest.** (Phase 1 specific.)
-- *Why:* Active typing burns patterns into muscle memory in a way passive reading doesn't. Wes's advice, learning-science-backed.
-- *Trade-off:* Slower than letting Claude write it all. The time spent typing IS the learning.
+This also makes the system easier to audit: a reviewer can inspect the model independently from the UI and trace where the data shown by the UI comes from.
 
-**Decision: dual-track from Phase 1.5 onward.**
-- *Why:* Every model component becomes a viz component. The project visibly compounds.
-- *Trade-off:* More scope. Manageable because each viz component maps 1:1 to a captured value.
+## Model track
+
+### Stack
+
+- Python 3.11+ recommended
+- PyTorch 2.x
+- NumPy
+- ONNX
+- ONNX Runtime for export verification
+
+### Model design
+
+The current training model is a small GPT-style decoder-only transformer implemented without Hugging Face `transformers` or `torch.nn.Transformer`.
+
+Default configuration:
+
+- character-level tokenization
+- 256-token context window
+- 384-dimensional embedding/residual width
+- 6 transformer blocks
+- 6 causal self-attention heads per block
+- feed-forward network in each block
+- learned token embeddings
+- learned positional embeddings
+- pre-norm residual connections
+- final layer norm + language-model projection
+- autoregressive next-token generation
+
+The model is intentionally small enough to train and inspect locally. It is an educational model, not an attempt to match frontier-model quality.
+
+### Data flow
+
+`model/data.py` downloads Tiny Shakespeare on first use, builds the deterministic character vocabulary, converts the corpus into token IDs, and creates a 90/10 train/validation split.
+
+`model/train.py` samples random context windows and trains the language model with AdamW.
+
+`model/sample.py` rebuilds the same tokenizer, loads the saved checkpoint, and performs autoregressive decoding with optional temperature and top-k sampling.
+
+## Activation capture
+
+`model/hooks.py` attaches PyTorch forward hooks without changing the core model architecture.
+
+`model/capture.py` then:
+
+1. loads the trained checkpoint
+2. generates a sequence from a prompt
+3. attaches the activation hooks
+4. runs one clean forward pass over the completed sequence
+5. records intermediate tensors
+6. recomputes attention scores and weights from captured Q and K tensors
+7. serializes the result according to `model/capture_schema.py`
+
+Captured information includes:
+
+- token embeddings
+- positional embeddings
+- layer-normalization states
+- Q/K/V tensors for each attention head
+- causal attention scores and weights
+- attention outputs
+- residual-stream states
+- feed-forward intermediate activations
+- final normalized state
+- logits and next-token probabilities
+
+The visualizer uses a compact copy of this data for faster browser delivery while retaining the canonical capture as a reference artifact.
+
+## ONNX export
+
+`model/export_onnx.py` wraps the model so the exported graph returns logits only.
+
+The export uses dynamic axes for batch and sequence dimensions, allowing the browser to evaluate different sequence lengths up to the model's context limit.
+
+After export, the script loads the graph with ONNX Runtime and compares its logits against PyTorch for several sequence lengths. The export fails if numerical disagreement exceeds the configured tolerance.
+
+The browser-ready model is stored at:
+
+```text
+viz/public/model.onnx
+```
+
+## Visualization track
+
+### Stack
+
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- D3.js
+- Three.js
+- react-three-fiber + drei
+- Framer Motion
+- ONNX Runtime Web
+
+### Application structure
+
+The visualizer is organized as a guided sequence rather than a static dashboard.
+
+Key areas:
+
+```text
+viz/
+├── app/                    # Next.js entry points and metadata
+├── components/
+│   ├── movie/              # sequencing, acts, controls, transitions
+│   ├── scenes/             # concept-specific scenes
+│   └── deepdive/           # 3D explanations
+├── lib/                    # activation loading and inference helpers
+└── public/                 # model and captured-data artifacts
+```
+
+The walkthrough covers the main transformer path from input representation through attention, feed-forward processing, stacked blocks, logits, and sampling.
+
+3D is used only when spatial relationships are useful, such as embedding space or parallel attention-head structure. Matrix-heavy concepts remain primarily 2D.
+
+## Real model data vs. explanatory extensions
+
+The project makes an important distinction between **visualizing this model** and **teaching the broader inference stack used by modern LLMs**.
+
+The trained model in `model/gpt.py` uses standard autoregressive decoding: each next-token step feeds the current context through the model again. It does not implement a production-style KV cache.
+
+The visualizer includes KV-cache scenes because caching keys and values is fundamental to understanding efficient modern LLM inference. Those scenes are educational extensions, not captured evidence that this toy model uses cached decoding.
+
+That boundary is intentional and documented so the visualization does not overclaim what the underlying implementation does.
+
+## Deployment architecture
+
+The visualizer has no application backend or required API service. The model and activation artifacts are shipped as static files and inference runs in the visitor's browser.
+
+The repository is prepared for Vercel deployment with `viz` as the project root. `viz/vercel.json` applies long-lived immutable cache headers to large model/runtime/activation assets.
+
+A compatible Node host can also run the production build with:
+
+```bash
+npm run build
+npm run start
+```
+
+## Design principles
+
+### Prefer explicit code over abstraction
+
+The core transformer is intentionally direct. The educational value comes from being able to trace a token through the implementation rather than hiding the mechanics behind a high-level library.
+
+### Keep the visualizer tied to numerical artifacts
+
+The UI should explain model behavior using tensors that can be traced back to the model whenever possible. Verification scripts exist to check tensor shapes, causal masking, probability normalization, residual arithmetic, and ONNX/PyTorch agreement.
+
+### Keep production-LLM concepts labeled honestly
+
+The visualizer can teach concepts beyond this small model, but those extensions should be labeled as such. KV caching is the clearest current example.
 
 ## Non-goals
 
-- Matching frontier model quality. Our models will be small and dumb. That's fine.
-- Perfect code. Optimize for clarity and pedagogy, then speed. Not for "production."
-- Supporting every architecture ever. Classic GPT + Llama 3 tells the full story.
+- matching frontier-model quality
+- supporting every transformer architecture
+- turning the toy model into a production inference server
+- hiding implementation details behind high-level transformer APIs
+
+The current objective is narrower: build a transformer that can be read end-to-end, connect it to real captured tensors, and make those internals understandable in an interactive browser experience.
