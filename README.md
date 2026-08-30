@@ -1,72 +1,59 @@
 # Transformer From Scratch → Live Visualizer
 
-A dual-track project: build a modern transformer from scratch in raw PyTorch, and simultaneously build a live, interactive web visualizer that shows every internal operation — tokenization, embeddings, attention heads, Q/K/V matrices, KV cache, decoding — running on the model you trained yourself.
+A transformer I built from scratch in raw PyTorch to understand how LLMs work internally, paired with an interactive visualizer that walks through the model step by step. The project covers tokenization, embeddings, Q/K/V, attention, multi-head attention, feed-forward layers, the residual stream, KV caching, and decoding using activations captured from the model itself.
 
-**Goal:** a shareable URL that makes a transformer's internals click for anyone who sees it, backed by code you wrote and can explain cold.
+The model is a 10.79M-parameter GPT-style language model trained on Tiny Shakespeare. It was built without HuggingFace `transformers` or `nn.Transformer`, then instrumented to capture internal activations and exported to ONNX for browser inference.
 
-## Why this exists
+The visualizer has grown into a guided cinematic walkthrough with roughly 34 scenes, including interactive 2D and 3D explanations of the transformer's internals.
 
-- **Learning artifact.** Building a transformer teaches you the architecture. Visualizing it teaches you everything you missed.
+## What's built
+
+- **Transformer from scratch:** token + positional embeddings, causal self-attention, multi-head attention, feed-forward layers, residual connections, layer normalization, and autoregressive generation.
+- **Training pipeline:** trained locally on Tiny Shakespeare, with the current checkpoint reaching about 1.05 train loss / 1.50 validation loss after 5,000 iterations.
+- **Instrumentation:** hooks capture Q/K/V, attention scores and weights, layer norms, residual-stream states, and feed-forward activations without modifying the model architecture.
+- **ONNX export:** the trained model runs outside PyTorch and was verified against PyTorch outputs to within `1e-5`.
+- **Interactive visualizer:** a Next.js 16 + TypeScript app that turns the forward pass into a guided movie, with dedicated scenes for tokenization, embeddings, Q/K/V, attention, multi-head attention, FFNs, model stacking, sampling, and KV cache behavior.
+- **3D deep dives:** interactive views for embedding space, parallel attention heads, self-attention, feed-forward neurons, and KV-cache steps.
 
 ## Repo layout
 
-```
+```text
 .
-├── README.md              ← you are here
-├── ROADMAP.md             ← full phase-by-phase plan with success criteria
-├── PROJECT_STATE.md       ← living state file — session handoff, always read first
-├── docs/
-│   ├── architecture.md    ← technical design, stack, key decisions, dual-track flow
-│   ├── glossary.md        ← VC-grade quick reference for every concept
-│   └── resources.md       ← canonical papers, videos, references
-├── prompts/               ← Claude kick-off prompts per phase
-│   ├── README.md
-│   ├── phase-1-model.md
-│   ├── phase-1.5-instrumentation.md
-│   └── phase-2-visualizer.md
-├── model/                 ← Phase 1+ PyTorch code (populated as we build)
-└── viz/                   ← Phase 2+ Next.js app (populated as we build)
+├── README.md
+├── PROJECT_STATE.md       # detailed build history and current state
+├── ROADMAP.md
+├── docs/                  # architecture, glossary, resources, viz design docs
+├── model/                 # PyTorch transformer, training, capture, and ONNX export
+├── scripts/               # activation verification/compression + ONNX utilities
+├── prompts/               # build prompts and earlier phase plans
+└── viz/                   # Next.js interactive transformer visualizer
 ```
 
-## Quickstart
+## Stack
 
-1. Read `PROJECT_STATE.md` — always the source of truth for where we are
-2. Open the current phase's prompt in `prompts/`
-3. Paste into Claude
-4. Build (hand-type the model; Claude scaffolds the rest — see Phase 1 prompt for the split)
-
-## The stack
-
-- **Model:** Python, PyTorch (raw — no HuggingFace `transformers`, no `nn.Transformer`). Local for Phase 1, Modal for Phase 3+.
-- **Visualizer:** Next.js 15 + TypeScript + Tailwind, transformers.js (in-browser ONNX), D3.js for 2D, react-three-fiber for 3D, Framer Motion, deployed on Vercel.
-- **Training pipeline:** Unsloth (Phase 4 fine-tuning), HuggingFace TRL for GRPO (Phase 5 RLVR).
-- **Coach:** Claude in Socratic mode (see `prompts/`).
-
-## Current phase
-
-Always see `PROJECT_STATE.md`. That file is the source of truth — every session ends with an update to it.
+- **Model:** Python + raw PyTorch
+- **Visualizer:** Next.js 16, TypeScript, Tailwind, D3.js, react-three-fiber, Framer Motion
+- **Browser inference:** ONNX Runtime / exported ONNX model
 
 ## Run the visualizer locally
 
-The interactive transformer movie lives in `viz/` (a Next.js 16 app). Anyone can clone this repo and run it locally:
-
 ```bash
-# clone and enter the project
 git clone https://github.com/pegg-dot/Transformer.git
 cd Transformer/viz
-
-npm install        # first time only
-npm run dev        # starts the dev server
+npm install
+npm run dev
 ```
 
-Then open **http://localhost:3000** and press the blue **Play** button. Use the chapter rail at the bottom to jump between acts; reload returns to the splash screen.
-
-Other commands you might want:
+Then open **http://localhost:3000** and press **Play**. Use the chapter rail to move between acts.
 
 ```bash
-npm run build      # production build
-npm run start      # serve the production build (after `npm run build`)
-npm run lint       # eslint
+npm run build
+npm run start
+npm run lint
 ```
 
-Requires Node 20+ (Next.js 16). If `npm run dev` complains about a port in use, set one explicitly: `npm run dev -- -p 3001`.
+Requires Node 20+.
+
+## Status
+
+The transformer, instrumentation pipeline, ONNX export, and cinematic visualizer are built and runnable locally. The visualizer has not yet been deployed to a permanent public URL. Later roadmap experiments around Llama-3-style architecture changes, fine-tuning, and RLVR are separate extensions and are not required for the core project to be complete.
