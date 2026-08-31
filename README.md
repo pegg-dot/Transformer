@@ -6,6 +6,12 @@ The project is meant to be inspectable. You can run the visualizer locally, read
 
 > **Fastest way to see the project:** clone the repo, enter `viz/`, install dependencies, and run `npm run dev`. No API keys or backend are required.
 
+<p align="center">
+  <img src="docs/images/transformer-qkv.webp" alt="Interactive visualizer showing how a normalized token representation is projected into query, key, and value vectors" width="100%">
+</p>
+
+<p align="center"><em>Inside a transformer block: the same normalized representation is projected into query, key, and value vectors.</em></p>
+
 ## What this project demonstrates
 
 The repository connects two sides of an LLM that are often learned separately:
@@ -199,6 +205,12 @@ The browser experience is built with:
 - ONNX Runtime Web
 
 It includes a guided multi-scene walkthrough covering tokenization, embedding space, Q/K/V, causal attention, multi-head attention, feed-forward layers, transformer stacking, next-token sampling, and modern decoding concepts.
+
+<p align="center">
+  <img src="docs/images/transformer-training.webp" alt="Interactive visualizer showing gradient descent moving weights down a loss surface during training" width="100%">
+</p>
+
+<p align="center"><em>Training view: gradient descent is shown as repeated small weight updates moving down the loss surface.</em></p>
 
 ## Deployment
 
