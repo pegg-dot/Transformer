@@ -1,5 +1,7 @@
 # Transformer From Scratch + Interactive LLM Visualizer
 
+[![smoke](https://github.com/pegg-dot/Transformer/actions/workflows/smoke.yml/badge.svg)](https://github.com/pegg-dot/Transformer/actions/workflows/smoke.yml)
+
 I built a GPT-style transformer from scratch in raw PyTorch to understand what happens inside a language model, trained it on Tiny Shakespeare, instrumented the model to capture its internal activations, and then built an interactive browser visualizer around those real model outputs.
 
 The project is meant to be inspectable. You can run the visualizer locally, read the model implementation, retrain the model, capture a forward pass, and export the trained network to ONNX for browser inference.
