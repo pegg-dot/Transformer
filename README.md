@@ -2,11 +2,13 @@
 
 [![smoke](https://github.com/pegg-dot/Transformer/actions/workflows/smoke.yml/badge.svg)](https://github.com/pegg-dot/Transformer/actions/workflows/smoke.yml)
 
+**▶ Live demo: [transformer-viz-eight.vercel.app](https://transformer-viz-eight.vercel.app)** — watch a transformer think, no install needed. Everything below lets you run and rebuild it yourself.
+
 I built a GPT-style transformer from scratch in raw PyTorch to understand what happens inside a language model, trained it on Tiny Shakespeare, instrumented the model to capture its internal activations, and then built an interactive browser visualizer around those real model outputs.
 
 The project is meant to be inspectable. You can run the visualizer locally, read the model implementation, retrain the model, capture a forward pass, and export the trained network to ONNX for browser inference.
 
-> **Fastest way to see the project:** clone the repo, enter `viz/`, install dependencies, and run `npm run dev`. No API keys or backend are required.
+> **Fastest way to see the project:** open the [live demo](https://transformer-viz-eight.vercel.app). To run it yourself: clone the repo, enter `viz/`, install dependencies, and run `npm run dev`. No API keys or backend are required.
 
 <p align="center">
   <img src="docs/images/transformer-qkv.webp" alt="Interactive visualizer showing how a normalized token representation is projected into query, key, and value vectors" width="100%">
