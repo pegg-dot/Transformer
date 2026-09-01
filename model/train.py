@@ -42,6 +42,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--max_iters", type=int, default=config.max_iters)
     parser.add_argument("--eval_interval", type=int, default=config.eval_interval)
+    parser.add_argument("--eval_iters", type=int, default=config.eval_iters,
+                        help="batches averaged per loss estimate — lower it for quick CPU sanity runs")
     parser.add_argument("--sample_tokens", type=int, default=300)
     args = parser.parse_args()
 
@@ -73,7 +75,7 @@ def main():
     t0 = time.time()
     for it in range(args.max_iters + 1):
         if it % args.eval_interval == 0 or it == args.max_iters:
-            losses = estimate_loss(model, train_data, val_data, config.eval_iters)
+            losses = estimate_loss(model, train_data, val_data, args.eval_iters)
             elapsed = time.time() - t0
             print(
                 f"[iter {it:5d}] train {losses['train']:.4f}  val {losses['val']:.4f}  "
