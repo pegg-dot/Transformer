@@ -42,6 +42,6 @@ jobs:
           cache-dependency-path: requirements-model.txt
       - run: pip install -r requirements-model.txt
       - name: Train a few iterations (downloads Tiny Shakespeare, writes a checkpoint)
-        run: python -m model.train --max_iters 20 --eval_interval 10 --sample_tokens 40
+        run: python -m model.train --max_iters 20 --eval_interval 10 --eval_iters 5 --sample_tokens 40
       - name: Generate from the fresh checkpoint (the README's sample command)
         run: python -m model.sample --prompt "ROMEO:" --tokens 40 --temperature 0.8 --top_k 40
