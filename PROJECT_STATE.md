@@ -2,8 +2,10 @@
 
 > This file is the source of truth for where the project is. Every session should **read this first** and **update it last**.
 
-**Last updated:** 2026-05-30 (Reconciliation pass. The viz grew far past the Phase-2 MVP into a full cinematic "movie" — ~34 scenes across Acts I–VI — over ~130 commits since Apr 21. README now ships clone+run instructions for anyone. Everything committed and pushed; working tree clean. Still never deployed to a public URL.)
-**Current phase:** Phase 2 — content complete, **not deployed**. The visualizer is a polished guided movie, runnable locally with `cd viz && npm install && npm run dev`. The only thing standing between this and Phase 2's actual success criterion ("a public, DM-able URL") is the one-time Vercel deploy, which has never been run.
+**Last updated:** 2026-09-01 (Deployed. `vercel deploy --prod` ran for the first time — production URL **https://transformer-viz-eight.vercel.app** (project `transformer-viz`, Nate's personal scope). Phase 2's success criterion — a public, DM-able URL — is MET. Also new since May: CI smoke workflow (viz build + model install/train/sample on py3.11) with a passing badge, `--eval_iters` flag on train.py, repo topics + homepage set. Note: the local 5,000-iter `checkpoints/gpt.pt` was accidentally overwritten by a CI smoke test on Sep 1 and its restore retrain was stopped partway — re-run `python -m model.train` if local capture/export work is needed; the shipped viz artifacts in `viz/public/` are unaffected.)
+
+**Previous update:** 2026-05-30 (Reconciliation pass. The viz grew far past the Phase-2 MVP into a full cinematic "movie" — ~34 scenes across Acts I–VI — over ~130 commits since Apr 21. README now ships clone+run instructions for anyone. Everything committed and pushed; working tree clean. Still never deployed to a public URL.)
+**Current phase:** Phase 2 — **COMPLETE and deployed** (public URL above). The visualizer is a polished guided movie, runnable locally with `cd viz && npm install && npm run dev`. The only thing standing between this and Phase 2's actual success criterion ("a public, DM-able URL") is the one-time Vercel deploy, which has never been run.
 **Next action:** Decide whether to (a) deploy to a public URL — see "Deploy handoff" below — or (b) move on to Phase 3 (Llama-3 modernization), which is untouched. As of this update, Nate chose to just refresh this state file; no new build work started.
 
 ---
