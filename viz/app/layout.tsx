@@ -19,10 +19,9 @@ const jetbrains = JetBrains_Mono({
   subsets: ['latin'],
 })
 
-// Vercel injects VERCEL_URL on preview/production. Fall back to localhost for
-// `next dev` so generated OG/twitter absolute URLs still resolve locally.
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
-  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+// Use the stable public portfolio URL for canonical/social metadata. A deployment-specific
+// VERCEL_URL changes on every build and produces stale share cards after the next deploy.
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://transformer-viz-eight.vercel.app'
 
 const title = 'Watch a transformer think'
 const description =
