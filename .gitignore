@@ -28,10 +28,18 @@ logs/
 activations.json
 activations.msgpack
 *.onnx
-# …except the specific files needed for the Vercel deploy. These are the
-# canonical viz inputs — they have to ship with the app.
+# Canonical browser assets required by the deployed visualizer.
 !viz/public/activations.json
 !viz/public/model.onnx
+
+# Environment / credentials
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
 
 # Node / Next.js
 node_modules/
@@ -40,8 +48,10 @@ out/
 dist/
 .turbo/
 *.tsbuildinfo
-.env.local
-.env.*.local
+
+# Vercel / cloud-local state
+.vercel/
+.modal/
 
 # OS
 .DS_Store
@@ -52,6 +62,3 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
-
-# Modal / cloud
-.modal/
